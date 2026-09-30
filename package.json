@@ -1,0 +1,27 @@
+{
+  "name": "habitat-floorplan-studio",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config frontend/vite.config.js",
+    "dev:api": "python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000",
+    "dev:all": "python scripts/dev.py",
+    "build": "vite build --config frontend/vite.config.js",
+    "preview": "vite preview --config frontend/vite.config.js --host 127.0.0.1",
+    "test:backend": "python -m pytest backend/tests -q",
+    "test:frontend": "node --test frontend/tests/*.test.js"
+  },
+  "dependencies": {
+    "lucide-react": "^1.49.0",
+    "polygon-clipping": "^0.15.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "three": "^0.186.1",
+    "vite": "^8.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "prettier": "^3.9.9"
+  }
+}

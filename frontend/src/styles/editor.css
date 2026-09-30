@@ -1,0 +1,752 @@
+.manual-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 17px;
+}
+.edit-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  background: #1c2c32;
+  border: 1px solid #34464d;
+  border-radius: 8px 8px 0 0;
+  flex: none;
+}
+.edit-tool-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.edit-toolbar {
+  flex-wrap: wrap;
+}
+.edit-tool-tabs {
+  gap: 3px;
+}
+.edit-tool-tabs button {
+  padding: 8px;
+}
+.edit-history {
+  margin-left: auto;
+}
+.edit-drawing-bar,
+.edit-delete-confirm {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px;
+  background: #394338;
+  border: 1px solid #758b5e;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #e0e9d0;
+  flex: none;
+}
+.edit-drawing-bar span,
+.edit-delete-confirm > div {
+  flex: 1;
+  min-width: 160px;
+}
+.edit-drawing-bar button,
+.edit-delete-confirm button {
+  padding: 8px 12px;
+  border: 1px solid #819574;
+  border-radius: 5px;
+}
+.edit-delete-confirm {
+  margin-top: 10px;
+  background: #433b30;
+  border-color: #94734d;
+}
+.edit-delete-confirm p {
+  line-height: 1.8;
+  margin: 5px 0;
+}
+.edit-delete-confirm label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.8;
+}
+.edit-vertices > .secondary-button {
+  margin-top: 12px;
+}
+.edit-tool-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  padding: 10px 12px;
+  border-radius: 5px;
+  color: #9db4b7;
+  white-space: nowrap;
+}
+.edit-tool-tabs button.active {
+  background: #375347;
+  color: #d7e7c9;
+}
+.edit-history {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.edit-history > button:not(.text-button):not(.secondary-button) {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 30px;
+  color: #98afb3;
+}
+.edit-history .text-button {
+  font-size: 9px;
+  white-space: nowrap;
+}
+.edit-history .secondary-button {
+  font-size: 10px;
+  padding: 7px 10px;
+  min-height: 30px;
+}
+.edit-intro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  color: #8fa9a4;
+  flex: none;
+}
+.edit-intro p {
+  font-size: 10px;
+  line-height: 1.8;
+  flex: 1;
+}
+.edit-intro label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.edit-intro select {
+  background: #1f3338;
+  border: 1px solid #3a5256;
+  padding: 5px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #bacdbd;
+}
+.edit-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 15px;
+  flex: 1;
+  min-height: 0;
+}
+.plan-editor-canvas {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #eaf0e8;
+  overflow: hidden;
+  border: 1px solid #4a5c58;
+  border-radius: 8px;
+  min-height: 280px;
+}
+.plan-sheet-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  color: #486755;
+  border-bottom: 1px solid #7b99862b;
+  font-size: 10px;
+  flex: none;
+}
+.plan-sheet-head small {
+  font-size: 9px;
+  color: #849484;
+}
+.plan-sheet-head i {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #618a6e;
+  margin-right: 5px;
+}
+.plan-editor-canvas > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  touch-action: none;
+  user-select: none;
+}
+.room-plan-label {
+  font-size: 0.19px;
+  fill: #7d8b79;
+  pointer-events: none;
+  font-family: inherit;
+}
+.room-area-label {
+  font-size: 0.14px;
+  fill: #8e9786;
+  pointer-events: none;
+}
+.dimension-label {
+  font-size: 0.14px;
+  fill: #30664e;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: #eaf0e8;
+  stroke-width: 0.04px;
+}
+.furniture-plan-label {
+  fill: #435344;
+  pointer-events: none;
+}
+.plan-handle {
+  cursor: crosshair;
+  touch-action: none;
+}
+.plan-zoom {
+  position: absolute;
+  bottom: 38px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #f8faf4ed;
+  box-shadow: 0 3px 15px #203b2920;
+  border: 1px solid #b8c9b6;
+  border-radius: 6px;
+  padding: 4px;
+  color: #486754;
+}
+.plan-zoom button {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 26px;
+  border-radius: 4px;
+  color: #486754;
+}
+.plan-zoom button:hover {
+  background: #d3e1cb;
+  color: #204e34;
+}
+.plan-zoom span {
+  font:
+    10px ui-monospace,
+    monospace;
+}
+.plan-legend {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  align-items: center;
+  flex: none;
+  padding: 12px;
+  color: #7d907c;
+  font-size: 8px;
+  white-space: nowrap;
+  background: #eaf0e8;
+}
+.plan-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 4px;
+  background: #596e60;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.plan-legend i.window {
+  background: #5b9bab;
+}
+.plan-legend i.passage {
+  background: #b18943;
+}
+.edit-properties {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #33484e;
+  border-radius: 8px;
+  background: #1a2b32;
+}
+.edit-properties fieldset {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.edit-section {
+  padding: 16px;
+  border-bottom: 1px solid #30464d;
+}
+.edit-section:last-child {
+  border-bottom: 0;
+}
+.edit-section .section-heading {
+  margin-bottom: 12px;
+}
+.edit-section select,
+.edit-section input,
+.edit-save-bar input {
+  background: #102229;
+  border: 1px solid #3d555b;
+  border-radius: 5px;
+  padding: 9px 10px;
+  width: 100%;
+  color: #d4e1d7;
+  font-size: 10px;
+  outline: none;
+}
+.edit-section input:focus,
+.edit-section select:focus,
+.edit-save-bar input:focus {
+  border-color: #a9c499;
+}
+.edit-selected-name {
+  font-size: 11px;
+  color: #a8c39f;
+  margin-top: 12px;
+}
+.edit-label {
+  display: block;
+  margin-bottom: 14px;
+  color: #a2b8b4;
+  font-size: 10px;
+}
+.edit-label > select,
+.edit-label > input {
+  margin-top: 8px;
+}
+.edit-number-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 13px 11px;
+  margin-bottom: 14px;
+}
+.edit-number {
+  display: block;
+  color: #8fa9ab;
+  font-size: 9px;
+  min-width: 0;
+}
+.edit-number > span {
+  display: block;
+  margin-bottom: 7px;
+}
+.edit-number > div {
+  display: flex;
+  border: 1px solid #3d555b;
+  background: #102229;
+  border-radius: 5px;
+  align-items: center;
+}
+.edit-number input {
+  border: 0;
+  padding: 8px 7px;
+  background: none;
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+  appearance: textfield;
+}
+.edit-number input::-webkit-inner-spin-button {
+  opacity: 0.4;
+}
+.edit-number div > small {
+  font-size: 9px;
+  padding-right: 7px;
+  color: #60878a;
+}
+.edit-number.invalid > div {
+  border-color: #d3a085;
+}
+.edit-number.invalid > small {
+  display: block;
+  color: #d3a085;
+  font-size: 8px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.edit-section .full-width {
+  font-size: 10px;
+  min-height: 32px;
+  padding: 8px;
+}
+.nudge-pad {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 14px 0;
+}
+.nudge-pad > span {
+  flex: 1;
+  font-size: 9px;
+  color: #859e9e;
+}
+.nudge-pad button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 29px;
+  border: 1px solid #42605e;
+  background: #263b3e;
+  border-radius: 4px;
+}
+.edit-delete-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-top: 13px;
+  border-top: 1px solid #344950;
+}
+.edit-delete-row button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  color: #c9a48d;
+}
+.edit-opening-add {
+  display: flex;
+  gap: 5px;
+  margin-top: 14px;
+}
+.edit-opening-add button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 9px 3px;
+  border: 1px solid #4a635d;
+  background: #30433d;
+  border-radius: 5px;
+  color: #bbd1b2;
+  white-space: nowrap;
+  font-size: 9px;
+}
+.add-furniture {
+  display: flex;
+  gap: 8px;
+}
+.add-furniture select {
+  flex: 1;
+}
+.add-furniture .secondary-button {
+  font-size: 9px;
+  padding: 7px 10px;
+}
+.edit-vertices {
+  margin-top: 13px;
+  border-top: 1px solid #344950;
+  padding-top: 12px;
+}
+.edit-vertices summary {
+  font-size: 10px;
+  color: #a8c1a1;
+  cursor: pointer;
+}
+.vertex-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-top: 13px;
+}
+.vertex-row > span {
+  font-size: 9px;
+  color: #a0be9c;
+  width: 11px;
+  flex: none;
+}
+.vertex-row .edit-number {
+  flex: 1;
+}
+.vertex-row .edit-number > span {
+  font-size: 8px;
+}
+.vertex-row button {
+  color: #a38778;
+  padding: 3px;
+  align-self: flex-end;
+  margin-bottom: 6px;
+}
+.edit-vertices > .text-button {
+  margin-top: 15px;
+}
+.edit-issues {
+  display: flex;
+  gap: 9px;
+  padding: 11px 14px;
+  border: 1px solid #9b795355;
+  background: #493d292e;
+  color: #d6bc8c;
+  border-radius: 7px;
+  margin-top: 12px;
+  max-height: 108px;
+  overflow: auto;
+  flex: none;
+}
+.edit-issues > div {
+  flex: 1;
+}
+.edit-issues p,
+.edit-issues button {
+  font-size: 10px;
+  text-align: left;
+  line-height: 1.8;
+  display: block;
+}
+.edit-issues button {
+  padding: 0;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+}
+.edit-issues button span {
+  white-space: nowrap;
+  color: #97b2a3;
+}
+.edit-save-bar {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  padding: 15px 0 0;
+  flex: none;
+}
+.edit-save-bar > div {
+  flex: 1;
+}
+.edit-save-bar > div > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #b0c4a2;
+  font-size: 10px;
+}
+.edit-save-bar small {
+  display: block;
+  margin-top: 5px;
+  font-size: 8px;
+  color: #718f8c;
+}
+.edit-save-bar > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8ba49f;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.edit-save-bar input {
+  width: 190px;
+  font-size: 10px;
+}
+.heading-actions .edit-active {
+  border-color: #aac69b;
+  background: #304d3e;
+  color: #d8e8ce;
+}
+@media (max-width: 1250px) {
+  .edit-tool-tabs button {
+    padding: 8px;
+    font-size: 10px;
+    gap: 5px;
+  }
+  .edit-toolbar {
+    gap: 5px;
+    padding: 8px;
+  }
+  .edit-history {
+    gap: 3px;
+  }
+  .edit-history .text-button {
+    font-size: 8px;
+  }
+  .edit-columns {
+    grid-template-columns: minmax(0, 1fr) 252px;
+    gap: 10px;
+  }
+  .plan-sheet-head small {
+    display: none;
+  }
+  .edit-intro {
+    gap: 5px;
+  }
+  .edit-intro p {
+    font-size: 9px;
+  }
+  .edit-intro label {
+    font-size: 8px;
+  }
+  .edit-save-bar {
+    gap: 10px;
+  }
+  .edit-save-bar input {
+    width: 145px;
+  }
+  .edit-save-bar small {
+    max-width: 150px;
+    line-height: 1.8;
+  }
+  .edit-save-bar .primary-button {
+    font-size: 10px;
+    padding: 10px;
+  }
+  .plan-legend {
+    gap: 7px;
+    font-size: 7px;
+  }
+}
+@media (max-width: 980px) {
+  .manual-editor {
+    overflow: auto;
+  }
+  .edit-columns {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    min-height: 0;
+  }
+  .plan-editor-canvas {
+    height: 460px;
+    flex: none;
+  }
+  .edit-properties {
+    max-height: 600px;
+    flex: none;
+  }
+  .edit-properties fieldset {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+  .edit-section {
+    min-width: 0;
+  }
+  .edit-toolbar {
+    flex-wrap: wrap;
+  }
+  .edit-history {
+    margin-left: auto;
+  }
+  .edit-save-bar {
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+  }
+  .edit-save-bar > div {
+    flex-basis: 100%;
+  }
+  .edit-save-bar small {
+    max-width: none;
+  }
+  .edit-save-bar > label {
+    flex: 1;
+  }
+  .edit-save-bar input {
+    width: 100%;
+  }
+  .edit-intro {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .edit-intro label {
+    margin-left: 23px;
+  }
+  .edit-intro p {
+    flex-basis: 80%;
+  }
+}
+@media (max-width: 700px) {
+  .edit-toolbar {
+    padding: 7px;
+  }
+  .edit-tool-tabs {
+    width: 100%;
+    gap: 3px;
+    justify-content: space-between;
+  }
+  .edit-tool-tabs button {
+    font-size: 9px;
+    padding: 8px 5px;
+    gap: 4px;
+  }
+  .edit-tool-tabs svg {
+    width: 13px;
+  }
+  .edit-history {
+    width: 100%;
+    margin-top: 5px;
+    gap: 8px;
+  }
+  .edit-history > .secondary-button {
+    margin-left: auto;
+  }
+  .edit-history > .text-button {
+    font-size: 9px;
+  }
+  .plan-editor-canvas {
+    height: 420px;
+    min-height: 320px;
+  }
+  .plan-sheet-head {
+    padding: 12px;
+    font-size: 9px;
+  }
+  .edit-properties fieldset {
+    display: block;
+  }
+  .edit-properties {
+    max-height: none;
+  }
+  .edit-number-grid {
+    gap: 12px;
+  }
+  .edit-intro {
+    padding: 10px 0;
+  }
+  .edit-intro p {
+    font-size: 9px;
+  }
+  .edit-save-bar {
+    align-items: stretch;
+    gap: 12px;
+  }
+  .edit-save-bar > label {
+    flex-basis: 100%;
+  }
+  .edit-save-bar > .primary-button {
+    width: 100%;
+  }
+  .edit-save-bar input {
+    padding: 11px;
+  }
+  .edit-issues {
+    max-height: 140px;
+  }
+  .plan-legend {
+    font-size: 7px;
+    gap: 9px;
+  }
+  .plan-legend > span:last-child {
+    display: none;
+  }
+  .heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .edit-section .section-heading h2 {
+    font-size: 12px;
+  }
+}

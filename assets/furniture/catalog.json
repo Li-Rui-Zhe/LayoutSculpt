@@ -1,0 +1,153 @@
+{
+  "version": "1.0.0",
+  "blender_version": "4.5.9 LTS",
+  "library": "habitat-furniture.blend",
+  "sha256": "7f1f52056555a316ca5d4ee9550031863ef6202b336b1492499c9f5918704dee",
+  "license": "本项目原创几何与程序纹理，可随项目使用和修改；无第三方模型依赖。",
+  "items": [
+    {
+      "id": "habitat_sofa",
+      "kind": "sofa",
+      "name": "云屿三人沙发",
+      "collection": "asset_sofa",
+      "dimensions": [
+        2.3,
+        0.95,
+        0.88
+      ],
+      "triangles": 4548
+    },
+    {
+      "id": "habitat_bed",
+      "kind": "bed",
+      "name": "栖木软包双人床",
+      "collection": "asset_bed",
+      "dimensions": [
+        1.8,
+        2.1,
+        1.1
+      ],
+      "triangles": 4100
+    },
+    {
+      "id": "habitat_cabinet",
+      "kind": "cabinet",
+      "name": "木格双门衣柜",
+      "collection": "asset_cabinet",
+      "dimensions": [
+        1.6,
+        0.6,
+        2.15
+      ],
+      "triangles": 1348
+    },
+    {
+      "id": "habitat_table",
+      "kind": "table",
+      "name": "圆角实木餐桌",
+      "collection": "asset_table",
+      "dimensions": [
+        1.5,
+        0.85,
+        0.76
+      ],
+      "triangles": 440
+    },
+    {
+      "id": "habitat_chair",
+      "kind": "chair",
+      "name": "弧背布艺餐椅",
+      "collection": "asset_chair",
+      "dimensions": [
+        0.5,
+        0.54,
+        0.84
+      ],
+      "triangles": 1100
+    },
+    {
+      "id": "habitat_desk",
+      "kind": "desk",
+      "name": "抽屉工作书桌",
+      "collection": "asset_desk",
+      "dimensions": [
+        1.3,
+        0.62,
+        0.76
+      ],
+      "triangles": 832
+    },
+    {
+      "id": "habitat_counter",
+      "kind": "counter",
+      "name": "石面厨房地柜",
+      "collection": "asset_counter",
+      "dimensions": [
+        1.8,
+        0.6,
+        0.9
+      ],
+      "triangles": 1740
+    },
+    {
+      "id": "habitat_rug",
+      "kind": "rug",
+      "name": "编织流苏地毯",
+      "collection": "asset_rug",
+      "dimensions": [
+        2.0,
+        1.5,
+        0.035
+      ],
+      "triangles": 2684
+    },
+    {
+      "id": "habitat_plant",
+      "kind": "plant",
+      "name": "陶盆橄榄树",
+      "collection": "asset_plant",
+      "dimensions": [
+        0.7,
+        0.7,
+        1.3
+      ],
+      "triangles": 17596
+    },
+    {
+      "id": "habitat_sink",
+      "kind": "sink",
+      "name": "台盆浴室柜",
+      "collection": "asset_sink",
+      "dimensions": [
+        0.8,
+        0.5,
+        0.95
+      ],
+      "triangles": 1616
+    },
+    {
+      "id": "habitat_toilet",
+      "kind": "toilet",
+      "name": "圆润一体坐便器",
+      "collection": "asset_toilet",
+      "dimensions": [
+        0.4,
+        0.68,
+        0.76
+      ],
+      "triangles": 1592
+    },
+    {
+      "id": "habitat_bathtub",
+      "kind": "bathtub",
+      "name": "独立椭圆浴缸",
+      "collection": "asset_bathtub",
+      "dimensions": [
+        0.78,
+        1.65,
+        0.6
+      ],
+      "triangles": 1308
+    }
+  ]
+}

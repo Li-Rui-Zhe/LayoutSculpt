@@ -1,0 +1,121 @@
+.material-dock {
+  flex: none;
+  background: #1b292f;
+  border: 1px solid #2a383d;
+  border-radius: 8px;
+  padding: 13px 17px;
+  margin-top: 12px;
+}
+.dock-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.tabs {
+  display: flex;
+  gap: 21px;
+}
+.tabs button {
+  padding: 0;
+  color: #7c979b;
+  font-size: 10px;
+}
+.tabs button.active {
+  color: #d1dfc3;
+}
+.restore-material {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  color: #779692;
+  padding: 0;
+}
+#dock-materials {
+  display: flex;
+  justify-content: space-between;
+  gap: 9px;
+}
+.swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  min-width: 0;
+}
+.chip {
+  width: clamp(25px, 3.5vw, 49px);
+  height: 30px;
+  border-radius: 4px;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px #ffffff20;
+}
+.swatch.active .chip {
+  outline: 2px solid #c6d9a9;
+  outline-offset: 3px;
+}
+.swatch .label {
+  color: #8fa4a6;
+  font-size: 8px;
+  white-space: nowrap;
+}
+.swatch.active .label {
+  color: #d0debe;
+}
+.texture-wood {
+  background:
+    repeating-linear-gradient(88deg, #3c231d18 0 2px, transparent 3px 8px),
+    var(--swatch);
+}
+.texture-stone {
+  background:
+    linear-gradient(128deg, transparent 42%, #fff4 44%, transparent 48%),
+    linear-gradient(64deg, transparent 30%, #4333 33%, transparent 36%),
+    var(--swatch);
+}
+.texture-linen {
+  background:
+    repeating-linear-gradient(0deg, #ffffff24 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, #22222215 0 1px, transparent 1px 3px),
+    var(--swatch);
+}
+.texture-fabric {
+  background:
+    repeating-linear-gradient(45deg, #fff2 0 1px, transparent 1px 3px),
+    var(--swatch);
+}
+@media (max-width: 1200px) {
+  .swatch .label {
+    font-size: 7px;
+  }
+  .material-dock {
+    padding: 12px;
+  }
+  .chip {
+    width: clamp(22px, 3vw, 40px);
+  }
+}
+@media (max-width: 700px) {
+  .material-dock {
+    padding: 13px 11px;
+  }
+  .chip {
+    width: 27px;
+    height: 29px;
+  }
+  #dock-materials {
+    gap: 7px;
+  }
+  .swatch .label {
+    font-size: 7px;
+  }
+  .tabs {
+    gap: 20px;
+  }
+  .dock-head {
+    margin-bottom: 13px;
+  }
+}
