@@ -14,7 +14,49 @@ import {
   searchEntries,
   polygonInside,
   doorLeafPoints,
+  normalizeRotation,
+  rotationFromPointer,
+  rotateFurniture,
+  reconcileFurnitureRoom,
 } from "../src/editor/geometry.js";
+
+test("旋转角度跨零与多圈归一化，拒绝非有限值", () => {
+  assert.equal(normalizeRotation(-15), 345);
+  assert.equal(normalizeRotation(720), 0);
+  assert.equal(normalizeRotation(359.9999), 0);
+  assert.throws(() => normalizeRotation(Infinity));
+  const item = { x: 2, y: 2, rotation: 350 };
+  const origin = { x: 2, y: 1 };
+  assert.equal(rotationFromPointer(item, origin, { x: 3, y: 2 }), 80);
+  assert.equal(rotationFromPointer(item, origin, { x: 3, y: 2 }, 15), 75);
+  assert.equal(rotationFromPointer(item, origin, { x: 2, y: 2 }), 350);
+});
+
+test("旋转以中心进行、不修改原草稿，旋转后的真实角点越界能被拦截", () => {
+  const d = fixture();
+  Object.assign(d.furniture.items[0], { x: 1, y: 0.3, width: 1.5, depth: 0.4 });
+  assert.deepEqual(problems(d), []);
+  const rotated = rotateFurniture(d, 0, 90);
+  assert.equal(rotated.furniture.items[0].rotation, 90);
+  assert.equal(rotated.furniture.items[0].x, 1);
+  assert.equal(rotated.furniture.items[0].y, 0.3);
+  assert.equal(d.furniture.items[0].rotation, 0);
+  assert.ok(problems(rotated).some((p) => p.type === "furniture"));
+  assert.deepEqual(problems(rotateFurniture(rotated, 0, 360)), []);
+});
+
+test("输入坐标和拖动采用相同空间归属，跨边界时保留归属并提示", () => {
+  const d = fixture();
+  const moved = moveSelection(d, { type: "furniture", index: 0 }, 4, 0);
+  d.furniture.items[0].x = 6;
+  reconcileFurnitureRoom(d, d.furniture.items[0]);
+  assert.equal(d.furniture.items[0].room_id, "b");
+  assert.deepEqual(d.furniture.items[0], moved.furniture.items[0]);
+  d.furniture.items[0].x = 4;
+  reconcileFurnitureRoom(d, d.furniture.items[0]);
+  assert.equal(d.furniture.items[0].room_id, "b");
+  assert.ok(problems(d).some((p) => p.type === "furniture"));
+});
 
 test("门窗和通道独立查询，索引仍指向正确对象", () => {
   const d = fixture();

@@ -142,7 +142,7 @@
 }
 .edit-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 290px;
+  grid-template-columns: 172px minmax(260px, 1fr) 280px;
   gap: 15px;
   flex: 1;
   min-height: 0;
@@ -155,7 +155,7 @@
   overflow: hidden;
   border: 1px solid #4a5c58;
   border-radius: 8px;
-  min-height: 280px;
+  min-height: 350px;
 }
 .plan-sheet-head {
   display: flex;
@@ -575,7 +575,7 @@
     font-size: 8px;
   }
   .edit-columns {
-    grid-template-columns: minmax(0, 1fr) 252px;
+    grid-template-columns: 148px minmax(200px, 1fr) 252px;
     gap: 10px;
   }
   .plan-sheet-head small {
@@ -748,5 +748,223 @@
   }
   .edit-section .section-heading h2 {
     font-size: 12px;
+  }
+}
+
+/* 对象库、画布和属性各自滚动，常用变换优先显示。 */
+.edit-columns {
+  min-height: 350px;
+}
+.edit-library .edit-section {
+  padding: 10px;
+}
+.edit-library .section-heading {
+  margin-bottom: 8px;
+}
+.edit-library .edit-label {
+  margin-bottom: 4px;
+}
+.edit-library .field-note {
+  margin: 4px 0;
+}
+.edit-library .edit-object-list {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0;
+  max-height: 190px;
+  overflow: auto;
+}
+.edit-object-list button {
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #c4d4c8;
+  background: #21343a;
+  min-width: 0;
+}
+.edit-object-list button[aria-pressed="true"] {
+  border-color: #80ab87;
+  background: #334e43;
+}
+.edit-object-list span,
+.edit-object-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.edit-object-list span {
+  font-size: 11px;
+}
+.edit-object-list small {
+  font-size: 9px;
+  color: #9ab1ab;
+  margin-top: 4px;
+}
+.edit-library .add-furniture {
+  gap: 5px;
+}
+.edit-library .add-furniture select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+}
+.edit-library .add-furniture button {
+  justify-content: center;
+}
+.inspector-heading {
+  padding: 12px 16px;
+  background: #263c3c;
+  border-bottom: 1px solid #425a56;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.inspector-heading span,
+.inspector-heading strong,
+.inspector-heading small {
+  display: block;
+}
+.inspector-heading span {
+  font-size: 9px;
+  color: #9eb6ad;
+}
+.inspector-heading strong {
+  font-size: 13px;
+  color: #e3ecda;
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+}
+.inspector-heading small {
+  display: none;
+  font-size: 9px;
+  color: #9eb6ad;
+}
+.property-group-title {
+  font-size: 11px;
+  color: #c0d2bd;
+  margin: 16px 0 12px;
+  font-weight: 500;
+}
+.rotation-presets {
+  display: flex;
+  gap: 5px;
+  margin-top: 9px;
+}
+.rotation-presets button {
+  flex: 1;
+  min-height: 31px;
+  border-radius: 4px;
+  border: 1px solid #49645a;
+  background: #2e453e;
+  color: #d2e2c7;
+  font-size: 10px;
+}
+.rotation-presets button:hover {
+  background: #45624f;
+}
+.rotation-handle {
+  cursor: grab;
+  touch-action: none;
+}
+.rotation-handle:active {
+  cursor: grabbing;
+}
+.rotation-handle:focus-visible {
+  stroke: #e8b650;
+  stroke-width: 0.055;
+  outline: none;
+}
+.edit-inspector .edit-vertices[open] > summary {
+  margin-bottom: 16px;
+}
+@media (min-width: 981px) {
+  .manual-editor {
+    overflow-y: auto;
+  }
+  .edit-columns {
+    flex: 1 0 350px;
+    max-height: max(350px, calc(100vh - 310px));
+  }
+}
+@media (max-width: 1100px) and (min-width: 981px) {
+  .edit-columns {
+    grid-template-columns: 135px minmax(160px, 1fr) 230px;
+    gap: 8px;
+  }
+  .edit-inspector .edit-section {
+    padding: 12px;
+  }
+}
+@media (max-width: 980px) {
+  .edit-library {
+    order: 2;
+  }
+  .edit-inspector {
+    order: 1;
+  }
+  .edit-inspector fieldset {
+    display: block;
+  }
+  .edit-library .edit-object-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 180px;
+  }
+  .edit-library .add-furniture select {
+    flex-basis: auto;
+  }
+  .edit-library .add-furniture button {
+    width: auto;
+  }
+  .inspector-heading {
+    position: static;
+  }
+}
+
+.is-editing .task-heading {
+  padding-bottom: 12px;
+  gap: 12px;
+}
+.is-editing .task-heading h1 {
+  font-size: 18px;
+  margin: 6px 0 0;
+}
+.is-editing .task-heading p {
+  display: none;
+}
+.edit-save-bar {
+  position: sticky;
+  bottom: 0;
+  background: #142127;
+  padding-bottom: 8px;
+  z-index: 2;
+}
+@media (min-width: 981px) {
+  .edit-library fieldset {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .edit-library .edit-section:first-child {
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .edit-library .edit-section:last-child {
+    flex: none;
+  }
+  .edit-library .edit-object-list {
+    flex: 1;
+    max-height: none;
+    min-height: 40px;
+  }
+}
+@media (max-width: 700px) {
+  .edit-save-bar {
+    position: static;
+  }
+  .is-editing .task-heading h1 {
+    font-size: 16px;
   }
 }

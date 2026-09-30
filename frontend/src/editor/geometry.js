@@ -368,6 +368,34 @@ export function furnitureCorners(item) {
 export function itemFits(item, room) {
   return polygonInside(furnitureCorners(item), room.polygon);
 }
+export function normalizeRotation(angle) {
+  if (!Number.isFinite(angle)) throw new Error("旋转角度必须是有限数字。");
+  return round(((angle % 360) + 360) % 360) % 360;
+}
+export function rotationFromPointer(item, origin, point, snap = 1) {
+  // 靠近旋转中心时保持原角度，避免 atan2 在中心附近突然跳转。
+  if (Math.hypot(point.x - item.x, point.y - item.y) < 0.05)
+    return normalizeRotation(item.rotation);
+  const angle = (p) => Math.atan2(p.y - item.y, p.x - item.x);
+  const delta = ((angle(point) - angle(origin)) * 180) / Math.PI;
+  return normalizeRotation(Math.round((item.rotation + delta) / snap) * snap);
+}
+export function reconcileFurnitureRoom(document, item) {
+  const oldRoom = document.layout.rooms.find(
+    (room) => room.id === item.room_id,
+  );
+  if (!oldRoom || !itemFits(item, oldRoom)) {
+    const room = document.layout.rooms.find((room) => itemFits(item, room));
+    if (room) item.room_id = room.id;
+  }
+}
+export function rotateFurniture(document, index, angle) {
+  const next = clone(document),
+    item = next.furniture.items[index];
+  item.rotation = normalizeRotation(angle);
+  reconcileFurnitureRoom(next, item);
+  return next;
+}
 function distanceToWall(point, wall) {
   const dx = wall.end.x - wall.start.x,
     dy = wall.end.y - wall.start.y;
@@ -420,11 +448,7 @@ export function moveSelection(document, selected, dx, dy, handle = null) {
     const item = next.furniture.items[selected.index];
     item.x = round(item.x + dx);
     item.y = round(item.y + dy);
-    const oldRoom = next.layout.rooms.find((room) => room.id === item.room_id);
-    if (!oldRoom || !itemFits(item, oldRoom)) {
-      const room = next.layout.rooms.find((room) => itemFits(item, room));
-      if (room) item.room_id = room.id;
-    }
+    reconcileFurnitureRoom(next, item);
   } else if (selected.type === "rooms") {
     if (handle === null) {
       next.layout.rooms[selected.index].polygon.forEach((p) => {

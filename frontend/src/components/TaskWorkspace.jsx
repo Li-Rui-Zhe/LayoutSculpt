@@ -307,7 +307,11 @@ export default function TaskWorkspace({
     return () => document.removeEventListener("keydown", handler);
   }, [undo, redo, active, tab]);
   return (
-    <div className="task-workspace" ref={host} hidden={!active}>
+    <div
+      className={`task-workspace ${tab === "edit" ? "is-editing" : ""}`}
+      ref={host}
+      hidden={!active}
+    >
       <header className="task-heading">
         <div>
           <div className="task-heading-meta">

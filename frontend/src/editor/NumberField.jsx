@@ -7,6 +7,7 @@ export default function NumberField({
   min = -60,
   max = 60,
   unit = "m",
+  normalize = round,
 }) {
   const [text, setText] = useState(String(round(value))),
     [invalid, setInvalid] = useState(false);
@@ -42,10 +43,18 @@ export default function NumberField({
               setInvalid(true);
               return;
             }
-            onCommit(round(number));
+            const canonical = normalize(number);
+            onCommit(canonical);
+            setText(String(canonical));
+            setInvalid(false);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setText(String(round(value)));
+              setInvalid(false);
+            }
           }}
         />
         <small>{unit}</small>

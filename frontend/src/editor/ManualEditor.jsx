@@ -10,7 +10,6 @@ import {
   Undo2,
   Redo2,
   RotateCcw,
-  RotateCw,
   Trash2,
   Plus,
   Minus,
@@ -27,10 +26,15 @@ import {
   Copy,
 } from "lucide-react";
 import NumberField from "./NumberField.jsx";
+import RotationControl from "./RotationControl.jsx";
 import PolygonFields from "./PolygonFields.jsx";
 import { useEditDraft } from "./useEditDraft.js";
 import {
   clone,
+  normalizeRotation,
+  rotateFurniture,
+  rotationFromPointer,
+  reconcileFurnitureRoom,
   round,
   bounds,
   center,
@@ -71,7 +75,7 @@ const tools = [
 const hints = {
   lights:
     "放置灯泡、吊灯或落地灯，拖动定位并调整亮度、色温和安装高度。保存三维后切换夜晚查看照明。",
-  furniture: "点击家具后直接拖动；也可用方向键微移，右侧调整尺寸和旋转。",
+  furniture: "拖动家具移动，拖动绿色手柄旋转；右侧精确调整位置、尺寸和角度。",
   walls:
     "拖动墙线移动整面墙，拖两端圆点调整长度；相连墙角与邻近地板角点会联动。",
   rooms: "拖动空间整体或角点；右侧可新增、拆分、删除空间，独立铺设或移除地板。",
@@ -175,6 +179,11 @@ export default function ManualEditor({
     });
     setError("");
   };
+  const rotate = (angle) => {
+    if (busy || drawing || !item || selected.type !== "furniture") return;
+    draft.commit(rotateFurniture(draft.document, selected.index, angle));
+    setError("");
+  };
   const move = (dx, dy) => {
     if (item && !busy && !drawing)
       draft.commit(moveSelection(draft.document, selected, dx, dy));
@@ -228,13 +237,26 @@ export default function ManualEditor({
       start = drag.current.origin;
     const dx = round(Math.round((p.x - start.x) / step) * step),
       dy = round(Math.round((p.y - start.y) / step) * step);
-    const next = moveSelection(
-      drag.current.document,
-      drag.current.target,
-      dx,
-      dy,
-      drag.current.handle,
-    );
+    const current = drag.current;
+    const next =
+      current.handle === "rotate"
+        ? rotateFurniture(
+            current.document,
+            current.target.index,
+            rotationFromPointer(
+              current.document.furniture.items[current.target.index],
+              start,
+              p,
+              event.shiftKey ? 15 : 1,
+            ),
+          )
+        : moveSelection(
+            current.document,
+            current.target,
+            dx,
+            dy,
+            current.handle,
+          );
     drag.current.latest = next;
     setPreview(next);
   };
@@ -498,8 +520,13 @@ export default function ManualEditor({
       max={max}
       unit={unit}
       onCommit={(value) =>
-        patch((_, target) => {
+        patch((next, target) => {
           target[key] = value;
+          if (
+            selected.type === "furniture" &&
+            ["x", "y", "width", "depth"].includes(key)
+          )
+            reconcileFurnitureRoom(next, target);
         })
       }
     />
@@ -626,6 +653,216 @@ export default function ManualEditor({
         </div>
       )}
       <div className="edit-columns">
+        <aside
+          className="edit-library edit-properties"
+          aria-label="对象库与添加"
+        >
+          <fieldset disabled={busy || !!drawing}>
+            <div className="edit-section">
+              <div className="section-heading">
+                <h2>对象库</h2>
+                <MousePointer2 size={14} />
+              </div>
+              <label className="edit-label">
+                查询对象
+                <input
+                  type="search"
+                  aria-label="查询设计对象"
+                  placeholder={
+                    tool === "furniture"
+                      ? "搜索家具名称、类型或所属空间"
+                      : "搜索名称、类型或编号"
+                  }
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </label>
+              <p className="field-note">
+                找到 {filteredEntries.length} / {entries.length} 个对象
+              </p>
+              <div className="edit-object-list" aria-label="设计对象列表">
+                {filteredEntries.map(({ object, index, type }) => (
+                  <button
+                    key={index}
+                    aria-pressed={active(type, index)}
+                    onClick={() => select(type, index)}
+                  >
+                    <span>{labelFor(object, type, index)}</span>
+                    <small>
+                      {type === "furniture"
+                        ? document.layout.rooms.find(
+                            (r) => r.id === object.room_id,
+                          )?.name
+                        : "点击编辑"}
+                    </small>
+                  </button>
+                ))}
+              </div>
+              {query && !filteredEntries.length && (
+                <p className="field-note">
+                  没有匹配的对象，修改关键词或清空搜索。
+                </p>
+              )}
+              {item && (
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    const point = item.polygon
+                      ? center(item.polygon)
+                      : selected.type === "walls"
+                        ? center([item.start, item.end])
+                        : selected.type === "openings" && wall
+                          ? center(openingPoints(item, wall))
+                          : item;
+                    setFocusPoint({ x: point.x, y: point.y });
+                    setZoom(1.6);
+                    svg.current.focus();
+                  }}
+                >
+                  定位选中对象
+                </button>
+              )}
+              {!entries.length && (
+                <p className="field-note">当前没有此类对象，请添加新对象。</p>
+              )}
+            </div>
+            <div className="edit-section">
+              <div className="section-heading">
+                <h2>添加对象</h2>
+                <Plus size={14} />
+              </div>
+              {tool === "lights" && (
+                <>
+                  <div className="add-furniture">
+                    <select
+                      aria-label="新增灯具类型"
+                      value={lightKind}
+                      onChange={(e) => setLightKind(e.target.value)}
+                    >
+                      {Object.entries(lightNames).map(([id, name]) => (
+                        <option key={id} value={id}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        if (document.layout.lights.length >= 12) {
+                          setError("最多支持 12 盏灯具。");
+                          return;
+                        }
+                        const next = clone(document),
+                          p = center(next.layout.outline);
+                        next.layout.lights.push({
+                          id: `light_${crypto.randomUUID().slice(0, 12)}`,
+                          name: `${lightNames[lightKind]} ${next.layout.lights.length + 1}`,
+                          kind: lightKind,
+                          x: round(p.x),
+                          y: round(p.y),
+                          elevation: lightKind === "floor_lamp" ? 1.5 : 2.4,
+                          lumens: 800,
+                          temperature: 3000,
+                          enabled: true,
+                        });
+                        draft.commit(next);
+                        select("lights", next.layout.lights.length - 1);
+                      }}
+                    >
+                      <Plus size={13} />
+                      添加灯具
+                    </button>
+                  </div>
+                  <p className="field-note">
+                    保存并生成三维后，在设计预览切换「夜晚」。最多 12
+                    盏灯，可单独开关。
+                  </p>
+                </>
+              )}
+              {tool === "furniture" && (
+                <div className="add-furniture">
+                  <select
+                    aria-label="新增家具类型"
+                    value={furnitureKind}
+                    onChange={(e) => setFurnitureKind(e.target.value)}
+                  >
+                    {Object.entries(furnitureNames).map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="secondary-button" onClick={addFurniture}>
+                    <Plus size={13} />
+                    添加
+                  </button>
+                </div>
+              )}
+              {tool === "walls" && (
+                <button
+                  className="secondary-button full-width"
+                  onClick={() => startDrawing("walls")}
+                >
+                  <Plus size={14} />
+                  绘制新墙体
+                </button>
+              )}
+              {tool === "rooms" && (
+                <>
+                  <button
+                    className="secondary-button full-width"
+                    onClick={() => startDrawing("rooms")}
+                  >
+                    <Plus size={14} />
+                    绘制新空间 / 地板
+                  </button>
+                  <p className="field-note">
+                    在空白区域依次点击角点。已有空间占满时，可先拆分空间或删除原空间再重画。
+                  </p>
+                </>
+              )}
+              {tool === "outline" && (
+                <p className="field-note">
+                  户型共用一个基座轮廓，支持重绘及角点增删改。清空室内对象不影响基座。
+                </p>
+              )}
+              {["openings", "passages"].includes(tool) && (
+                <>
+                  <label className="edit-label">
+                    添加到墙体
+                    <select
+                      aria-label="添加开口的墙体"
+                      value={
+                        document.layout.walls.some((w) => w.id === wallId)
+                          ? wallId
+                          : document.layout.walls[0]?.id || ""
+                      }
+                      onChange={(e) => setWallId(e.target.value)}
+                    >
+                      {document.layout.walls.map((wall, index) => (
+                        <option key={wall.id} value={wall.id}>
+                          {labelFor(wall, "walls", index)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="edit-opening-add">
+                    {Object.entries(openingChoices).map(([kind, name]) => (
+                      <button
+                        key={kind}
+                        disabled={!document.layout.walls.length}
+                        onClick={() => addOpening(kind)}
+                      >
+                        <Plus size={12} />
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </fieldset>
+        </aside>
         <section className="plan-editor-canvas">
           <div className="plan-sheet-head">
             <span>
@@ -638,13 +875,35 @@ export default function ManualEditor({
             ref={svg}
             viewBox={viewBox}
             role="application"
-            aria-label="户型微调平面图"
+            aria-label="人工设计平面图"
             tabIndex={0}
             onPointerDown={drawing ? drawPoint : undefined}
             onPointerMove={pointerMove}
             onPointerUp={(e) => end(e)}
             onPointerCancel={(e) => end(e, true)}
+            onLostPointerCapture={(e) => {
+              if (drag.current) end(e, true);
+            }}
             onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                drag.current = null;
+                setPreview(null);
+                setDrawing(null);
+                setPendingDelete(null);
+                return;
+              }
+              if (drag.current) return;
+              if (
+                selected?.type === "furniture" &&
+                ["[", "]"].includes(e.key)
+              ) {
+                e.preventDefault();
+                rotate(
+                  item.rotation +
+                    (e.key === "[" ? -1 : 1) * (e.shiftKey ? 90 : 15),
+                );
+                return;
+              }
               const offsets = {
                 ArrowLeft: [-step, 0],
                 ArrowRight: [step, 0],
@@ -933,9 +1192,6 @@ export default function ManualEditor({
                 >
                   {f.name || furnitureNames[f.kind]}
                 </text>
-                {active("furniture", index) && (
-                  <circle cy={-f.depth / 2 - 0.08} r=".045" fill="#297957" />
-                )}
               </g>
             ))}
             {(document.layout.lights || []).map((light, index) => (
@@ -1036,6 +1292,61 @@ export default function ManualEditor({
                   </text>
                 </g>
               ))}
+            {tool === "furniture" && item && !drawing && (
+              <g
+                transform={`translate(${item.x} ${item.y}) rotate(${item.rotation})`}
+              >
+                <line
+                  y1={-item.depth / 2}
+                  y2={-item.depth / 2 - 0.38}
+                  stroke="#297957"
+                  strokeWidth=".025"
+                  pointerEvents="none"
+                />
+                <circle
+                  cy={-item.depth / 2 - 0.38}
+                  r=".17"
+                  fill="#297957"
+                  stroke="#fff"
+                  strokeWidth=".03"
+                  pointerEvents="none"
+                />
+                <circle
+                  cy={-item.depth / 2 - 0.38}
+                  r=".34"
+                  fill="transparent"
+                  className="rotation-handle"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="拖动旋转家具"
+                  onPointerDown={(e) => begin(e, selected, "rotate")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      rotate(item.rotation + 15);
+                    }
+                  }}
+                />
+                <text
+                  y={-item.depth / 2 - 0.38}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill="#fff"
+                  fontSize=".19"
+                  pointerEvents="none"
+                >
+                  ↻
+                </text>
+                <text
+                  y={-item.depth / 2 - 0.64}
+                  textAnchor="middle"
+                  className="dimension-label"
+                  transform={`rotate(${-item.rotation} 0 ${-item.depth / 2 - 0.64})`}
+                >
+                  {normalizeRotation(item.rotation)}°
+                </text>
+              </g>
+            )}
             {drawing && (
               <g pointerEvents="none">
                 <polyline
@@ -1099,86 +1410,15 @@ export default function ManualEditor({
             <span>方向键微移 · Shift 加速</span>
           </div>
         </section>
-        <aside className="edit-properties">
+        <aside className="edit-properties edit-inspector" aria-label="对象属性">
+          <div className="inspector-heading">
+            <span>对象属性</span>
+            <strong>{selectedName}</strong>
+            <small>
+              {item ? "修改即时反映在平面图" : "从对象库或平面图选择对象"}
+            </small>
+          </div>
           <fieldset disabled={busy || !!drawing}>
-            <div className="edit-section">
-              <div className="section-heading">
-                <h2>选中对象</h2>
-                <MousePointer2 size={14} />
-              </div>
-              <label className="edit-label">
-                查询对象
-                <input
-                  type="search"
-                  aria-label="查询设计对象"
-                  placeholder={
-                    tool === "furniture"
-                      ? "搜索家具名称、类型或所属空间"
-                      : "搜索名称、类型或编号"
-                  }
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-              <p className="field-note">
-                找到 {filteredEntries.length} / {entries.length} 个对象
-              </p>
-              <select
-                aria-label="选择设计对象"
-                value={
-                  item &&
-                  toolFor(selected.type, item) === tool &&
-                  filteredEntries.some(
-                    (entry) => entry.index === selected.index,
-                  )
-                    ? selected.index
-                    : ""
-                }
-                onChange={(e) =>
-                  select(
-                    tool === "passages" ? "openings" : tool,
-                    Number(e.target.value),
-                  )
-                }
-              >
-                <option value="" disabled>
-                  在平面图上点选
-                </option>
-                {filteredEntries.map(({ object, index, type }) => (
-                  <option value={index} key={index}>
-                    {labelFor(object, type, index)}
-                  </option>
-                ))}
-              </select>
-              <p className="edit-selected-name">{selectedName}</p>
-              {query && !filteredEntries.length && (
-                <p className="field-note">
-                  没有匹配的对象，修改关键词或清空搜索。
-                </p>
-              )}
-              {item && (
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    const point = item.polygon
-                      ? center(item.polygon)
-                      : selected.type === "walls"
-                        ? center([item.start, item.end])
-                        : selected.type === "openings" && wall
-                          ? center(openingPoints(item, wall))
-                          : item;
-                    setFocusPoint({ x: point.x, y: point.y });
-                    setZoom(1.6);
-                    svg.current.focus();
-                  }}
-                >
-                  定位选中对象
-                </button>
-              )}
-              {!entries.length && (
-                <p className="field-note">当前没有此类对象，请在下方添加。</p>
-              )}
-            </div>
             {item && (
               <div
                 className="edit-section"
@@ -1262,74 +1502,70 @@ export default function ManualEditor({
                 )}
                 {selected.type === "furniture" && (
                   <>
-                    <label className="edit-label">
-                      家具名称
-                      <input
-                        aria-label="家具名称"
-                        value={item.name || ""}
-                        maxLength={60}
-                        placeholder={furnitureNames[item.kind]}
-                        onChange={(e) =>
-                          patch((_, target) => {
-                            target.name = e.target.value;
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="edit-label">
-                      家具类型
-                      <select
-                        aria-label="家具类型"
-                        value={item.kind}
-                        onChange={(e) =>
-                          patch((_, target) => {
-                            target.kind = e.target.value;
-                          })
-                        }
-                      >
-                        {Object.entries(furnitureNames).map(([id, name]) => (
-                          <option key={id} value={id}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="edit-label">
-                      所属空间
-                      <select
-                        value={item.room_id}
-                        onChange={(e) =>
-                          patch((_, target) => {
-                            target.room_id = e.target.value;
-                          })
-                        }
-                      >
-                        {document.layout.rooms.map((room) => (
-                          <option key={room.id} value={room.id}>
-                            {room.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <RotationControl value={item.rotation} onChange={rotate} />
+                    <h3 className="property-group-title">位置与尺寸</h3>
                     <div className="edit-number-grid">
                       {number("左右位置", "x", -60, 60)}
                       {number("上下位置", "y", -60, 60)}
                       {number("家具宽度", "width", 0.1, 6)}
                       {number("家具进深", "depth", 0.1, 6)}
                       {number("家具高度", "height", 0.02, 3)}
-                      {number("旋转角度", "rotation", -360, 360, "°")}
                     </div>
-                    <button
-                      className="secondary-button full-width"
-                      onClick={() =>
-                        patch((_, target) => {
-                          target.rotation = round((target.rotation + 90) % 360);
-                        })
-                      }
-                    >
-                      <RotateCw size={14} />
-                      旋转 90°
-                    </button>
+                    <p className="field-note">
+                      坐标为家具中心，尺寸为旋转前的本体尺寸。跨空间移动后自动匹配能完整容纳家具的空间。
+                    </p>
+                    <details className="edit-vertices">
+                      <summary>名称、类型与所属空间</summary>
+                      <label className="edit-label">
+                        家具名称
+                        <input
+                          aria-label="家具名称"
+                          value={item.name || ""}
+                          maxLength={60}
+                          placeholder={furnitureNames[item.kind]}
+                          onChange={(e) =>
+                            patch((_, target) => {
+                              target.name = e.target.value;
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="edit-label">
+                        家具类型
+                        <select
+                          aria-label="家具类型"
+                          value={item.kind}
+                          onChange={(e) =>
+                            patch((_, target) => {
+                              target.kind = e.target.value;
+                            })
+                          }
+                        >
+                          {Object.entries(furnitureNames).map(([id, name]) => (
+                            <option key={id} value={id}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="edit-label">
+                        所属空间
+                        <select
+                          value={item.room_id}
+                          onChange={(e) =>
+                            patch((_, target) => {
+                              target.room_id = e.target.value;
+                            })
+                          }
+                        >
+                          {document.layout.rooms.map((room) => (
+                            <option key={room.id} value={room.id}>
+                              {room.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </details>
                   </>
                 )}
                 {selected.type === "walls" && (
@@ -1735,141 +1971,6 @@ export default function ManualEditor({
                 )}
               </div>
             )}
-            <div className="edit-section">
-              <div className="section-heading">
-                <h2>添加对象</h2>
-                <Plus size={14} />
-              </div>
-              {tool === "lights" && (
-                <>
-                  <div className="add-furniture">
-                    <select
-                      aria-label="新增灯具类型"
-                      value={lightKind}
-                      onChange={(e) => setLightKind(e.target.value)}
-                    >
-                      {Object.entries(lightNames).map(([id, name]) => (
-                        <option key={id} value={id}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="secondary-button"
-                      onClick={() => {
-                        if (document.layout.lights.length >= 12) {
-                          setError("最多支持 12 盏灯具。");
-                          return;
-                        }
-                        const next = clone(document),
-                          p = center(next.layout.outline);
-                        next.layout.lights.push({
-                          id: `light_${crypto.randomUUID().slice(0, 12)}`,
-                          name: `${lightNames[lightKind]} ${next.layout.lights.length + 1}`,
-                          kind: lightKind,
-                          x: round(p.x),
-                          y: round(p.y),
-                          elevation: lightKind === "floor_lamp" ? 1.5 : 2.4,
-                          lumens: 800,
-                          temperature: 3000,
-                          enabled: true,
-                        });
-                        draft.commit(next);
-                        select("lights", next.layout.lights.length - 1);
-                      }}
-                    >
-                      <Plus size={13} />
-                      添加灯具
-                    </button>
-                  </div>
-                  <p className="field-note">
-                    保存并生成三维后，在设计预览切换「夜晚」。最多 12
-                    盏灯，可单独开关。
-                  </p>
-                </>
-              )}
-              {tool === "furniture" && (
-                <div className="add-furniture">
-                  <select
-                    aria-label="新增家具类型"
-                    value={furnitureKind}
-                    onChange={(e) => setFurnitureKind(e.target.value)}
-                  >
-                    {Object.entries(furnitureNames).map(([id, name]) => (
-                      <option key={id} value={id}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <button className="secondary-button" onClick={addFurniture}>
-                    <Plus size={13} />
-                    添加
-                  </button>
-                </div>
-              )}
-              {tool === "walls" && (
-                <button
-                  className="secondary-button full-width"
-                  onClick={() => startDrawing("walls")}
-                >
-                  <Plus size={14} />
-                  绘制新墙体
-                </button>
-              )}
-              {tool === "rooms" && (
-                <>
-                  <button
-                    className="secondary-button full-width"
-                    onClick={() => startDrawing("rooms")}
-                  >
-                    <Plus size={14} />
-                    绘制新空间 / 地板
-                  </button>
-                  <p className="field-note">
-                    在空白区域依次点击角点。已有空间占满时，可先拆分空间或删除原空间再重画。
-                  </p>
-                </>
-              )}
-              {tool === "outline" && (
-                <p className="field-note">
-                  户型共用一个基座轮廓，支持重绘及角点增删改。清空室内对象不影响基座。
-                </p>
-              )}
-              {["openings", "passages"].includes(tool) && (
-                <>
-                  <label className="edit-label">
-                    添加到墙体
-                    <select
-                      aria-label="添加开口的墙体"
-                      value={
-                        document.layout.walls.some((w) => w.id === wallId)
-                          ? wallId
-                          : document.layout.walls[0]?.id || ""
-                      }
-                      onChange={(e) => setWallId(e.target.value)}
-                    >
-                      {document.layout.walls.map((wall, index) => (
-                        <option key={wall.id} value={wall.id}>
-                          {labelFor(wall, "walls", index)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="edit-opening-add">
-                    {Object.entries(openingChoices).map(([kind, name]) => (
-                      <button
-                        key={kind}
-                        disabled={!document.layout.walls.length}
-                        onClick={() => addOpening(kind)}
-                      >
-                        <Plus size={12} />
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
           </fieldset>
         </aside>
       </div>
