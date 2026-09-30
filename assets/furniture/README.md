@@ -1,4 +1,4 @@
-# 栖境家具资产库
+# LayoutSculpt家具资产库
 
 本目录提供一份可直接用 Blender 打开的原创家具工程 `habitat-furniture.blend`，以及运行时索引 `catalog.json`。12 个家具集合已标记为 Blender 资产，按网格排列便于编辑。当前版本用 Blender 4.5.9 LTS 构建。
 

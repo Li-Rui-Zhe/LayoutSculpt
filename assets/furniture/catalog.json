@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "blender_version": "4.5.9 LTS",
   "library": "habitat-furniture.blend",
-  "sha256": "7f1f52056555a316ca5d4ee9550031863ef6202b336b1492499c9f5918704dee",
+  "sha256": "76c12c929571a4757ce43c651f542f904eb570c54f15545ccd5a133e8d78ecfa",
   "license": "本项目原创几何与程序纹理，可随项目使用和修改；无第三方模型依赖。",
   "items": [
     {

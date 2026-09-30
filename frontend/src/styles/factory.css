@@ -125,7 +125,8 @@ button {
   align-items: baseline;
   gap: 12px;
   font-size: 22px;
-  letter-spacing: 2px;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 .factory-brand strong span {
   font-size: 12px;
@@ -2020,8 +2021,11 @@ dialog::backdrop {
   }
   .factory-brand strong {
     font-size: 19px;
-    gap: 8px;
-    letter-spacing: 1px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    letter-spacing: 0;
+    line-height: 1.15;
   }
   .factory-brand strong span {
     font-size: 10px;

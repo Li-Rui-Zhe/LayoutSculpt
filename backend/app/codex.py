@@ -95,7 +95,7 @@ class CodexClient:
                     {
                         "clientInfo": {
                             "name": "habitat-studio",
-                            "title": "栖境户型工作台",
+                            "title": "LayoutSculpt户型工作台",
                             "version": "2.0.0",
                         },
                         "capabilities": {"experimentalApi": True},

@@ -55,7 +55,7 @@ export default function App() {
             <Boxes size={24} />
           </span>
           <strong>
-            栖境<span>户型设计工厂</span>
+            LayoutSculpt<span>户型设计工厂</span>
           </strong>
         </a>
         <span className="header-divider" />

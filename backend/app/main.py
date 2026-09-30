@@ -95,7 +95,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 await app.state.runner.close()
                 await codex.stop()
 
-    app = FastAPI(title="栖境户型工作台", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="LayoutSculpt户型工作台", version="2.0.0", lifespan=lifespan)
     app.state.store = store
     app.state.settings = settings
     app.add_middleware(
