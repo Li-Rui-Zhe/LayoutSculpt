@@ -1,5 +1,7 @@
 # LayoutSculpt户型工作台
 
+本项目采用 [Apache License 2.0](LICENSE)。
+
 React + Three.js 前端，FastAPI API，LangChain 调用本地 Codex，LangGraph 编排识别、复核、家具规划与 Blender 建模，SQLite 保存任务、事件与图检查点。
 
 ## 启动

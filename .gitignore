@@ -18,3 +18,17 @@ data/
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Additional SQLite file names and their WAL/journal companions
+*.db
+*.db-*
+*.db3
+*.db3-*
+
+# Local credentials
+secrets/
+*.pem
+*.p12
+*.pfx
+id_ed25519*
+id_rsa*
