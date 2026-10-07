@@ -145,10 +145,10 @@ pnpm test:prelaunch
 
 ```powershell
 pnpm test:visual /api/jobs/<任务ID>/artifacts/model.glb data/visual-review
-node scripts/verify_workspace.mjs <任务ID>
+node scripts/review/verify_workspace.mjs <任务ID>
 ```
 
-验收范围与限制见 [本地预上线记录](docs/prelaunch-review.md)，历史效果改进见 [质量检查记录](docs/quality-review.md)。
+验收范围与方法见 [测试说明](docs/testing.md)，公开仓库的内容范围见 [仓库说明](docs/repository.md)。
 
 ## 目录与资产
 
@@ -158,9 +158,9 @@ node scripts/verify_workspace.mjs <任务ID>
 | `backend/app/` | API、Codex 适配、LangGraph、SQLite、校验与 GLB 构建 |
 | `backend/tests/`、`frontend/tests/` | 隔离测试 |
 | `skills/` | 项目 AI 角色契约与提示，随任务保存快照 |
-| `assets/furniture/` | 家具索引、必需 GLB、可选源工程 |
+| `assets/furniture/` | 家具索引和必需 GLB；源工程可用制作脚本在本地重建 |
 | `public/` | 随项目分发的示例模型、材质和图标 |
-| `scripts/` | 启动、资产制作、基准测试和浏览器验收 |
+| `scripts/` | 启动、资产制作与基准测试；浏览器检查集中在 `scripts/review/` |
 | `docs/` | 设计与验收说明 |
 | `data/` | 本地任务、原图、数据库、检查点、缓存与报告；不提交 |
 

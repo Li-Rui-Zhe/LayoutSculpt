@@ -13,7 +13,7 @@
     "test:backend": "node scripts/backend.mjs test",
     "test:frontend": "node --test frontend/tests/*.test.js",
     "test:prelaunch": "node scripts/prelaunch.mjs",
-    "test:visual": "node scripts/visual_review.mjs"
+    "test:visual": "node scripts/review/visual_review.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.49.0",

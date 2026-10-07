@@ -79,7 +79,7 @@ try {
   await page.getByRole("button", { name: "探索示例空间", exact: true }).click();
   await expect(page.locator("#viewport canvas")).toHaveAttribute(
     "data-model-url",
-    "/models/apartment.glb",
+    "/models/forest-home-v2.glb",
     { timeout: 30000 },
   );
   await expect(

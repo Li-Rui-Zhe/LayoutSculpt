@@ -126,7 +126,7 @@ test("加载示例时灯罩不遮挡自身光源，墙体仍可投射阴影", ()
       return shade;
     },
   );
-  scene.installModel("/models/apartment.glb", { model: house });
+  scene.installModel("/models/forest-home-v2.glb", { model: house });
   assert.equal(house.userData.designLights.length, 3);
   assert.ok(shades.every((shade) => !shade.castShadow && shade.visible));
   assert.equal(wall.castShadow, true);

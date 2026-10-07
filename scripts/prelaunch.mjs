@@ -56,7 +56,7 @@ try {
   }
   if (!ready) throw new Error(`验收服务启动超时：${serverLog}`);
   process.env.REVIEW_URL = base;
-  await import("./prelaunch_review.mjs");
+  await import("./review/prelaunch_review.mjs");
 } finally {
   if (process.platform === "win32") {
     try {

@@ -6,7 +6,7 @@ import path from "node:path";
 const [modelUrl, output = "data/visual-review"] = process.argv.slice(2);
 if (!modelUrl)
   throw new Error(
-    "Usage: node scripts/visual_review.mjs <model-url> [output-dir]",
+    "Usage: node scripts/review/visual_review.mjs <model-url> [output-dir]",
   );
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ channel: "msedge", headless: true });

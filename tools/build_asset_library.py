@@ -12,7 +12,7 @@ from mathutils import Matrix, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from asset_materials import PALETTES, SURFACES, TEXTURES, palette_materials
-from build_from_layout import box, cylinder, sphere
+from asset_geometry import box, cylinder, sphere
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBRARY = ROOT / "assets" / "furniture"

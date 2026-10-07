@@ -1,6 +1,6 @@
 import { chromium, expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
-import { contains } from "../frontend/src/editor/geometry.js";
+import { contains } from "../../frontend/src/editor/geometry.js";
 
 const id = process.argv[2];
 if (!/^[a-f0-9]{32}$/.test(id || "")) throw Error("请提供已有成功任务 ID。");

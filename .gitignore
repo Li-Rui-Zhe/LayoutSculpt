@@ -54,8 +54,18 @@ id_rsa*
 # Optional local Blender installation and source backups
 /tools/blender/
 /tools/blender.zip
+*.blend
 *.blend1
 *.blend2
+
+# Historical UI captures and retired showcase assets
+/assets/*.png
+/public/models/apartment.glb
+
+# pnpm is the sole project dependency lockfile
+/package-lock.json
+/npm-shrinkwrap.json
+/yarn.lock
 
 # Editor, OS and temporary files
 .idea/

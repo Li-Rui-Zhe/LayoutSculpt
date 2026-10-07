@@ -323,7 +323,7 @@ export class StudioScene {
     if (!entry.originals) {
       installCutaway(this.model);
       installFixtureLights(this.model, {
-        sample: url === "/models/apartment.glb" || url === showcase.model_url,
+        sample: url === showcase.model_url,
       });
       const lightSurfaces = new Set(
         (this.model.userData.designLights || []).flatMap(
