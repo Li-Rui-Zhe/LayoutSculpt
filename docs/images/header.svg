@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+  <title id="title">造个家 · LayoutSculpt</title>
+  <desc id="desc">从一张平面图，到一个理想的家。AI 户型识别、交互式三维空间与 GLB 导出。</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#18392f"/><stop offset="1" stop-color="#10251f"/></linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#bcd3bb" stroke-opacity=".07"/></pattern>
+    <linearGradient id="floor" x2="0" y2="1"><stop stop-color="#d5d9b8" stop-opacity=".24"/><stop offset="1" stop-color="#a4c3a4" stop-opacity=".05"/></linearGradient>
+  </defs>
+  <rect width="1200" height="330" rx="20" fill="url(#bg)"/>
+  <rect width="1200" height="330" rx="20" fill="url(#grid)"/>
+  <g font-family="Segoe UI, Microsoft YaHei, PingFang SC, sans-serif">
+    <g transform="translate(52 44)">
+      <rect width="43" height="43" rx="12" fill="#bbd5b8"/>
+      <path d="m21.5 7 13.4 8v14.7l-13.4 8-13.4-8V15Zm-13.4 8 13.4 8 13.4-8M21.5 23v14.7m-6.7-26.4 13.4 8v9.4l-6.7 4" fill="none" stroke="#233d35" stroke-width="2.4" stroke-linejoin="round"/>
+    </g>
+    <text x="112" y="73" fill="#b5ceb7" font-size="17" letter-spacing="3">LAYOUTSCULPT</text>
+    <text x="50" y="165" fill="#f5f2e7" font-size="67" font-weight="700" letter-spacing="6">造个家</text>
+    <text x="54" y="209" fill="#c9d5c5" font-size="23">从一张平面图，到一个理想的家。</text>
+    <g font-size="13" text-anchor="middle" fill="#d9e4d4">
+      <rect x="54" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="97" y="271">React 19</text>
+      <rect x="150" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="193" y="271">Three.js</text>
+      <rect x="246" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="289" y="271">FastAPI</text>
+      <rect x="342" y="251" width="116" height="29" rx="14.5" fill="#2b4c3e"/><text x="400" y="271">Apache 2.0</text>
+    </g>
+  </g>
+  <g transform="translate(720 48)" stroke-linejoin="round">
+    <path d="m0 158 177 87 224-109-177-87Z" fill="url(#floor)" stroke="#9ab89e" stroke-opacity=".4"/>
+    <path d="m0 158 177 87 224-109M177 245V154L0 67v91M177 154l224-109v91M0 67 224-42 401 45" fill="none" stroke="#bad0b3" stroke-opacity=".65" stroke-width="1.6" transform="translate(0 24)"/>
+    <g transform="translate(0 24)" fill="none" stroke="#bad0b3" stroke-opacity=".35" stroke-width="1.3">
+      <path d="m119 9 177 87v91M82 107 305-1M82 107v91M224-42v91M119 100 296 13"/>
+      <path d="m36 124 47-23 52 26-47 23Zm0 0v20l52 26v-20m0 20 47-23v-20M226 143l68-33 58 29-68 33Zm0 0v16l58 29v-16m0 16 68-33v-16"/>
+    </g>
+    <circle cx="177" cy="269" r="4" fill="#dbbe84"/><circle cx="401" cy="160" r="3" fill="#dbbe84"/>
+    <path d="M370 263h32m-16-16v32" stroke="#b5ceb7" stroke-opacity=".4"/>
+  </g>
+</svg>

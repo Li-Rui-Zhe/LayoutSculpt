@@ -1,8 +1,40 @@
-# 造个家
+<p align="center">
+  <img src="docs/images/header.svg" alt="造个家 LayoutSculpt — 从一张平面图，到一个理想的家" width="100%">
+</p>
+
+<p align="center">
+  <strong>一张户型图，一次空间想象。</strong><br>
+  AI 识别 · 结构核对 · 三维生成 · 自由调整
+</p>
+
+<p align="center">
+  <a href="#preview">动态演示</a> ·
+  <a href="#workspace">工作台</a> ·
+  <a href="#quickstart">快速开始</a> ·
+  <a href="docs/ai-pipeline-design.md">流程设计</a> ·
+  <a href="docs/testing.md">测试说明</a>
+</p>
+
+---
 
 基于 React、Three.js 和 FastAPI 构建的开源 AI 户型设计工作台，通过本地 Codex 将二维户型图转化为可交互的 3D 空间，支持结构核对、手动布局、材质与灯光调整及 GLB 导出，无需依赖 Blender。
 
 面向**本地单人使用**：浏览器连接本机服务，任务保存在本机。AI 识别户型，用户确认结构后，程序生成真实 GLB；普通生成无需安装 Blender。
+
+<a id="preview"></a>
+
+## 从平面，到空间
+
+<p align="center">
+  <a href="docs/images/showcase.gif"><img src="docs/images/showcase.gif" alt="林间暖居原创示例的真实 Three.js 渲染：旋转查看空间，切换白天与夜晚" width="100%"></a>
+</p>
+
+<p align="center"><sub>林间暖居 · 原创设计示例 · 实际 Three.js 渲染录制<br>展示旋转与昼夜照明；用户上传户型的结果取决于原图质量与结构核对。</sub></p>
+
+| 看清空间 | 亲手调整 | 保留成果 |
+| :--- | :--- | :--- |
+| 三维 / 俯视 / 墙体剖切 | 墙体 / 门窗 / 家具 / 灯位 | GLB 模型 / 结构数据 |
+| 白天 / 夜晚 / 材质预览 | 撤销 / 草稿 / 独立版本 | 效果图 / 一致性报告 |
 
 ## 功能
 
@@ -15,6 +47,27 @@
 - 保存历史版本、阶段缓存与检查点；服务重启后继续未完成步骤。
 
 首屏「林间暖居」为项目原创设计示例，与用户上传任务分开。
+
+<a id="workspace"></a>
+
+## 让空间成为主角
+
+<a href="docs/images/workbench.webp"><img src="docs/images/workbench.webp" alt="造个家当前工作台：林间暖居示例、三维工具栏与方案概览" width="100%"></a>
+
+<p align="center"><sub>以三维结果为中心，旋转、缩放、剖切与昼夜切换触手可及。</sub></p>
+
+<details>
+<summary><strong>再看一眼：夜间照明与材质调整</strong></summary>
+
+<a href="docs/images/materials.webp"><img src="docs/images/materials.webp" alt="示例空间夜间照明与暮山蓝墙面材质的实际工作台截图" width="100%"></a>
+
+调整材质，切换照明，比较同一个空间的不同氛围。以上均为随项目提供的原创示例。
+
+</details>
+
+---
+
+<a id="quickstart"></a>
 
 ## 环境要求
 
@@ -56,6 +109,9 @@ pnpm dev:all
 
 前端 http://127.0.0.1:5173/，后端 http://127.0.0.1:8000/。也可在两个终端分别运行 `pnpm dev` 与 `pnpm dev:api`。开发模式与 `pnpm start` 共用 8000 端口，选择一种后端启动方式。
 
+<details>
+<summary><strong>配置本机模型、超时与数据目录</strong></summary>
+
 ### 配置
 
 默认继承本机 Codex 登录及模型配置。需要覆盖项目配置时：
@@ -80,6 +136,8 @@ Windows 下，未显式设置 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY` 时�
 
 生成页面从本机 CLI 获取模型目录，可手动刷新。模型必须支持图片，实际权限取决于账号及服务商。重试可更换模型和推理强度，创建独立任务；不会静默替换模型。`.env`、登录文件及 API 密钥不得提交仓库。
 
+</details>
+
 ## 户型图到三维
 
 ```text
@@ -96,6 +154,9 @@ Windows 下，未显式设置 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY` 时�
 
 AI 输出结构化数据，程序据此建模，不执行 AI 返回的任意 Python。确认后的墙体、房间、门窗和轮廓被锁定，家具规划不能改写。导出后重新读取实际 GLB，检查墙体体积、门窗高度区间截面、房间地面及基座轮廓。
 
+<details>
+<summary><strong>失败处理、阶段恢复与一致性边界</strong></summary>
+
 ### 失败处理与恢复
 
 - 临时 AI 连接错误最多自动重连一次，使用原模型，计入原阶段总预算。
@@ -110,6 +171,8 @@ AI 输出结构化数据，程序据此建模，不执行 AI 返回的任意 Pyt
 
 流程、缓存依据、时间预算与实测方法见 [AI 流程设计](docs/ai-pipeline-design.md)。
 
+</details>
+
 ## 工作台操作
 
 - 三维：左键旋转、右键平移、滚轮缩放；触屏支持单指旋转及双指缩放／平移。适配按钮恢复全图。
@@ -120,6 +183,9 @@ AI 输出结构化数据，程序据此建模，不执行 AI 返回的任意 Pyt
 - 保存手动修改后生成独立版本，原方案保留。网页材质影响当前预览及效果图，模型下载保留生成时材质。
 
 户型外轮廓按墙体和空间边界自动适配，无需单独手工描轮廓。草稿及外观偏好保存在浏览器，清理浏览器数据可能丢失；重要修改应保存为模型版本。
+
+<details>
+<summary><strong>开发者入口 · 测试、成功率统计、目录与维护</strong></summary>
 
 ## 验证与成功率统计
 
@@ -178,6 +244,12 @@ node scripts/review/verify_workspace.mjs <任务ID>
 
 当前为本地单人产品，尚不提供多人账号隔离、云端调度、完整寻路、精确门扇扫掠或施工安全判断。
 
+</details>
+
+---
+
 ## 许可
 
 [Apache License 2.0](LICENSE)。
+
+<p align="center"><sub>造个家 · LayoutSculpt<br>从一张平面图，到一个理想的家。</sub></p>

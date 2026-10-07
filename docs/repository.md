@@ -23,6 +23,10 @@
 
 `.gitignore` 负责阻止这些本地文件被重新加入。新增对外截图时使用 `docs/images/`，仅放当前产品、有明确说明的图片，不堆积开发截图。
 
+### README 展示素材
+
+`docs/images/` 仅保留 README 直接引用的四个文件：品牌横幅 `header.svg`、实际三维旋转与昼夜切换 `showcase.gif`，以及当前工作台 `workbench.webp` 和材质调整 `materials.webp`。演示均使用随项目分发的原创「林间暖居」，不包含用户任务或上传原图。截图采用 WebP，GIF 为压缩后的循环录制；原始帧和制作中间文件不提交。
+
 ## 本地备份
 
 本轮移除的文件归档在本机被忽略的 `data/repository-cleanup/`，不属于仓库交付内容。需要编辑家具源工程时，使用 [资产制作说明](../assets/furniture/README.md) 重建。
