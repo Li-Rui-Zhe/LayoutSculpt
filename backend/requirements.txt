@@ -9,3 +9,6 @@ langgraph>=1.0,<2
 langgraph-checkpoint-sqlite>=3,<4
 aiosqlite>=0.21,<1
 shapely>=2.0,<3
+trimesh>=4.5,<5
+mapbox-earcut>=1.0,<2
+manifold3d>=3,<4

@@ -4,9 +4,13 @@ import { api, terminal } from "../api.js";
 // 列表是任务状态的唯一来源；异步响应只更新自己的任务，不能改变当前选择。
 export function useProjects() {
   const [jobs, setJobs] = useState([]);
-  const [selectedId, setSelectedId] = useState(
-    () => localStorage.getItem("habitat-job") || "sample",
-  );
+  const [selectedId, setSelectedId] = useState(() => {
+    try {
+      return localStorage.getItem("habitat-job") || "sample";
+    } catch {
+      return "sample";
+    }
+  });
   const [timeline, setTimeline] = useState({ id: null, items: [] });
   const [health, setHealth] = useState(null);
   const [error, setError] = useState("");
@@ -54,7 +58,11 @@ export function useProjects() {
     const id = item?.id || "sample";
     selection.current = id;
     setSelectedId(id);
-    localStorage.setItem("habitat-job", id);
+    try {
+      localStorage.setItem("habitat-job", id);
+    } catch {
+      /* Current selection still works without persistence. */
+    }
   }, []);
   useEffect(() => {
     if (selectedId === "sample") return;
@@ -93,7 +101,13 @@ export function useProjects() {
     loadTimeline().catch(() => {});
     stream.onmessage = (message) => {
       if (!alive) return;
-      const event = JSON.parse(message.data);
+      let event;
+      try {
+        event = JSON.parse(message.data);
+      } catch {
+        refresh();
+        return;
+      }
       addEvents([event]);
       api(`/jobs/${selectedId}`)
         .then((item) => {
@@ -106,15 +120,23 @@ export function useProjects() {
       alive = false;
       stream.close();
     };
-  }, [selectedId, merge]);
+  }, [selectedId, merge, refresh]);
   const create = async (form) => {
     const item = await api("/jobs", { method: "POST", body: form });
     merge([item]);
     select(item);
     return item;
   };
-  const action = async (id, verb) => {
-    const item = await api(`/jobs/${id}/${verb}`, { method: "POST" });
+  const action = async (id, verb, changes) => {
+    const item = await api(`/jobs/${id}/${verb}`, {
+      method: "POST",
+      ...(changes
+        ? {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(changes),
+          }
+        : {}),
+    });
     merge([item]);
     if (verb !== "cancel" && selection.current === id) select(item);
     return item;
@@ -131,8 +153,19 @@ export function useProjects() {
     create,
     refresh,
     cancel: (id) => action(id, "cancel"),
-    retry: (id) => action(id, "retry"),
+    retry: (id, changes) => action(id, "retry", changes),
     rebuild: (id) => action(id, "rebuild"),
+    refine: (id) => action(id, "rebuild?replan=true"),
+    restructure: (id) => action(id, "rebuild?restructure=true"),
+    confirmStructure: async (id, document) => {
+      const item = await api(`/jobs/${id}/confirm-structure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(document),
+      });
+      merge([item]);
+      return item;
+    },
     edit: async (id, document) => {
       const item = await api(`/jobs/${id}/edit`, {
         method: "POST",

@@ -111,13 +111,14 @@ class Store:
         error=None,
         message=None,
         agent=None,
+        expected_status=None,
     ):
         db = await self.connect()
         try:
             await db.execute("BEGIN IMMEDIATE")
             async with db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)) as cursor:
                 job = self.decode(await cursor.fetchone())
-            if not job or job["status"] in TERMINAL:
+            if not job or job["status"] in TERMINAL or (expected_status and job["status"] != expected_status):
                 await db.rollback()
                 return False
             for key, value in [
@@ -182,7 +183,7 @@ class Store:
             await db.close()
 
     async def recover(self):
-        """不把服务器中断伪装成完成；保留数据，供用户显式重试。"""
+        """Requeue interrupted work; the runner verifies and resumes checkpoints."""
         db = await self.connect()
         try:
             async with db.execute(
@@ -194,7 +195,8 @@ class Store:
         for job_id in ids:
             await self.update(
                 job_id,
-                status="failed",
-                stage="任务中断",
-                error="服务在处理过程中重启，请重试。原图和中间结果已保留。",
+                status="queued",
+                stage="服务已恢复，等待继续处理",
+                message="服务已恢复，正在检查已完成步骤并继续处理，无需重新上传",
             )
+        return ids

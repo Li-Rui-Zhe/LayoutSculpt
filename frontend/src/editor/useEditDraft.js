@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { toDraft, clone, restorableDraft } from "./geometry.js";
+import { fitOutline } from "./autoOutline.js";
 
-export function useEditDraft(jobId) {
-  const key = `habitat-edit:${jobId}`;
+export function useEditDraft(jobId, reviewing = false) {
+  const key = `habitat-edit:${jobId}${reviewing ? ":structure" : ""}`;
   const [base, setBase] = useState(null),
     [history, setHistory] = useState(null);
   const [error, setError] = useState(""),
@@ -12,7 +13,7 @@ export function useEditDraft(jobId) {
   useEffect(() => {
     let alive = true;
     setError("");
-    api(`/jobs/${jobId}/artifacts/layout.json`)
+    api(`/jobs/${jobId}/artifacts/${reviewing ? "structure" : "layout"}.json`)
       .then((data) => {
         if (!alive) return;
         const original = toDraft(data);
@@ -34,7 +35,7 @@ export function useEditDraft(jobId) {
     return () => {
       alive = false;
     };
-  }, [jobId, key, revision]);
+  }, [jobId, key, revision, reviewing]);
   useEffect(() => {
     if (!history) return;
     try {
@@ -49,10 +50,11 @@ export function useEditDraft(jobId) {
       );
     }
   }, [history?.present, key]);
-  const commit = (next) =>
+  const commit = (next, autoFit = true) =>
     setHistory((current) => {
-      const value =
+      const changed =
         typeof next === "function" ? next(clone(current.present)) : next;
+      const value = autoFit ? fitOutline(current.present, changed) : changed;
       if (JSON.stringify(value) === JSON.stringify(current.present))
         return current;
       return {
@@ -91,7 +93,7 @@ export function useEditDraft(jobId) {
     redo,
     canUndo: !!history?.past.length,
     canRedo: !!history?.future.length,
-    reset: () => commit(clone(base)),
+    reset: () => commit(clone(base), false),
     reload: () => setRevision((value) => value + 1),
   };
 }

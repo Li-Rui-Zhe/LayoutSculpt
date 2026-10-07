@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { showcase } from "../catalog.js";
 
 export const initialStudio = {
   category: "walls",
@@ -23,12 +24,23 @@ function load(storageKey) {
   return structuredClone(initialStudio);
 }
 export function useStudio(taskId = "sample") {
-  const storageKey = `habitat-studio:${taskId}`;
+  const storageKey = `habitat-studio:${taskId === "sample" ? `sample:${showcase.id}` : taskId}`;
   const [history, setHistory] = useState(() => ({
     past: [],
     present: load(storageKey),
     future: [],
   }));
+  const [storageError, setStorageError] = useState("");
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(history.present));
+      setStorageError("");
+    } catch {
+      setStorageError(
+        "浏览器存储不可用，外观调整仅在本次打开时保留；已生成模型不受影响。",
+      );
+    }
+  }, [storageKey, history.present]);
   const update = useCallback(
     (change) =>
       setHistory((h) => {
@@ -36,7 +48,6 @@ export function useStudio(taskId = "sample") {
           typeof change === "function"
             ? change(h.present)
             : { ...h.present, ...change };
-        localStorage.setItem(storageKey, JSON.stringify(value));
         return {
           past: [...h.past, h.present].slice(-40),
           present: value,
@@ -51,7 +62,6 @@ export function useStudio(taskId = "sample") {
         const source = direction === "undo" ? h.past : h.future;
         if (!source.length) return h;
         const value = source[source.length - 1];
-        localStorage.setItem(storageKey, JSON.stringify(value));
         return direction === "undo"
           ? {
               past: h.past.slice(0, -1),
@@ -68,6 +78,7 @@ export function useStudio(taskId = "sample") {
   );
   return {
     state: history.present,
+    storageError,
     update,
     undo: () => step("undo"),
     redo: () => step("redo"),

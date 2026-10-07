@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "blender_version": "4.5.9 LTS",
   "library": "habitat-furniture.blend",
   "sha256": "76c12c929571a4757ce43c651f542f904eb570c54f15545ccd5a133e8d78ecfa",
@@ -148,6 +148,32 @@
         0.6
       ],
       "triangles": 1308
+    },
+    {
+      "id": "habitat_shower",
+      "kind": "shower",
+      "name": "步入式玻璃淋浴间",
+      "dimensions": [
+        1,
+        1,
+        2.1
+      ],
+      "format": "glb",
+      "generator": "python",
+      "triangles": 564
+    },
+    {
+      "id": "habitat_refrigerator",
+      "kind": "refrigerator",
+      "name": "双门独立冰箱",
+      "dimensions": [
+        0.65,
+        0.65,
+        1.8
+      ],
+      "format": "glb",
+      "generator": "python",
+      "triangles": 72
     }
   ]
 }

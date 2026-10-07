@@ -17,7 +17,7 @@ def main():
     python = str(local_python) if local_python.exists() else sys.executable
     node = shutil.which("node")
     if not node or not (ROOT / "node_modules" / "vite" / "bin" / "vite.js").exists():
-        raise SystemExit("请先执行 npm install 和 Python 依赖安装。")
+        raise SystemExit("请先执行 pnpm install 和 Python 依赖安装。")
     env = {**os.environ, "PYTHONUTF8": "1"}
     processes = []
     try:
@@ -47,6 +47,9 @@ def main():
         )
         while all(p.poll() is None for p in processes):
             time.sleep(0.5)
+        stopped = next(p for p in processes if p.poll() is not None)
+        print(f"本地服务进程已退出（退出码 {stopped.returncode}）：{stopped.args}", file=sys.stderr, flush=True)
+        raise SystemExit(stopped.returncode or 1)
     except KeyboardInterrupt:
         pass
     finally:

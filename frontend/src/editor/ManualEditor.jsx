@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Armchair,
   Lightbulb,
@@ -6,7 +6,6 @@ import {
   BrickWall,
   DoorOpen,
   Route,
-  Scan,
   Undo2,
   Redo2,
   RotateCcw,
@@ -24,11 +23,16 @@ import {
   AlertTriangle,
   LoaderCircle,
   Copy,
+  Hand,
 } from "lucide-react";
 import NumberField from "./NumberField.jsx";
+import OpeningComposer from "./OpeningComposer.jsx";
+import { validateOpening } from "./openingPlacement.js";
 import RotationControl from "./RotationControl.jsx";
 import PolygonFields from "./PolygonFields.jsx";
 import { useEditDraft } from "./useEditDraft.js";
+import { usePlanNavigation } from "./usePlanNavigation.js";
+import { deriveOutline, fitOutline, sameArchitecture } from "./autoOutline.js";
 import {
   clone,
   normalizeRotation,
@@ -43,7 +47,6 @@ import {
   moveSelection,
   moveWall,
   openingPoints,
-  freeOpening,
   problems,
   furnitureNames,
   openingNames,
@@ -58,7 +61,6 @@ import {
   removeObject,
   splitRoom,
   simplePolygon,
-  polygonInside,
   overlapArea,
   doorLeafPoints,
 } from "./geometry.js";
@@ -69,7 +71,6 @@ const tools = [
   ["rooms", SquareDashed, "地板 / 空间"],
   ["openings", DoorOpen, "门窗"],
   ["passages", Route, "通道"],
-  ["outline", Scan, "户型轮廓"],
   ["lights", Lightbulb, "灯具"],
 ];
 const hints = {
@@ -77,13 +78,12 @@ const hints = {
     "放置灯泡、吊灯或落地灯，拖动定位并调整亮度、色温和安装高度。保存三维后切换夜晚查看照明。",
   furniture: "拖动家具移动，拖动绿色手柄旋转；右侧精确调整位置、尺寸和角度。",
   walls:
-    "拖动墙线移动整面墙，拖两端圆点调整长度；相连墙角与邻近地板角点会联动。",
-  rooms: "拖动空间整体或角点；右侧可新增、拆分、删除空间，独立铺设或移除地板。",
+    "拖动墙线移动整面墙，拖两端圆点调整长度；相连墙角与邻近地板角点会联动，户型轮廓自动适配。",
+  rooms:
+    "拖动空间整体或角点；右侧可新增、拆分、删除空间。户型轮廓随墙体与空间自动适配，无需单独调整。",
   openings: "门和窗户沿墙拖动；可调整尺寸、窗台及门扇开启方式。",
   passages:
     "独立管理无门扇的开放通道，沿墙调整位置和宽高。走廊区域可在地板 / 空间中绘制。",
-  outline:
-    "调整户型基座边界：拖动角点、增加或删除角点，或重新绘制轮廓。修改后检查室内对象是否越界。",
 };
 const floorColors = {
   default: "#e3d6b8",
@@ -93,11 +93,7 @@ const floorColors = {
   stone: "#b1bbbc",
 };
 function objects(doc, type) {
-  return type === "furniture"
-    ? doc.furniture.items
-    : type === "outline"
-      ? [{ name: "户型轮廓", polygon: doc.layout.outline }]
-      : doc.layout[type];
+  return type === "furniture" ? doc.furniture.items : doc.layout[type];
 }
 function labelFor(item, type, index) {
   return type === "furniture"
@@ -106,7 +102,7 @@ function labelFor(item, type, index) {
       ? item.name
       : type === "walls"
         ? `墙体 ${index + 1}${item.exterior ? " · 外墙" : " · 隔墙"}`
-        : ["rooms", "outline"].includes(type)
+        : type === "rooms"
           ? item.name
           : `${openingNames[item.kind]} ${index + 1}`;
 }
@@ -117,13 +113,18 @@ export default function ManualEditor({
   projects,
   onClose,
 }) {
-  const draft = useEditDraft(job.id);
-  const [tool, setTool] = useState("furniture"),
-    [selected, setSelected] = useState({ type: "furniture", index: 0 });
+  const reviewing = job.status === "awaiting_review";
+  const draft = useEditDraft(job.id, reviewing);
+  const [tool, setTool] = useState(reviewing ? "walls" : "furniture"),
+    [selected, setSelected] = useState({
+      type: reviewing ? "walls" : "furniture",
+      index: 0,
+    });
+  const [acknowledged, setAcknowledged] = useState(false);
+  useEffect(() => setAcknowledged(false), [draft.document]);
+  const saveLock = useRef(false);
   const [preview, setPreview] = useState(null),
-    [step, setStep] = useState(0.1),
-    [zoom, setZoom] = useState(1);
-  const [focusPoint, setFocusPoint] = useState(null);
+    [step, setStep] = useState(0.1);
   const [name, setName] = useState(
     `${job.name.replace(/\.(png|jpe?g|webp)$/i, "")} · 设计`.slice(0, 120),
   );
@@ -134,6 +135,17 @@ export default function ManualEditor({
   const [query, setQuery] = useState("");
   useEffect(() => setQuery(""), [tool]);
   const [wallId, setWallId] = useState("");
+  const [pickingWall, setPickingWall] = useState(false);
+  const [openingKind, setOpeningKind] = useState(null);
+  const [openingSequence, setOpeningSequence] = useState(0);
+  const [openingPreview, setOpeningPreview] = useState(null);
+  const [openingAnchor, setOpeningAnchor] = useState(null);
+  const cancelOpening = () => {
+    setOpeningKind(null);
+    setOpeningPreview(null);
+    setOpeningAnchor(null);
+  };
+  const [validationOpen, setValidationOpen] = useState(false);
   const [drawing, setDrawing] = useState(null),
     [pendingDelete, setPendingDelete] = useState(null);
   const [deleteFurniture, setDeleteFurniture] = useState(false),
@@ -155,7 +167,15 @@ export default function ManualEditor({
   }, [isActive]);
   const svg = useRef(null),
     drag = useRef(null),
+    lastNavigationClick = useRef(false),
     root = useRef(null);
+  const navigation = usePlanNavigation(
+    svg,
+    draft.document ? bounds(draft.document.layout) : null,
+    isActive,
+    () => !drag.current,
+  );
+  const { zoom, focusPoint } = navigation;
   const document = preview || draft.document;
   const selectedObject =
     document && selected
@@ -165,11 +185,70 @@ export default function ManualEditor({
     selectedObject && toolFor(selected.type, selectedObject) === tool
       ? selectedObject
       : null;
-  const issues = document ? problems(document) : [];
+  const outlineIssue = useMemo(() => {
+    if (
+      !document ||
+      !draft.base ||
+      sameArchitecture(document.layout, draft.base.layout)
+    )
+      return null;
+    return deriveOutline(document.layout).issue;
+  }, [document, draft.base]);
+  const issues = document
+    ? [...(outlineIssue ? [outlineIssue] : []), ...problems(document)]
+    : [];
+  const openingTool = ["openings", "passages"].includes(tool);
+  const targetWallId = document?.layout.walls.some((wall) => wall.id === wallId)
+    ? wallId
+    : document?.layout.walls[0]?.id || "";
+  const hasFeedback = !!(issues.length || error || draft.storageError);
+  useEffect(() => {
+    setPickingWall(false);
+  }, [tool]);
+  useEffect(() => {
+    if (error || draft.storageError) setValidationOpen(true);
+    else if (!issues.length) setValidationOpen(false);
+  }, [error, draft.storageError, issues.length]);
+  useEffect(() => {
+    if (!isActive || !validationOpen) return;
+    const close = (event) => {
+      if (event.key === "Escape") setValidationOpen(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [isActive, validationOpen]);
   const select = (type, index, object) => {
-    setTool(toolFor(type, object || objects(document, type)[index]));
+    cancelOpening();
+    if (type === "outline") {
+      setTool("walls");
+      setSelected(null);
+      navigation.reset();
+      return;
+    }
+    const value = object || objects(document, type)[index];
+    setTool(toolFor(type, value));
     setSelected({ type, index });
+    if (type === "walls") setWallId(value.id);
+    if (type === "openings") setWallId(value.wall_id);
     setError("");
+  };
+  const chooseOpeningWall = (id, point) => {
+    setWallId(id);
+    setSelected(null);
+    setPickingWall(false);
+    setError("");
+    if (openingKind && point) {
+      const wall = document.layout.walls.find((wall) => wall.id === id);
+      const length = wallLength(wall);
+      setOpeningAnchor({
+        wallId: id,
+        offset: length
+          ? ((point.x - wall.start.x) * (wall.end.x - wall.start.x) +
+              (point.y - wall.start.y) * (wall.end.y - wall.start.y)) /
+            length
+          : 0,
+      });
+    } else setOpeningAnchor(null);
   };
   const patch = (change) => {
     if (busy || !item) return;
@@ -203,6 +282,7 @@ export default function ManualEditor({
         setPreview(null);
         setDrawing(null);
         setPendingDelete(null);
+        cancelOpening();
         event.shiftKey ? draft.redo() : draft.undo();
       }
     };
@@ -220,6 +300,7 @@ export default function ManualEditor({
     if (busy || drawing || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    lastNavigationClick.current = false;
     select(target.type, target.index);
     svg.current.focus();
     svg.current.setPointerCapture(event.pointerId);
@@ -232,6 +313,7 @@ export default function ManualEditor({
     };
   };
   const pointerMove = (event) => {
+    if (navigation.movePan(event)) return;
     if (!drag.current) return;
     const p = pointAt(event),
       start = drag.current.origin;
@@ -257,10 +339,12 @@ export default function ManualEditor({
             dy,
             current.handle,
           );
-    drag.current.latest = next;
-    setPreview(next);
+    const fitted = fitOutline(current.document, next);
+    drag.current.latest = fitted;
+    setPreview(fitted);
   };
   const end = (event, cancel = false) => {
+    if (navigation.finishPan(event, cancel)) return;
     const current = drag.current;
     drag.current = null;
     if (svg.current.hasPointerCapture(event.pointerId))
@@ -295,6 +379,8 @@ export default function ManualEditor({
       plant: [0.4, 0.4, 0.8],
       rug: [1.5, 1, 0.03],
       desk: [1.2, 0.6, 0.75],
+      shower: [0.9, 0.9, 2.1],
+      refrigerator: [0.65, 0.65, 1.8],
     }[furnitureKind];
     next.furniture.items.push({
       kind: furnitureKind,
@@ -309,24 +395,41 @@ export default function ManualEditor({
     draft.commit(next);
     select("furniture", next.furniture.items.length - 1);
   };
-  const addOpening = (kind) => {
+  const addOpening = (kind, targetId = targetWallId) => {
     const next = clone(draft.document),
-      wall =
-        selected?.type === "walls" && item
-          ? item
-          : next.layout.walls.find((w) => w.id === wallId) ||
-            next.layout.walls[0];
+      wall = next.layout.walls.find((wall) => wall.id === targetId);
+    if (!wall) {
+      setError("请先选择要安装门窗或通道的墙体。");
+      return;
+    }
     if (next.layout.openings.length >= 80) {
       setError("最多可放置 80 个门窗或通道。");
       return;
     }
-    const opening = freeOpening(next.layout, wall, kind);
-    if (!opening) {
-      setError("这面墙没有足够的空位，请换一面墙或缩小现有门窗。");
+    setWallId(targetId);
+    setSelected(null);
+    setTool(kind === "passage" ? "passages" : "openings");
+    setDrawing(null);
+    setPendingDelete(null);
+    setPickingWall(false);
+    setOpeningAnchor(null);
+    setOpeningPreview(null);
+    setOpeningKind(kind);
+    setOpeningSequence((value) => value + 1);
+    setAcknowledged(false);
+    setError("");
+  };
+  const commitOpening = (opening) => {
+    if (busy) return;
+    const next = clone(draft.document);
+    const errors = validateOpening(next.layout, opening);
+    if (errors.length) {
+      setError(errors.join(" "));
       return;
     }
     next.layout.openings.push(opening);
     draft.commit(next);
+    setAcknowledged(false);
     select("openings", next.layout.openings.length - 1, opening);
   };
   const remove = () => {
@@ -347,11 +450,11 @@ export default function ManualEditor({
     }
   };
   const startDrawing = (type) => {
+    cancelOpening();
     setDrawing({ type, points: [] });
     setPendingDelete(null);
     setSelected(null);
-    setZoom(1);
-    setFocusPoint(null);
+    navigation.reset();
     setError("");
   };
   const finishDrawing = (points = drawing?.points) => {
@@ -375,44 +478,33 @@ export default function ManualEditor({
           exterior: false,
           finish: "default",
         });
-        select("walls", next.layout.walls.length - 1);
+        select("walls", next.layout.walls.length - 1, next.layout.walls.at(-1));
       } else {
         if (
           points.length < 3 ||
           !simplePolygon(points) ||
-          polygonArea(points) < (drawing.type === "outline" ? 2 : 0.2)
+          polygonArea(points) < 0.2
+        )
+          throw Error("请绘制至少三个不交叉的角点，空间至少 0.2 ㎡。");
+        if (next.layout.rooms.length >= 35) throw Error("最多支持 35 个空间。");
+        if (
+          next.layout.rooms.some(
+            (r) =>
+              simplePolygon(r.polygon) && overlapArea(points, r.polygon) > 1e-6,
+          )
         )
           throw Error(
-            "请绘制至少三个不交叉的角点，空间至少 0.2 ㎡，轮廓至少 2 ㎡。",
+            "新增空间与已有空间重叠。请先缩小或删除原空间，也可以使用「拆分空间」。",
           );
-        if (drawing.type === "outline") {
-          next.layout.outline = points;
-          select("outline", 0);
-        } else {
-          if (next.layout.rooms.length >= 35)
-            throw Error("最多支持 35 个空间。");
-          if (!polygonInside(points, next.layout.outline))
-            throw Error("新增空间必须完整位于户型轮廓内。");
-          if (
-            next.layout.rooms.some(
-              (r) =>
-                simplePolygon(r.polygon) &&
-                overlapArea(points, r.polygon) > 1e-6,
-            )
-          )
-            throw Error(
-              "新增空间与已有空间重叠。请先缩小或删除原空间，也可以使用「拆分空间」。",
-            );
-          next.layout.rooms.push({
-            id: `room_${crypto.randomUUID().slice(0, 12)}`,
-            name: `新空间 ${next.layout.rooms.length + 1}`,
-            kind: "other",
-            polygon: points,
-            floor_finish: "default",
-            floor_enabled: true,
-          });
-          select("rooms", next.layout.rooms.length - 1);
-        }
+        next.layout.rooms.push({
+          id: `room_${crypto.randomUUID().slice(0, 12)}`,
+          name: `新空间 ${next.layout.rooms.length + 1}`,
+          kind: "other",
+          polygon: points,
+          floor_finish: "default",
+          floor_enabled: true,
+        });
+        select("rooms", next.layout.rooms.length - 1);
       }
       draft.commit(next);
       setDrawing(null);
@@ -434,17 +526,23 @@ export default function ManualEditor({
       return;
     }
     if (drawing.points.some((p) => p.x === point.x && p.y === point.y)) return;
-    if (
-      drawing.points.length >=
-      (drawing.type === "outline" ? 40 : drawing.type === "walls" ? 2 : 24)
-    )
-      return;
+    if (drawing.points.length >= (drawing.type === "walls" ? 2 : 24)) return;
     const points = [...drawing.points, point];
     setDrawing({ ...drawing, points });
     if (drawing.type === "walls" && points.length === 2) finishDrawing(points);
   };
   const save = async () => {
-    if (!document || issues.length || busy || drawing || pendingDelete) return;
+    if (
+      !document ||
+      issues.length ||
+      busy ||
+      saveLock.current ||
+      drawing ||
+      pendingDelete ||
+      openingKind ||
+      (reviewing && !acknowledged)
+    )
+      return;
     const invalidInput = root.current.querySelector(
       'input:invalid, input[aria-invalid="true"]',
     );
@@ -453,16 +551,26 @@ export default function ManualEditor({
       setError("请先修正标红的输入值，再保存三维版本。");
       return;
     }
+    saveLock.current = true;
     setBusy(true);
     setError("");
     try {
-      await projects.edit(job.id, {
-        name: name.trim() || "人工设计方案",
-        ...draft.document,
-      });
+      if (reviewing) {
+        await projects.confirmStructure(job.id, {
+          layout: draft.document.layout,
+          reviewed: true,
+          revision: job.result.revision,
+        });
+        onClose();
+      } else
+        await projects.edit(job.id, {
+          name: name.trim() || "人工设计方案",
+          ...draft.document,
+        });
     } catch (e) {
       setError(e.message);
     } finally {
+      saveLock.current = false;
       setBusy(false);
     }
   };
@@ -478,7 +586,7 @@ export default function ManualEditor({
           </button>
         )}
         <button className="text-button" onClick={onClose}>
-          返回三维预览
+          {reviewing ? "返回结构核对" : "返回三维预览"}
         </button>
       </div>
     );
@@ -535,27 +643,43 @@ export default function ManualEditor({
     <div className="manual-editor" ref={root}>
       <div className="edit-toolbar">
         <div className="edit-tool-tabs">
-          {tools.map(([id, Icon, label]) => (
-            <button
-              key={id}
-              className={tool === id ? "active" : ""}
-              aria-pressed={tool === id}
-              disabled={busy}
-              onClick={() => {
-                setTool(id);
-                setDrawing(null);
-                setPendingDelete(null);
-                setError("");
-                const first = objectEntries(document, id)[0];
-                setSelected(
-                  first ? { type: first.type, index: first.index } : null,
-                );
-              }}
-            >
-              <Icon size={15} />
-              {label}
-            </button>
-          ))}
+          {tools
+            .filter(
+              ([id]) => !reviewing || !["furniture", "lights"].includes(id),
+            )
+            .map(([id, Icon, label]) => (
+              <button
+                key={id}
+                className={tool === id ? "active" : ""}
+                aria-pressed={tool === id}
+                disabled={busy}
+                onClick={() => {
+                  setTool(id);
+                  setDrawing(null);
+                  setPendingDelete(null);
+                  cancelOpening();
+                  setError("");
+                  const first = objectEntries(document, id)[0];
+                  const currentWall =
+                    selected?.type === "walls"
+                      ? document.layout.walls[selected.index]
+                      : null;
+                  if (["openings", "passages"].includes(id) && currentWall) {
+                    setWallId(currentWall.id);
+                    setSelected(null);
+                  } else {
+                    setSelected(
+                      first ? { type: first.type, index: first.index } : null,
+                    );
+                    if (["openings", "passages"].includes(id) && first)
+                      setWallId(first.object.wall_id);
+                  }
+                }}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            ))}
         </div>
         <div className="edit-history">
           <button
@@ -564,6 +688,7 @@ export default function ManualEditor({
             onClick={() => {
               setDrawing(null);
               setPendingDelete(null);
+              cancelOpening();
               draft.undo();
             }}
             disabled={busy || !draft.canUndo}
@@ -576,6 +701,7 @@ export default function ManualEditor({
             onClick={() => {
               setDrawing(null);
               setPendingDelete(null);
+              cancelOpening();
               draft.redo();
             }}
             disabled={busy || !draft.canRedo}
@@ -587,6 +713,7 @@ export default function ManualEditor({
             onClick={() => {
               setDrawing(null);
               setPendingDelete(null);
+              cancelOpening();
               setSelected(null);
               draft.reset();
               setError("");
@@ -597,7 +724,7 @@ export default function ManualEditor({
             还原原方案
           </button>
           <button className="secondary-button" onClick={onClose}>
-            返回三维
+            {reviewing ? "返回结构核对" : "返回三维"}
           </button>
         </div>
       </div>
@@ -714,8 +841,7 @@ export default function ManualEditor({
                         : selected.type === "openings" && wall
                           ? center(openingPoints(item, wall))
                           : item;
-                    setFocusPoint({ x: point.x, y: point.y });
-                    setZoom(1.6);
+                    navigation.focus({ x: point.x, y: point.y }, 1.6);
                     svg.current.focus();
                   }}
                 >
@@ -817,14 +943,9 @@ export default function ManualEditor({
                     绘制新空间 / 地板
                   </button>
                   <p className="field-note">
-                    在空白区域依次点击角点。已有空间占满时，可先拆分空间或删除原空间再重画。
+                    在空白区域依次点击角点，轮廓自动适配新增空间。已有空间占满时，可先拆分空间或删除原空间再重画。
                   </p>
                 </>
-              )}
-              {tool === "outline" && (
-                <p className="field-note">
-                  户型共用一个基座轮廓，支持重绘及角点增删改。清空室内对象不影响基座。
-                </p>
               )}
               {["openings", "passages"].includes(tool) && (
                 <>
@@ -832,20 +953,36 @@ export default function ManualEditor({
                     添加到墙体
                     <select
                       aria-label="添加开口的墙体"
-                      value={
-                        document.layout.walls.some((w) => w.id === wallId)
-                          ? wallId
-                          : document.layout.walls[0]?.id || ""
-                      }
-                      onChange={(e) => setWallId(e.target.value)}
+                      value={targetWallId}
+                      disabled={!document.layout.walls.length}
+                      onChange={(e) => chooseOpeningWall(e.target.value)}
                     >
                       {document.layout.walls.map((wall, index) => (
                         <option key={wall.id} value={wall.id}>
-                          {labelFor(wall, "walls", index)}
+                          {labelFor(wall, "walls", index)} ·{" "}
+                          {wallLength(wall).toFixed(2)} m
                         </option>
                       ))}
                     </select>
                   </label>
+                  <button
+                    className="secondary-button pick-opening-wall"
+                    aria-label="在图上选择安装墙体"
+                    aria-pressed={pickingWall}
+                    disabled={!document.layout.walls.length}
+                    onClick={() => {
+                      setPickingWall((value) => !value);
+                      navigation.setPanMode(false);
+                    }}
+                  >
+                    <MousePointer2 size={13} />
+                    {pickingWall ? "取消选墙" : "在图上选墙"}
+                  </button>
+                  <p className="field-note">
+                    {pickingWall
+                      ? "点击目标墙线，绿色高亮表示安装墙体。"
+                      : "可从列表选择，也可直接点击图上的墙线。"}
+                  </p>
                   <div className="edit-opening-add">
                     {Object.entries(openingChoices).map(([kind, name]) => (
                       <button
@@ -876,23 +1013,45 @@ export default function ManualEditor({
             viewBox={viewBox}
             role="application"
             aria-label="人工设计平面图"
+            aria-describedby={`plan-navigation-${job.id}`}
             tabIndex={0}
-            onPointerDown={drawing ? drawPoint : undefined}
+            className={
+              navigation.panning
+                ? "is-panning"
+                : navigation.panMode || navigation.spaceHeld
+                  ? "can-pan"
+                  : ""
+            }
+            onPointerEnter={navigation.onPointerEnter}
+            onPointerLeave={navigation.onPointerLeave}
+            onPointerDownCapture={navigation.onPointerDownCapture}
+            onPointerDown={(event) => {
+              lastNavigationClick.current = !drawing;
+              if (drawing) drawPoint(event);
+              else if (event.button === 0) navigation.beginPan(event);
+            }}
+            onDoubleClick={(event) => {
+              if (!drawing && lastNavigationClick.current) navigation.reset();
+            }}
             onPointerMove={pointerMove}
             onPointerUp={(e) => end(e)}
             onPointerCancel={(e) => end(e, true)}
             onLostPointerCapture={(e) => {
+              if (navigation.finishPan(e, true)) return;
               if (drag.current) end(e, true);
             }}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
+                navigation.finishPan(null, true);
                 drag.current = null;
                 setPreview(null);
                 setDrawing(null);
                 setPendingDelete(null);
+                cancelOpening();
                 return;
               }
-              if (drag.current) return;
+              if (drag.current || navigation.panMode || navigation.spaceHeld)
+                return;
               if (
                 selected?.type === "furniture" &&
                 ["[", "]"].includes(e.key)
@@ -932,6 +1091,7 @@ export default function ManualEditor({
               </pattern>
             </defs>
             <rect
+              data-plan-background="true"
               x={box.x - 60}
               y={box.y - 60}
               width={box.width + 120}
@@ -939,6 +1099,7 @@ export default function ManualEditor({
               fill="#eaf0e8"
             />
             <rect
+              data-plan-background="true"
               x={box.x - 60}
               y={box.y - 60}
               width={box.width + 120}
@@ -946,14 +1107,11 @@ export default function ManualEditor({
               fill={`url(#grid-${job.id})`}
             />
             <polygon
+              data-plan-outline="true"
               points={document.layout.outline
                 .map((p) => `${p.x},${p.y}`)
                 .join(" ")}
-              onPointerDown={
-                tool === "outline" && !drawing
-                  ? (e) => begin(e, { type: "outline", index: 0 })
-                  : undefined
-              }
+              pointerEvents="none"
               fill="#d9e2d7"
               stroke="#718375"
               strokeWidth=".025"
@@ -1009,19 +1167,34 @@ export default function ManualEditor({
               <g
                 key={wall.id}
                 role="button"
-                aria-label={`选择墙体 ${index + 1}`}
-                tabIndex={tool === "walls" ? 0 : -1}
+                aria-label={`${openingTool ? "选择安装墙体" : "选择墙体"} ${index + 1}`}
+                tabIndex={tool === "walls" || openingTool ? 0 : -1}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") select("walls", index);
+                  if (e.key === "Enter" && !busy && !drawing) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (openingTool) chooseOpeningWall(wall.id);
+                    else select("walls", index);
+                  }
                 }}
                 onPointerDown={
                   tool === "walls"
                     ? (e) => begin(e, { type: "walls", index })
-                    : undefined
+                    : openingTool && !drawing
+                      ? (e) => {
+                          if (busy || e.button !== 0) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          lastNavigationClick.current = false;
+                          svg.current.focus({ preventScroll: true });
+                          chooseOpeningWall(wall.id, pointAt(e));
+                        }
+                      : undefined
                 }
                 style={{
-                  pointerEvents: tool === "walls" ? "auto" : "none",
-                  cursor: "move",
+                  pointerEvents:
+                    tool === "walls" || openingTool ? "auto" : "none",
+                  cursor: openingTool ? "pointer" : "move",
                 }}
               >
                 <line
@@ -1038,17 +1211,90 @@ export default function ManualEditor({
                   x2={wall.end.x}
                   y2={wall.end.y}
                   stroke={
-                    active("walls", index)
+                    active("walls", index) ||
+                    (openingTool && targetWallId === wall.id)
                       ? "#318765"
                       : wall.exterior
                         ? "#445a55"
                         : "#748880"
                   }
-                  strokeWidth={wall.thickness}
+                  strokeWidth={
+                    wall.thickness +
+                    (openingTool && targetWallId === wall.id ? 0.04 : 0)
+                  }
                   strokeLinecap="square"
                 />
               </g>
             ))}
+            {openingKind &&
+              openingPreview &&
+              (() => {
+                const { opening, valid } = openingPreview;
+                const wall = document.layout.walls.find(
+                  (wall) => wall.id === opening.wall_id,
+                );
+                if (
+                  !wall ||
+                  ![opening.offset, opening.width].every(Number.isFinite)
+                )
+                  return null;
+                const [a, b] = openingPoints(opening, wall);
+                return (
+                  <g pointerEvents="none" data-opening-preview="true">
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke={valid ? "#247c93" : "#bb653a"}
+                      strokeWidth={wall.thickness + 0.08}
+                      strokeDasharray="0.12 0.08"
+                    />
+                    {opening.kind === "door" &&
+                      opening.door_leaf !== false &&
+                      Number.isFinite(opening.angle) &&
+                      (() => {
+                        const [hinge, tip] = doorLeafPoints(opening, wall);
+                        return (
+                          <line
+                            x1={hinge.x}
+                            y1={hinge.y}
+                            x2={tip.x}
+                            y2={tip.y}
+                            stroke={valid ? "#247c93" : "#bb653a"}
+                            strokeWidth="0.045"
+                            strokeDasharray="0.1 0.06"
+                          />
+                        );
+                      })()}
+                    <circle
+                      cx={wall.start.x}
+                      cy={wall.start.y}
+                      r="0.07"
+                      fill="#fff"
+                      stroke="#247c93"
+                      strokeWidth="0.025"
+                    />
+                    <text
+                      x={wall.start.x}
+                      y={wall.start.y - 0.2}
+                      fontSize="0.16"
+                      fill="#264e48"
+                    >
+                      墙起点
+                    </text>
+                    <text
+                      x={(a.x + b.x) / 2}
+                      y={(a.y + b.y) / 2 + 0.32}
+                      textAnchor="middle"
+                      fontSize="0.18"
+                      fill={valid ? "#247c93" : "#a34e27"}
+                    >
+                      待添加{openingNames[opening.kind]} · {opening.width} m
+                    </text>
+                  </g>
+                );
+              })()}
             {document.layout.openings.map((opening, index) => {
               const wall = document.layout.walls.find(
                 (w) => w.id === opening.wall_id,
@@ -1056,7 +1302,10 @@ export default function ManualEditor({
               if (!wall) return null;
               const [a, b] = openingPoints(opening, wall);
               const selectable =
-                toolFor("openings", opening) === tool && !drawing;
+                toolFor("openings", opening) === tool &&
+                !drawing &&
+                !openingKind &&
+                !pickingWall;
               const color =
                 opening.kind === "window"
                   ? "#5b9bab"
@@ -1269,7 +1518,7 @@ export default function ManualEditor({
                 </g>
               ))}
             {item &&
-              ["rooms", "outline"].includes(selected.type) &&
+              selected.type === "rooms" &&
               item.polygon.map((p, index) => (
                 <g key={index}>
                   <circle
@@ -1281,7 +1530,7 @@ export default function ManualEditor({
                     strokeWidth=".035"
                     className="plan-handle"
                     onPointerDown={(e) => begin(e, selected, index)}
-                    aria-label={`拖动${selected.type === "outline" ? "轮廓" : "地板"}角点 ${index + 1}`}
+                    aria-label={`拖动地板角点 ${index + 1}`}
                   />
                   <text
                     x={p.x + 0.13}
@@ -1370,29 +1619,57 @@ export default function ManualEditor({
               </g>
             )}
           </svg>
-          <div className="plan-zoom">
-            <button
-              aria-label="缩小平面图"
-              onClick={() => setZoom((z) => Math.max(0.65, z / 1.2))}
+          <div className="plan-navigation">
+            <p
+              className="plan-navigation-hint"
+              id={`plan-navigation-${job.id}`}
             >
-              <Minus size={15} />
-            </button>
-            <span>{Math.round(zoom * 100)}%</span>
-            <button
-              aria-label="放大平面图"
-              onClick={() => setZoom((z) => Math.min(3, z * 1.2))}
-            >
-              <Plus size={15} />
-            </button>
-            <button
-              aria-label="适配平面图"
-              onClick={() => {
-                setFocusPoint(null);
-                setZoom(1);
-              }}
-            >
-              <Focus size={15} />
-            </button>
+              滚轮缩放 · 拖空白平移 · 空格拖动
+            </p>
+            <div className="plan-zoom">
+              <div
+                className="plan-navigation-modes"
+                role="group"
+                aria-label="画布操作模式"
+              >
+                <button
+                  aria-label="选择并编辑"
+                  title="选择／编辑：选择对象，拖动修改布局"
+                  aria-pressed={!navigation.panMode}
+                  onClick={() => navigation.setPanMode(false)}
+                >
+                  <MousePointer2 size={15} />
+                </button>
+                <button
+                  aria-label="平移画布"
+                  title="平移：在任意位置拖动画布"
+                  aria-pressed={navigation.panMode}
+                  onClick={() => navigation.setPanMode(true)}
+                >
+                  <Hand size={15} />
+                </button>
+              </div>
+              <button
+                aria-label="缩小平面图"
+                onClick={() => navigation.zoomBy(1 / 1.2)}
+              >
+                <Minus size={15} />
+              </button>
+              <span className="plan-zoom-value">{Math.round(zoom * 100)}%</span>
+              <button
+                aria-label="放大平面图"
+                onClick={() => navigation.zoomBy(1.2)}
+              >
+                <Plus size={15} />
+              </button>
+              <button
+                aria-label="适配平面图"
+                title="适配全图（双击空白处或按 0）"
+                onClick={navigation.reset}
+              >
+                <Focus size={15} />
+              </button>
+            </div>
           </div>
           <div className="plan-legend">
             <span>
@@ -1413,12 +1690,26 @@ export default function ManualEditor({
         <aside className="edit-properties edit-inspector" aria-label="对象属性">
           <div className="inspector-heading">
             <span>对象属性</span>
-            <strong>{selectedName}</strong>
+            <strong>
+              {openingKind ? `新增${openingNames[openingKind]}` : selectedName}
+            </strong>
             <small>
               {item ? "修改即时反映在平面图" : "从对象库或平面图选择对象"}
             </small>
           </div>
           <fieldset disabled={busy || !!drawing}>
+            {openingKind && (
+              <OpeningComposer
+                key={`${openingKind}-${openingSequence}`}
+                layout={document.layout}
+                wallId={targetWallId}
+                kind={openingKind}
+                anchor={openingAnchor}
+                onPreview={setOpeningPreview}
+                onAdd={commitOpening}
+                onCancel={cancelOpening}
+              />
+            )}
             {item && (
               <div
                 className="edit-section"
@@ -1633,7 +1924,7 @@ export default function ManualEditor({
                         <button
                           key={kind}
                           disabled={!document.layout.walls.length}
-                          onClick={() => addOpening(kind)}
+                          onClick={() => addOpening(kind, item.id)}
                         >
                           <Plus size={12} />
                           {name}
@@ -1763,28 +2054,6 @@ export default function ManualEditor({
                     </details>
                   </>
                 )}
-                {selected.type === "outline" && (
-                  <>
-                    <p className="field-note">
-                      轮廓决定建筑基座范围，至少保留三个角点；室内对象单独编辑。
-                    </p>
-                    <PolygonFields
-                      points={item.polygon}
-                      max={40}
-                      onChange={(points) =>
-                        patch((next) => {
-                          next.layout.outline = points;
-                        })
-                      }
-                    />
-                    <button
-                      className="secondary-button full-width"
-                      onClick={() => startDrawing("outline")}
-                    >
-                      重新绘制户型轮廓
-                    </button>
-                  </>
-                )}
                 {selected.type === "openings" && (
                   <>
                     <label className="edit-label">
@@ -1809,12 +2078,13 @@ export default function ManualEditor({
                       所在墙体
                       <select
                         value={item.wall_id}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           patch((next, target) => {
                             target.wall_id = e.target.value;
                             target.offset = 0;
-                          })
-                        }
+                          });
+                          setWallId(e.target.value);
+                        }}
                       >
                         {document.layout.walls.map((w, index) => (
                           <option value={w.id} key={w.id}>
@@ -2004,52 +2274,109 @@ export default function ManualEditor({
           </button>
         </div>
       )}
-      {(issues.length > 0 || error || draft.storageError) && (
-        <div className="edit-issues" role="alert">
-          <AlertTriangle size={16} />
-          <div>
-            {error && <p>{error}</p>}
-            {draft.storageError && <p>{draft.storageError}</p>}
-            {issues.slice(0, 5).map((issue, index) => (
-              <button
-                key={index}
-                onClick={() => select(issue.type, issue.index)}
-              >
-                {issue.text} <span>定位 ↗</span>
-              </button>
-            ))}
-            {issues.length > 5 && (
-              <p>另有 {issues.length - 5} 处问题，调整后会继续提示。</p>
-            )}
-          </div>
+      <div className="edit-feedback">
+        <div
+          className={`edit-check-summary ${hasFeedback ? "has-problems" : "is-clear"}`}
+          role="status"
+        >
+          {hasFeedback ? <AlertTriangle size={15} /> : <Check size={15} />}
+          <p title={error || draft.storageError || ""}>
+            {error ||
+              draft.storageError ||
+              (issues.length
+                ? `${issues.length} 处布局问题，请调整后保存`
+                : "布局检查通过")}
+          </p>
+          <button
+            type="button"
+            aria-label="查看布局问题"
+            aria-expanded={validationOpen && hasFeedback}
+            aria-controls={`edit-feedback-${job.id}`}
+            disabled={!hasFeedback}
+            onClick={() => setValidationOpen((value) => !value)}
+          >
+            {validationOpen && hasFeedback ? "收起" : "查看"}
+          </button>
         </div>
-      )}
+        {hasFeedback && validationOpen && (
+          <div
+            className="edit-issues"
+            role="alert"
+            id={`edit-feedback-${job.id}`}
+          >
+            <AlertTriangle size={16} />
+            <div>
+              {error && <p>{error}</p>}
+              {draft.storageError && <p>{draft.storageError}</p>}
+              {issues.slice(0, 5).map((issue, index) => (
+                <button
+                  key={index}
+                  onClick={() => select(issue.type, issue.index)}
+                >
+                  {issue.text} <span>定位 ↗</span>
+                </button>
+              ))}
+              {issues.length > 5 && (
+                <p>另有 {issues.length - 5} 处问题，调整后会继续提示。</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
       <div className="edit-save-bar">
         <div>
           <span>
             <Check size={13} />
             {draft.storageError ? "草稿暂未保存" : "草稿按任务自动保存"}
           </span>
-          <small>拖动或输入尺寸 → 检查布局 → 保存新的三维版本</small>
+          <small>
+            {reviewing
+              ? "修改后请再次对照原图确认结构"
+              : "拖动或输入尺寸 → 检查布局 → 保存新的三维版本"}
+          </small>
+          {reviewing && (
+            <a
+              className="text-button"
+              href={job.source_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              打开原图对照 ↗
+            </a>
+          )}
         </div>
-        <label>
-          版本名称
-          <input
-            aria-label="设计版本名称"
-            value={name}
-            maxLength={120}
-            disabled={busy}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
+        {reviewing ? (
+          <label className="review-ack">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              disabled={busy}
+            />
+            我已核对修改后的墙体和门窗
+          </label>
+        ) : (
+          <label>
+            版本名称
+            <input
+              aria-label="设计版本名称"
+              value={name}
+              maxLength={120}
+              disabled={busy}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+        )}
         <button
           className="primary-button"
           disabled={
             busy ||
+            (reviewing && !acknowledged) ||
             !!issues.length ||
             !name.trim() ||
             !!drawing ||
-            !!pendingDelete
+            !!pendingDelete ||
+            !!openingKind
           }
           onClick={save}
         >
@@ -2058,7 +2385,7 @@ export default function ManualEditor({
           ) : (
             <Save size={15} />
           )}
-          保存并生成三维
+          {reviewing ? "确认修改并继续生成" : "保存并生成三维"}
         </button>
       </div>
     </div>

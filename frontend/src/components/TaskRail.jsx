@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Plus,
   Search,
   LayoutGrid,
   Box,
@@ -15,6 +14,7 @@ import { terminal } from "../api.js";
 export const statusNames = {
   queued: "排队中",
   running: "生成中",
+  awaiting_review: "待核对",
   succeeded: "已完成",
   failed: "失败",
   cancelled: "已取消",
@@ -24,6 +24,7 @@ export function StatusBadge({ status }) {
     {
       queued: Clock3,
       running: LoaderCircle,
+      awaiting_review: AlertCircle,
       succeeded: Check,
       failed: AlertCircle,
       cancelled: Clock3,
@@ -35,13 +36,7 @@ export function StatusBadge({ status }) {
     </span>
   );
 }
-export default function TaskRail({
-  projects,
-  creating,
-  open,
-  onSelect,
-  onCreate,
-}) {
+export default function TaskRail({ projects, creating, open, onSelect }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const counts = {
@@ -62,6 +57,8 @@ export default function TaskRail({
   return (
     <aside
       className={`task-rail ${open ? "open" : ""}`}
+      id="task-drawer"
+      hidden={!open}
       aria-label="生成任务栏"
     >
       <div className="rail-top">
@@ -70,10 +67,6 @@ export default function TaskRail({
           <h2>我的任务</h2>
           <span>{counts.all.toString().padStart(2, "0")}</span>
         </div>
-        <button className="primary-button new-task" onClick={onCreate}>
-          <Plus size={16} />
-          新建生成任务
-        </button>
         <label className="task-search">
           <Search size={14} />
           <input
@@ -120,11 +113,17 @@ export default function TaskRail({
               <div>
                 <h3>{job.name.replace(/\.(png|jpe?g|webp)$/i, "")}</h3>
                 <p>
-                  {job.edited_of
-                    ? "人工设计版本"
-                    : job.rebuild_of
-                      ? "精细家具更新"
-                      : job.result?.title || job.stage}
+                  {job.status === "awaiting_review"
+                    ? "请核对墙体与门窗"
+                    : job.edited_of
+                      ? "人工设计版本"
+                      : job.restructure_of
+                        ? "结构复核版本"
+                        : job.refine_of
+                          ? "家具规划版本"
+                          : job.rebuild_of
+                            ? "三维效果更新"
+                            : job.result?.title || job.stage}
                 </p>
                 <time>
                   {new Date(job.created_at).toLocaleString("zh-CN", {

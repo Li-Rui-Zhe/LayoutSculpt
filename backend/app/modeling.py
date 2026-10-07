@@ -1,11 +1,15 @@
+"""Run the GLB builder in an isolated Python process for cancellable jobs."""
+
 import asyncio
 import json
 import os
-from pathlib import Path
 import subprocess
+import sys
+from pathlib import Path
 
 from .config import ROOT, Settings
-from .schemas import Layout, Furnishing
+from .schemas import Furnishing, Layout
+from .consistency import verify_export
 
 
 async def build_model(
@@ -16,10 +20,6 @@ async def build_model(
     style: str,
     furniture_mode: str = "library",
 ):
-    if not settings.blender_path or not Path(settings.blender_path).is_file():
-        raise RuntimeError(
-            "未找到 Blender，请在项目 .env 中配置 BLENDER_PATH，然后重试。"
-        )
     document = {
         **layout.model_dump(),
         "furniture": furniture.model_dump()["items"],
@@ -28,48 +28,36 @@ async def build_model(
         "furniture_mode": furniture_mode,
     }
     path = workspace / "layout.json"
-    path.write_text(
-        json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
     args = [
-        settings.blender_path,
-        "--background",
-        "--factory-startup",
-        "--disable-autoexec",
-        "--python-exit-code",
-        "1",
-        "--python",
-        str(ROOT / "tools" / "build_from_layout.py"),
-        "--",
-        "--layout",
-        str(path),
-        "--output",
-        str(workspace),
-        "--asset-catalog",
-        str(settings.furniture_catalog),
+        sys.executable,
+        "-m", "backend.app.glb_builder",
+        "--layout", str(path),
+        "--output", str(workspace),
+        "--asset-catalog", str(settings.furniture_catalog),
     ]
-    with (workspace / "blender.log").open("wb") as log:
+    with (workspace / "modeling.log").open("wb") as log:
         process = await asyncio.create_subprocess_exec(
             *args,
             stdout=log,
             stderr=asyncio.subprocess.STDOUT,
+            cwd=ROOT,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         try:
-            code = await asyncio.wait_for(process.wait(), settings.blender_timeout)
+            code = await asyncio.wait_for(process.wait(), settings.model_timeout)
             if code != 0:
-                raise RuntimeError("Blender 建模失败，请查看该任务的建模日志。")
+                raise RuntimeError("GLB 建模失败，请查看该任务的建模日志。")
         except BaseException:
             if process.returncode is None:
                 process.kill()
                 await process.wait()
             raise
     model = workspace / "model.glb"
-    if not model.exists() or model.stat().st_size < 128:
-        raise RuntimeError("Blender 未输出有效模型")
-    if (
-        not (workspace / "model.blend").is_file()
-        or not (workspace / "furniture-report.json").is_file()
-    ):
-        raise RuntimeError("Blender 工程或家具构建记录缺失")
-    return json.loads((workspace / "furniture-report.json").read_text(encoding="utf-8"))
+    report = workspace / "furniture-report.json"
+    if not model.is_file() or model.stat().st_size < 128 or not report.is_file():
+        raise RuntimeError("建模程序未输出有效 GLB 或家具报告")
+    result = json.loads(report.read_text(encoding="utf-8"))
+    result["consistency"] = await asyncio.to_thread(verify_export, document, model)
+    report.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return result

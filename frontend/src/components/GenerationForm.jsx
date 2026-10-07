@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   UploadCloud,
   ArrowRight,
-  RotateCcw,
   LoaderCircle,
   ScanLine,
   ShieldCheck,
@@ -10,11 +9,13 @@ import {
   Box,
   ImagePlus,
 } from "lucide-react";
-import { useModels, effortLabel } from "../hooks/useModels.js";
+import { useModels } from "../hooks/useModels.js";
+import ModelFields from "./ModelFields.jsx";
 
 export default function GenerationForm({ projects, onCancel, onCreated }) {
   const models = useModels();
   const picker = useRef(null);
+  const submitLock = useRef(false);
   const [file, setFile] = useState(null);
   const [image, setImage] = useState("");
   const [name, setName] = useState("");
@@ -41,12 +42,13 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
       return;
     }
     setFile(value);
-    if (!name) setName(value.name.replace(/\.[^.]+$/, ""));
+    setName((current) => current || value.name.replace(/\.[^.]+$/, ""));
     setError("");
   };
   const submit = async (event) => {
     event.preventDefault();
-    if (!file || !models.ready || busy) return;
+    if (!file || !models.ready || busy || submitLock.current) return;
+    submitLock.current = true;
     setBusy(true);
     setError("");
     try {
@@ -67,6 +69,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
     } catch (e) {
       setError(e.message);
     } finally {
+      submitLock.current = false;
       setBusy(false);
     }
   };
@@ -76,7 +79,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
         <div>
           <span className="eyebrow">开启一个新的空间</span>
           <h1>把户型图，变成你的设计。</h1>
-          <p>上传原图、定义风格，其余交给设计工厂。</p>
+          <p>上传户型图，核对识别结构，再生成可编辑的三维空间。</p>
         </div>
         <span className="heading-icon">
           <ImagePlus size={30} strokeWidth={1.3} />
@@ -179,73 +182,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               </h2>
               <span>生成设置</span>
             </div>
-            <div className="field">
-              <div className="field-heading">
-                <label htmlFor="project-model">生成模型</label>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => models.refresh(true)}
-                  disabled={models.loading}
-                >
-                  <RotateCcw
-                    size={12}
-                    className={models.loading ? "spin" : ""}
-                  />
-                  刷新模型
-                </button>
-              </div>
-              <select
-                id="project-model"
-                value={models.model}
-                onChange={(e) => models.select(e.target.value)}
-                disabled={models.loading || !models.catalog}
-              >
-                {!models.selected && (
-                  <option value={models.model}>
-                    {models.loading ? "正在读取模型…" : "请选择可用模型"}
-                  </option>
-                )}
-                {models.catalog?.items.map((item) => (
-                  <option
-                    key={item.id}
-                    value={item.id}
-                    disabled={item.supports_image === false}
-                  >
-                    {item.name}
-                    {item.id === models.catalog.default_model
-                      ? " · 本地默认"
-                      : ""}
-                    {item.supports_image === false ? " · 不支持图片" : ""}
-                  </option>
-                ))}
-              </select>
-              {models.error && <p className="field-error">{models.error}</p>}
-            </div>
-            <div className="field">
-              <label htmlFor="project-effort">推理强度</label>
-              <select
-                id="project-effort"
-                value={models.effort}
-                disabled={!models.ready || !models.efforts.length}
-                onChange={(e) => models.selectEffort(e.target.value)}
-              >
-                {!models.effort && <option value="">使用本地默认</option>}
-                {models.efforts.map((value) => (
-                  <option key={value} value={value}>
-                    {effortLabel(value)} · {value}
-                    {value === models.selected?.default_effort
-                      ? "（模型默认）"
-                      : ""}
-                  </option>
-                ))}
-              </select>
-              <small className="field-note">
-                {models.efforts.length
-                  ? "应用于识别、复核和规划；强度越高，通常耗时越长。"
-                  : "当前模型未提供可选档位，使用本地默认设置。"}
-              </small>
-            </div>
+            <ModelFields models={models} />
             <div className="field">
               <label>空间风格</label>
               <div className="style-options">
@@ -292,7 +229,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 value={notes}
                 maxLength={3000}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="例如：保留原户型，次卧改为书房，客厅使用三人沙发。"
+                placeholder="例如：保留原图墙体与门窗，客厅使用三人沙发和原木家具。"
               />
             </div>
             <label className="review-option">
@@ -302,8 +239,8 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 onChange={(e) => setCollaboration(e.target.checked)}
               />
               <span>
-                <b>独立空间复核</b>
-                <small>对照原图检查结构后，再进行家具规划</small>
+                <b>增加一次 AI 结构复核</b>
+                <small>识别后仍需你核对原图；确认前不会生成三维</small>
               </span>
               <ShieldCheck size={18} />
             </label>
@@ -312,11 +249,6 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
         {error && (
           <div className="form-error" role="alert">
             {error}
-          </div>
-        )}
-        {projects.health && !projects.health.blender.available && (
-          <div className="form-error">
-            未找到 Blender，请先配置本地建模环境。
           </div>
         )}
         {furnitureMode === "library" &&
@@ -330,7 +262,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
           <div className="pipeline-preview">
             {[
               [ScanLine, "识别结构"],
-              [ShieldCheck, "空间复核"],
+              [ShieldCheck, "核对结构"],
               [Armchair, "家具规划"],
               [Box, "三维建模"],
             ]
@@ -357,7 +289,6 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 busy ||
                 !file ||
                 !models.ready ||
-                !projects.health?.blender.available ||
                 (furnitureMode === "library" &&
                   !projects.health?.furniture_library?.available)
               }

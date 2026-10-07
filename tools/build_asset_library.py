@@ -1,4 +1,4 @@
-"""离线构建LayoutSculpt原创家具库。只在资产更新时运行；户型生成直接追加保存的网格。"""
+"""离线构建造个家原创家具库。只在资产更新时运行；户型生成直接追加保存的网格。"""
 
 import json
 import math
@@ -399,7 +399,7 @@ def bake_asset(kind, mats):
     collection.objects.link(obj)
     collection.asset_mark()
     collection.asset_data.description = SPECS[kind][0]
-    collection.asset_data.author = "LayoutSculpt项目"
+    collection.asset_data.author = "造个家项目"
     return obj
 
 

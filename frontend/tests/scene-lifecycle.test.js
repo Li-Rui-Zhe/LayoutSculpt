@@ -19,6 +19,7 @@ function fixture() {
     modelSize: new THREE.Vector3(),
     center: new THREE.Vector3(),
     scene: new THREE.Scene(),
+    sun: new THREE.DirectionalLight(),
     camera: new THREE.OrthographicCamera(),
     controls: {
       target: new THREE.Vector3(),
@@ -106,6 +107,29 @@ test("已查看的任务复用模型并恢复镜头，材质仍按任务独立�
   assert.equal(scene.topView, true);
   assert.deepEqual(scene.camera.position.toArray(), [12, 18, 24]);
   assert.equal(scene.renderer.domElement.style.visibility, "visible");
+});
+
+test("加载示例时灯罩不遮挡自身光源，墙体仍可投射阴影", () => {
+  const { scene, model } = fixture();
+  const house = new THREE.Group();
+  const wall = model("wall");
+  house.add(wall);
+  const shades = ["床头灯罩", "床头灯罩001", "落地灯灯罩"].map(
+    (name, index) => {
+      const shade = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1),
+        new THREE.MeshStandardMaterial(),
+      );
+      shade.name = name;
+      shade.position.set(index, 1.5, 0);
+      house.add(shade);
+      return shade;
+    },
+  );
+  scene.installModel("/models/apartment.glb", { model: house });
+  assert.equal(house.userData.designLights.length, 3);
+  assert.ok(shades.every((shade) => !shade.castShadow && shade.visible));
+  assert.equal(wall.castShadow, true);
 });
 
 test("快速切换时迟到模型被释放，不能覆盖当前任务", async () => {

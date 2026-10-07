@@ -695,11 +695,14 @@ button {
   align-items: center;
   font-size: 10px;
   color: #d4e0d4;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: #122127dd;
   pointer-events: none;
 }
 .canvas-label small {
   font-size: 9px;
-  color: #6f8a90;
+  color: #a8bec0;
   margin-left: 5px;
 }
 .canvas-toolbar {
@@ -1087,6 +1090,9 @@ input[type="checkbox"] {
   font-size: 8px;
   color: #758e92;
   margin-top: 10px;
+}
+.inspector-footer button + button {
+  margin-top: 8px;
 }
 .task-parameters {
   display: grid;
@@ -2275,5 +2281,236 @@ dialog::backdrop {
   }
   .spin {
     animation-duration: 3s;
+  }
+}
+
+/* Review and delivery share the same restrained, readable workspace. */
+.structure-review {
+  padding: clamp(20px, 3vw, 36px);
+  background: #19272b;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  flex: none;
+}
+.task-workspace.is-reviewing:not(.is-editing) {
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+.review-heading h2 {
+  font-size: 24px;
+  margin: 10px 0;
+  font-weight: 600;
+}
+.review-heading p,
+.review-notes {
+  color: #b2c1c1;
+  font-size: 13px;
+  line-height: 1.85;
+}
+.structure-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin: 24px 0;
+}
+.structure-pair figure {
+  margin: 0;
+  border: 1px solid #3a4b4f;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f4f2eb;
+}
+.structure-pair figcaption {
+  padding: 13px 16px;
+  background: #233438;
+  color: #dce7e4;
+  font-size: 13px;
+}
+.structure-pair figure > svg,
+.structure-pair img {
+  width: 100%;
+  height: clamp(260px, 35vw, 490px);
+  display: block;
+  object-fit: contain;
+  padding: 18px;
+}
+.structure-pair a {
+  display: block;
+  cursor: zoom-in;
+}
+.review-notes {
+  padding: 16px 20px;
+  background: #142125;
+  border-radius: 8px;
+}
+.review-notes summary {
+  cursor: pointer;
+  color: #dec695;
+  margin-top: 8px;
+}
+.review-notes li + li {
+  margin-top: 6px;
+}
+.review-ack {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 22px 0;
+  cursor: pointer;
+}
+.review-ack input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.review-cancel {
+  margin-right: auto;
+  color: var(--muted);
+}
+.status-badge.awaiting_review {
+  color: #ecd296;
+  background: #403925;
+}
+.verification-state {
+  padding: 12px;
+  border: 1px solid #3c554f;
+  border-radius: 8px;
+  line-height: 1.9;
+  color: #c0d6cc;
+  margin-bottom: 12px;
+}
+.improvement-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+.improvement-options {
+  border: 0;
+  padding: 0;
+  margin: 24px 0;
+}
+.improvement-options legend {
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.improvement-options label {
+  display: flex;
+  gap: 12px;
+  padding: 18px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.improvement-options label:has(input:checked) {
+  border-color: var(--accent);
+  background: #233831;
+}
+.improvement-options input {
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.improvement-options b {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 7px;
+}
+.improvement-options small {
+  display: block;
+  color: #aabbba;
+  line-height: 1.8;
+  font-size: 12px;
+}
+.app-recovery {
+  min-height: 100dvh;
+}
+.primary-button,
+.secondary-button {
+  min-height: 42px;
+}
+.workspace-tabs button {
+  min-height: 48px;
+}
+.task-heading p,
+.field-note,
+.file-caption,
+.review-option small,
+.delivery-tip p {
+  font-size: 12px;
+  line-height: 1.8;
+}
+.connection-alert {
+  line-height: 1.8;
+}
+.workspace-breadcrumb,
+.task-search input,
+.task-filters button,
+.workspace-tabs button,
+.inspector-tabs button,
+.toggle-row,
+.task-parameters,
+.task-card b,
+.task-card p,
+.text-button,
+.primary-button,
+.secondary-button {
+  font-size: 12px;
+}
+.task-card-title,
+.field label,
+.section-heading h2 {
+  font-size: 13px;
+}
+.icon-button {
+  width: 36px;
+  height: 36px;
+}
+.material-dock .tabs button,
+.restore-material {
+  font-size: 12px;
+}
+.swatch .label {
+  font-size: 11px;
+}
+.canvas-caption,
+.canvas-label small,
+.material-name,
+.activity-list,
+.task-card time {
+  font-size: 11px;
+}
+@media (max-width: 700px) {
+  .structure-pair {
+    grid-template-columns: 1fr;
+  }
+  .review-heading h2 {
+    font-size: 20px;
+  }
+  .structure-review {
+    padding: 16px;
+  }
+  .review-actions > .primary-button {
+    flex: 1;
+  }
+  .review-cancel {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .icon-button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .workspace-tabs {
+    overflow-x: auto;
+  }
+  .workspace-tabs button {
+    white-space: nowrap;
   }
 }

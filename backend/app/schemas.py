@@ -1,4 +1,4 @@
-"""Codex → LangChain → Blender 的唯一数据契约，所有长度以米计。"""
+"""Codex → LangChain → GLB 建模的数据契约，所有长度以米计。"""
 
 from typing import Annotated, Literal
 import math
@@ -58,7 +58,7 @@ class Opening(StrictModel):
     door_leaf: bool = True
     hinge: Literal["start", "end"] = "start"
     swing: Literal["left", "right"] = "left"
-    angle: float = Field(default=90, ge=0, le=110)
+    angle: float = Field(default=90.0, ge=0, le=110)
 
 
 class LightFixture(StrictModel):
@@ -134,7 +134,8 @@ class Layout(StrictModel):
     confidence: float = Field(ge=0, le=1)
     scale_note: str = Field(max_length=800)
     warnings: list[str] = Field(max_length=30)
-    outline: list[Point] = Field(min_length=3, max_length=40)
+    # Automatic wall/floor union retains concave corners and wall thickness.
+    outline: list[Point] = Field(min_length=3, max_length=512)
     rooms: list[Room] = Field(max_length=35)
     walls: list[Wall] = Field(max_length=120)
     openings: list[Opening] = Field(max_length=80)
@@ -181,6 +182,28 @@ class Layout(StrictModel):
             for first, second in zip(openings, openings[1:]):
                 if first.offset + first.width > second.offset + 1e-6:
                     raise ValueError(f"{wall_id} 门窗开口相互重叠")
+        outline = Polygon([(p.x, p.y) for p in self.outline]).buffer(1e-6)
+        room_shapes = []
+        for room in self.rooms:
+            shape = Polygon([(p.x, p.y) for p in room.polygon])
+            if any(shape.intersection(other).area > 1e-6 for other in room_shapes):
+                raise ValueError(f"{room.name} 与其他房间地面重叠，请修正净空边界")
+            room_shapes.append(shape)
+        wall_lines = []
+        for wall in self.walls:
+            line = LineString([(wall.start.x, wall.start.y), (wall.end.x, wall.end.y)])
+            if not outline.covers(line):
+                raise ValueError(f"墙体 {wall.id} 中心线超出户型轮廓")
+            if any(line.intersection(other).length > 1e-6 for other in wall_lines):
+                raise ValueError(f"墙体 {wall.id} 与其他墙体存在重复线段")
+            wall_lines.append(line)
+        if any(o.bottom != 0 for o in self.openings if o.kind in {"door", "passage"}):
+            raise ValueError("门和通道必须从地面开始")
+        if len({light.id for light in self.lights}) != len(self.lights):
+            raise ValueError("灯具 ID 必须唯一")
+        for light in self.lights:
+            if not contains(Point(x=light.x, y=light.y), self.outline):
+                raise ValueError(f"灯具 {light.name} 超出户型轮廓")
         return self
 
 
@@ -200,6 +223,8 @@ class Furniture(StrictModel):
         "plant",
         "rug",
         "desk",
+        "shower",
+        "refrigerator",
     ]
     x: Number
     y: Number
@@ -221,6 +246,18 @@ class JobOptions(StrictModel):
     model: str | None = Field(default=None, min_length=1, max_length=160)
     reasoning_effort: str | None = Field(default=None, min_length=1, max_length=40)
     furniture_mode: Literal["library", "basic"] = "library"
+
+
+class RetryRequest(StrictModel):
+    model: str | None = Field(default=None, min_length=1, max_length=160)
+    reasoning_effort: str | None = Field(default=None, min_length=1, max_length=40)
+    reuse_structure: bool = False
+
+    @model_validator(mode="after")
+    def recovery_keeps_original_model(self):
+        if self.reuse_structure and ({"model", "reasoning_effort"} & self.model_fields_set):
+            raise ValueError("恢复识别结构无需更换模型；如需重新识别，请使用普通重试")
+        return self
 
 
 class ManualEditRequest(StrictModel):
@@ -269,6 +306,12 @@ class ManualEditRequest(StrictModel):
             ):
                 raise ValueError(f"灯具「{light.name}」名称为空或位置超出户型轮廓")
         return self
+
+
+class StructureConfirmation(StrictModel):
+    layout: Layout
+    reviewed: Literal[True]
+    revision: str = Field(min_length=64, max_length=64)
 
 
 def validate_furnishing(plan: Furnishing, layout: Layout) -> Furnishing:

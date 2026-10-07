@@ -1,34 +1,71 @@
+# Local tasks, originals, generated models, checkpoints and audit reports
+/data/
+
+# Dependencies and build output
 node_modules/
-dist/
-tools/blender/
-tools/blender.zip
-*.blend1
+/dist/
 .venv/
-data/
+venv/
+.pnpm-store/
+.vite/
+*.egg-info/
+
+# Python and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+playwright-report/
+test-results/
+
+# Environment and local authentication; only the example is public
 .env
 .env.*
 !.env.example
-.ruff_cache/
-*.log
-*.sqlite3
-*.sqlite3-*
-*.sqlite
-*.sqlite-*
-*.blend2
-__pycache__/
-.pytest_cache/
-*.pyc
-
-# Additional SQLite file names and their WAL/journal companions
-*.db
-*.db-*
-*.db3
-*.db3-*
-
-# Local credentials
+.codex/
+.npmrc
+.pypirc
 secrets/
+credentials.json
+auth.json
+*.key
 *.pem
 *.p12
 *.pfx
 id_ed25519*
 id_rsa*
+
+# Runtime databases, journals and logs
+*.sqlite3
+*.sqlite3-*
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.db3
+*.db3-*
+*.log
+
+# Optional local Blender installation and source backups
+/tools/blender/
+/tools/blender.zip
+*.blend1
+*.blend2
+
+# Editor, OS and temporary files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+*.tmp
+
+# Keep runtime furniture GLB, showcase models, materials and lockfiles tracked.

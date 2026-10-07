@@ -216,15 +216,11 @@
   touch-action: none;
 }
 .plan-zoom {
-  position: absolute;
-  bottom: 38px;
-  left: 50%;
-  transform: translateX(-50%);
+  position: static;
   display: flex;
   align-items: center;
   gap: 5px;
   background: #f8faf4ed;
-  box-shadow: 0 3px 15px #203b2920;
   border: 1px solid #b8c9b6;
   border-radius: 6px;
   padding: 4px;
@@ -233,8 +229,8 @@
 .plan-zoom button {
   display: grid;
   place-items: center;
-  width: 27px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   border-radius: 4px;
   color: #486754;
 }
@@ -517,6 +513,73 @@
 .edit-issues button span {
   white-space: nowrap;
   color: #97b2a3;
+}
+.edit-feedback {
+  position: relative;
+  flex: none;
+  height: 40px;
+  margin-top: 10px;
+}
+.edit-check-summary {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d7e0d1;
+  border-radius: 7px;
+  background: #f4f7ee;
+  color: #5d7952;
+}
+.edit-check-summary.has-problems {
+  background: #fff7e9;
+  border-color: #e1ccaa;
+  color: #926e37;
+}
+.edit-check-summary p {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.edit-check-summary button {
+  flex: none;
+  min-width: 44px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.edit-feedback > .edit-issues {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: min(440px, 100%);
+  margin: 0;
+  max-height: min(280px, 50vh);
+  z-index: 10;
+  padding: 14px;
+  background: #fffaf0;
+  border-color: #dcc39b;
+  color: #876632;
+  box-shadow: 0 6px 24px #253b2926;
+}
+.edit-feedback .edit-issues :is(p, button) {
+  font-size: 12px;
+}
+.edit-feedback .edit-issues button span {
+  color: #6b8069;
+}
+.pick-opening-wall {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.pick-opening-wall[aria-pressed="true"] {
+  background: #e8f0df;
+  border-color: #8ca980;
 }
 .edit-save-bar {
   display: flex;
@@ -845,6 +908,70 @@
   margin: 16px 0 12px;
   font-weight: 500;
 }
+
+.opening-composer h3 {
+  font-size: 14px;
+  color: #294f43;
+  margin: 0 0 10px;
+}
+.opening-wall-info {
+  font-size: 12px;
+  color: #426b5b;
+  margin: 0 0 8px;
+}
+.opening-space-info {
+  background: #f2f6ee;
+  border: 1px solid #dbe4d4;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 4px 0 16px;
+  font-size: 12px;
+  color: #3d6150;
+}
+.opening-space-info strong {
+  font-weight: 500;
+}
+.opening-space-info p {
+  margin: 6px 0 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.opening-door-options {
+  margin: 0 0 14px;
+}
+.opening-door-options summary {
+  color: #3c6251;
+  font-size: 12px;
+  padding: 4px 0 12px;
+  cursor: pointer;
+}
+.opening-feedback {
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 14px 0;
+}
+.opening-feedback p {
+  margin: 0;
+}
+.opening-feedback.invalid {
+  background: #fff4e5;
+  color: #995c25;
+}
+.opening-feedback.valid {
+  background: #edf4e8;
+  color: #42683f;
+}
+.opening-composer-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.opening-composer-actions button {
+  flex: 1 1 90px;
+  padding: 10px;
+}
 .rotation-presets {
   display: flex;
   gap: 5px;
@@ -937,6 +1064,51 @@
   background: #142127;
   padding-bottom: 8px;
   z-index: 2;
+}
+.plan-zoom button[aria-pressed="true"] {
+  background: #d3e1cb;
+  color: #204e34;
+}
+.plan-navigation-modes {
+  display: flex;
+  gap: 3px;
+  padding-right: 6px;
+  margin-right: 2px;
+  border-right: 1px solid #b8c9b6;
+}
+.plan-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid #7b99862b;
+  flex: none;
+  flex-wrap: wrap;
+}
+.plan-navigation-hint {
+  font-size: 10px;
+  color: #6a806d;
+}
+.plan-editor-canvas > svg.can-pan,
+.plan-editor-canvas > svg.can-pan * {
+  cursor: grab !important;
+}
+.plan-editor-canvas > svg.is-panning,
+.plan-editor-canvas > svg.is-panning * {
+  cursor: grabbing !important;
+}
+.edit-save-bar > label.review-ack {
+  flex-direction: row;
+  align-items: center;
+  max-width: 330px;
+  margin: 12px 0;
+}
+.edit-save-bar .review-ack input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  min-width: 18px;
 }
 @media (min-width: 981px) {
   .edit-library fieldset {

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+import re
 from dataclasses import replace
 from io import BytesIO
 
@@ -14,6 +15,7 @@ from backend.app.main import create_app
 from backend.app.schemas import Furnishing, Layout, validate_furnishing
 from backend.app.skills import SkillRegistry
 from backend.app.store import Store
+from backend.app.ai_contracts import pack_layout, LayoutReviewPatch, CHECKS
 
 
 def layout_data():
@@ -132,11 +134,17 @@ class FakeCodex:
         )
         if self.malformed:
             return "{broken JSON"
-        return json.dumps(
-            furniture_data()
-            if kwargs["schema"]["title"] == "Furnishing"
-            else layout_data()
-        )
+        title = kwargs["schema"]["title"]
+        if title == "Furnishing":
+            output = furniture_data()
+        elif title == "LayoutExtraction":
+            output = pack_layout(Layout.model_validate(layout_data()))
+        elif title == "LayoutReviewPatch":
+            revision = re.search(r'"base_revision":"([a-f0-9]{64})"', kwargs["prompt"]).group(1)
+            output = LayoutReviewPatch(base_revision=revision, checks=sorted(CHECKS), summary="逐项核对完成，未发现需修改的结构", warnings=[]).model_dump()
+        else:
+            raise AssertionError(f"Unexpected output schema {title}")
+        return json.dumps(output)
 
 
 async def fake_builder(
@@ -185,6 +193,13 @@ def create_job(client, collaboration=True):
 def wait_job(client, job_id):
     for _ in range(200):
         job = client.get(f"/api/jobs/{job_id}").json()
+        if job["status"] == "awaiting_review":
+            recognized = client.get(f"/api/jobs/{job_id}/artifacts/structure.json").json()
+            confirm = client.post(f"/api/jobs/{job_id}/confirm-structure", json={
+                "layout": {key: value for key, value in recognized.items() if key in Layout.model_fields},
+                "reviewed": True, "revision": job["result"]["revision"],
+            })
+            assert confirm.status_code == 200, confirm.text
         if job["status"] in {"succeeded", "failed", "cancelled"}:
             return job
         time.sleep(0.025)
@@ -205,6 +220,7 @@ def test_end_to_end_graph_skills_and_artifacts(tmp_path, collaboration, expected
             "floorplan-review" in "".join(call["instructions"] for call in codex.calls)
         ) == collaboration
         assert client.get(job["result"]["model_url"]).content.startswith(b"glTF")
+        assert client.get(job["result"]["consistency_url"]).json() == job["result"]["consistency"]
         assert (
             client.get(
                 f"/api/jobs/{job['id']}/artifacts/recognition-skills.md"
@@ -330,6 +346,43 @@ def test_unsupported_effort_does_not_create_job(tmp_path):
         assert not codex.calls
 
 
+def test_retry_can_replace_model_without_changing_failed_job(tmp_path):
+    codex = FakeCodex(malformed=True)
+    with TestClient(app_for(tmp_path, codex)) as client:
+        failed = wait_job(client, create_job(client)["id"])
+        assert failed["status"] == "failed"
+        before = client.get("/api/jobs").json()["items"]
+        invalid = client.post(f"/api/jobs/{failed['id']}/retry", json={"model": "text-only"})
+        assert invalid.status_code == 422
+        assert client.get("/api/jobs").json()["items"] == before
+        codex.malformed = False
+        retried = client.post(f"/api/jobs/{failed['id']}/retry", json={"model": "test-chosen"})
+        assert retried.status_code == 201, retried.text
+        final = wait_job(client, retried.json()["id"])
+        assert final["status"] == "succeeded", final
+        assert final["options"]["model"] == "test-chosen"
+        assert final["options"]["reasoning_effort"] == "high"
+        assert client.get(f"/api/jobs/{failed['id']}").json() == failed
+        assert (tmp_path / "jobs" / failed["id"] / "source.png").read_bytes() == (tmp_path / "jobs" / final["id"] / "source.png").read_bytes()
+
+
+def test_unavailable_model_is_rejected_before_creating_job(tmp_path):
+    codex = FakeCodex()
+    original = codex.list_models
+    async def catalog(refresh=False):
+        data = await original(refresh)
+        data["items"][0].update(available=False, unavailable_reason="当前登录不支持此模型")
+        data["default_model"] = "test-chosen"
+        return data
+    codex.list_models = catalog
+    with TestClient(app_for(tmp_path, codex)) as client:
+        response = client.post("/api/jobs", files={"file": ("plan.png", image_bytes(), "image/png")}, data={"model": "test-default"})
+        assert response.status_code == 422
+        assert response.json()["detail"] == "当前登录不支持此模型"
+        assert client.get("/api/jobs").json()["items"] == []
+        assert not codex.calls
+
+
 def test_cancel_interrupts_and_retry_has_new_workspace(tmp_path):
     codex = FakeCodex(delay=30)
     with TestClient(app_for(tmp_path, codex)) as client:
@@ -397,9 +450,10 @@ async def test_terminal_state_is_monotonic_and_recovery(tmp_path):
     assert (await store.get("one"))["status"] == "cancelled"
     await store.create("two", "b.png", {})
     await store.update("two", status="running")
-    await store.recover()
-    assert (await store.get("two"))["status"] == "failed"
-    assert (await store.get("two"))["error"]
+    assert await store.recover() == ["two"]
+    assert (await store.get("two"))["status"] == "queued"
+    assert (await store.get("two"))["error"] is None
+    assert (await store.get("one"))["status"] == "cancelled"
 
 
 def test_skill_registry_rejects_path_escape():
@@ -464,12 +518,48 @@ def test_basic_mode_remains_available(tmp_path):
         job = wait_job(client, response.json()["id"])
         assert job["status"] == "succeeded", job
         assert job["result"]["furniture"]["mode"] == "basic"
+
+
+def test_replan_preserves_structure_and_runs_only_furniture_agent(tmp_path):
+    codex = FakeCodex()
+    with TestClient(app_for(tmp_path, codex)) as client:
+        source = wait_job(client, create_job(client)["id"])
+        before = len(codex.calls)
+        response = client.post(f"/api/jobs/{source['id']}/rebuild?replan=true")
+        assert response.status_code == 201
+        improved = wait_job(client, response.json()["id"])
+        assert improved["status"] == "succeeded", improved
+        assert improved["refine_of"] == source["id"]
+        assert len(codex.calls) == before + 1
+        assert codex.calls[-1]["schema"]["title"] == "Furnishing"
+        original = client.get(source["result"]["layout_url"]).json()
+        updated = client.get(improved["result"]["layout_url"]).json()
+        assert updated["walls"] == original["walls"]
+        assert updated["rooms"] == original["rooms"]
+        report = client.get(improved["result"]["quality_url"]).json()
+        assert report["light_count"] > 0 and not report["issues"]
         invalid = client.post(
             "/api/jobs",
             files={"file": ("plan.png", image_bytes(), "image/png")},
             data={"furniture_mode": "untrusted-path"},
         )
         assert invalid.status_code == 422
+
+
+def test_structure_review_creates_version_and_runs_review_before_furniture(tmp_path):
+    codex = FakeCodex()
+    with TestClient(app_for(tmp_path, codex)) as client:
+        source = wait_job(client, create_job(client)["id"])
+        before = len(codex.calls)
+        original = client.get(source["result"]["layout_url"]).content
+        response = client.post(f"/api/jobs/{source['id']}/rebuild?restructure=true")
+        assert response.status_code == 201
+        reviewed = wait_job(client, response.json()["id"])
+        assert reviewed["status"] == "succeeded", reviewed
+        assert reviewed["restructure_of"] == source["id"]
+        assert reviewed["result"]["restructure_of"] == source["id"]
+        assert [call["schema"]["title"] for call in codex.calls[before:]] == ["LayoutReviewPatch", "Furnishing"]
+        assert client.get(source["result"]["layout_url"]).content == original
 
 
 def test_manual_edit_isolated_materials_passage_and_retry_without_codex(tmp_path):

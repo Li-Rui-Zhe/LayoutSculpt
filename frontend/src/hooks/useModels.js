@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { chooseModel, selectableModel } from "./modelSelection.js";
 
 const effortLabels = {
   none: "关闭",
@@ -14,21 +15,31 @@ const effortLabels = {
 export const effortLabel = (value) =>
   effortLabels[value] || value || "本地默认";
 
-export function useModels() {
+export function useModels({ initialModel, initialEffort } = {}) {
   const [catalog, setCatalog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [model, setModel] = useState(
-    () => localStorage.getItem("habitat-model") || "",
-  );
+  const [model, setModel] = useState(() => {
+    try {
+      return initialModel || localStorage.getItem("habitat-model") || "";
+    } catch {
+      return initialModel || "";
+    }
+  });
   const [savedEfforts, setSavedEfforts] = useState(() => {
     try {
       const value = JSON.parse(localStorage.getItem("habitat-model-efforts"));
-      return value && typeof value === "object" && !Array.isArray(value)
-        ? value
-        : {};
+      const saved =
+        value && typeof value === "object" && !Array.isArray(value)
+          ? value
+          : {};
+      return initialModel && initialEffort
+        ? { ...saved, [initialModel]: initialEffort }
+        : saved;
     } catch {
-      return {};
+      return initialModel && initialEffort
+        ? { [initialModel]: initialEffort }
+        : {};
     }
   });
   const sequence = useRef(0);
@@ -40,7 +51,7 @@ export function useModels() {
       const next = await api(`/models${force ? "?refresh=true" : ""}`);
       if (token !== sequence.current) return;
       setCatalog(next);
-      setModel((current) => current || next.default_model || "");
+      setModel((current) => chooseModel(next, current));
     } catch (e) {
       if (token !== sequence.current) return;
       setError(e.message);
@@ -57,7 +68,11 @@ export function useModels() {
   }, [refresh]);
   const select = (id) => {
     setModel(id);
-    localStorage.setItem("habitat-model", id);
+    try {
+      localStorage.setItem("habitat-model", id);
+    } catch {
+      /* Model selection still works for this session. */
+    }
   };
   const selected = catalog?.items.find((item) => item.id === model);
   const efforts = selected?.efforts || [];
@@ -70,7 +85,11 @@ export function useModels() {
     if (!efforts.includes(value)) return;
     const next = { ...savedEfforts, [model]: value };
     setSavedEfforts(next);
-    localStorage.setItem("habitat-model-efforts", JSON.stringify(next));
+    try {
+      localStorage.setItem("habitat-model-efforts", JSON.stringify(next));
+    } catch {
+      /* Effort remains in React state. */
+    }
   };
   return {
     catalog,
@@ -83,10 +102,6 @@ export function useModels() {
     efforts,
     effort,
     selectEffort,
-    ready:
-      !loading &&
-      !error &&
-      Boolean(selected) &&
-      selected.supports_image !== false,
+    ready: !loading && !error && selectableModel(selected),
   };
 }

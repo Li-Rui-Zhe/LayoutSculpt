@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,11 +23,18 @@ from .schemas import (
     JobOptions,
     Layout,
     ManualEditRequest,
+    RetryRequest,
+    StructureConfirmation,
     validate_furnishing,
 )
 from .skills import SkillRegistry
 from .store import TERMINAL, Store
 from .workflow import JobRunner, create_graph
+from .architecture import validate_generated_structure
+from .consistency import structure_hash, source_hash
+from .store import now
+from .recovery import recoverable_recognition, REVIEW_TIMEOUT_WARNING
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 ALLOWED_ORIGINS = {
     "http://127.0.0.1:5173",
@@ -36,13 +43,18 @@ ALLOWED_ORIGINS = {
     "http://localhost:8000",
 }
 ARTIFACTS = {
+    "pipeline-metrics.json",
     "source.png",
     "model.glb",
     "model.blend",
     "layout.json",
     "manifest.json",
     "blender.log",
+    "modeling.log",
     "furniture-report.json",
+    "quality-report.json",
+    "consistency-report.json",
+    "structure.json",
 }
 
 
@@ -75,11 +87,12 @@ def create_app(settings=None, *, client=None, model_builder=None):
     store = Store(settings.db_path)
     codex = client or CodexClient(settings)
     registry = SkillRegistry(settings.skills_dir)
+    confirmation_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(app):
         await store.initialize()
-        await store.recover()
+        interrupted_jobs = await store.recover()
         async with AsyncSqliteSaver.from_conn_string(
             str(settings.data_dir / "graph.sqlite3")
         ) as checkpoints:
@@ -89,15 +102,18 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 settings, store, codex, registry, checkpoints, **kwargs
             )
             app.state.runner = JobRunner(graph, store, settings.concurrency, settings)
+            for job_id in interrupted_jobs:
+                app.state.runner.schedule(job_id, resume=True)
             try:
                 yield
             finally:
                 await app.state.runner.close()
                 await codex.stop()
 
-    app = FastAPI(title="LayoutSculpt户型工作台", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="造个家户型工作台", version="2.0.0", lifespan=lifespan)
     app.state.store = store
     app.state.settings = settings
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"] + (["testserver"] if client is not None else []))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(ALLOWED_ORIGINS),
@@ -131,27 +147,28 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "source_url": f"/api/jobs/{job['id']}/artifacts/source.png",
             "rebuild_of": origin.get("rebuild_of"),
             "edited_of": origin.get("edited_of"),
+            "refine_of": origin.get("refine_of"),
+            "restructure_of": origin.get("restructure_of"),
+            "can_recover_structure": recoverable_recognition(settings, job) is not None,
         }
 
     def read_furniture_catalog():
         try:
             data = json.loads(settings.furniture_catalog.read_text(encoding="utf-8"))
             root = settings.furniture_catalog.resolve().parent
-            library = (root / data["library"]).resolve()
-            if (
-                not library.is_relative_to(root)
-                or library.suffix != ".blend"
-                or not library.is_file()
-            ):
-                raise ValueError("家具工程不存在")
-            for key in ["version", "blender_version", "license", "items"]:
+            for key in ["version", "license", "items"]:
                 if key not in data:
                     raise ValueError("资产索引不完整")
+            if not data["items"] or any(
+                not (root / "glb" / f"{item['kind']}.glb").is_file()
+                for item in data["items"]
+            ):
+                raise ValueError("家具 GLB 资产不完整")
             return data
         except (OSError, ValueError, KeyError) as exc:
             raise HTTPException(
                 503,
-                "家具库不可用，请运行 .venv/Scripts/python.exe scripts/build_assets.py",
+                "家具 GLB 资产库不可用，请检查 assets/furniture/glb",
             ) from exc
 
     @app.get("/api/health")
@@ -175,11 +192,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 "connected": codex.alive,
                 "model": settings.codex_model or "使用本地 Codex 配置",
             },
-            "blender": {
-                "available": bool(
-                    settings.blender_path and Path(settings.blender_path).is_file()
-                )
-            },
+            "model_builder": {"available": True, "engine": "trimesh"},
             "furniture_library": asset_status,
             "architecture": ["React", "FastAPI", "LangChain", "LangGraph", "SQLite"],
             "skills": registry.list(),
@@ -200,9 +213,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
     @app.get("/api/furniture")
     async def furniture_catalog():
         data = read_furniture_catalog()
-        return {
-            key: data[key] for key in ["version", "blender_version", "license", "items"]
-        }
+        return {key: data[key] for key in ["version", "license", "items"]}
 
     @app.get("/api/models")
     async def models(refresh: bool = False):
@@ -217,6 +228,8 @@ def create_app(settings=None, *, client=None, model_builder=None):
         item = next((m for m in catalog["items"] if m["id"] == selected), None)
         if not item:
             raise HTTPException(422, "所选模型已不可用，请刷新模型列表后重新选择")
+        if item.get("available") is False:
+            raise HTTPException(422, item.get("unavailable_reason") or "所选模型当前不可用，请选择其他模型")
         if item["supports_image"] is False:
             raise HTTPException(422, "所选模型不支持图片，请选择支持户型图识别的模型")
         options.model = selected
@@ -299,8 +312,44 @@ def create_app(settings=None, *, client=None, model_builder=None):
             await request.app.state.runner.cancel(job_id.hex)
         return public(await store.get(job_id.hex))
 
+    @app.post("/api/jobs/{job_id}/confirm-structure")
+    async def confirm_structure(job_id: UUID, document: StructureConfirmation, request: Request):
+        async with confirmation_lock:
+            job = await require_job(job_id.hex)
+            if job["status"] != "awaiting_review":
+                raise HTTPException(409, "该任务不在结构确认阶段，请刷新任务状态")
+            workspace = settings.workspace(job_id.hex)
+            original = json.loads((workspace / "structure.json").read_text(encoding="utf-8"))
+            if document.revision != structure_hash(original):
+                raise HTTPException(409, "结构版本已变化，请重新打开核对页面")
+            if not document.layout.rooms or not document.layout.walls:
+                raise HTTPException(422, "确认的户型必须包含空间和墙体")
+            try:
+                validate_generated_structure(document.layout)
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            seed = json.loads((workspace / "review-seed.json").read_text(encoding="utf-8"))
+            seed.update(layout=document.layout.model_dump(), awaiting_review=False, confirmed_structure=True,
+                        confirmation={"structure_hash": structure_hash(document.layout),
+                                      "source_sha256": source_hash(workspace / "source.png"),
+                                      "confirmed_at": now(), "method": "user_review"})
+            seed.pop("result", None)
+            temporary = workspace / "rebuild-seed.json.tmp"
+            temporary.write_text(json.dumps(seed, ensure_ascii=False), encoding="utf-8")
+            temporary.replace(workspace / "rebuild-seed.json")
+            claimed = await store.update(job_id.hex, status="queued", stage="结构已确认，准备家具规划",
+                                         message="已保存确认的结构，后续建模锁定墙体与门窗",
+                                         expected_status="awaiting_review")
+            if not claimed:
+                raise HTTPException(409, "任务状态已变化，请刷新后重试")
+            pending = request.app.state.runner.tasks.get(job_id.hex)
+            if pending:
+                await asyncio.gather(pending, return_exceptions=True)
+            request.app.state.runner.schedule(job_id.hex)
+            return public(await store.get(job_id.hex))
+
     @app.post("/api/jobs/{job_id}/retry", status_code=201)
-    async def retry(job_id: UUID, request: Request):
+    async def retry(job_id: UUID, request: Request, changes: RetryRequest | None = Body(default=None)):
         previous = await require_job(job_id.hex)
         if previous["status"] not in {"failed", "cancelled"}:
             raise HTTPException(409, "仅失败或取消的任务可以重试")
@@ -309,7 +358,33 @@ def create_app(settings=None, *, client=None, model_builder=None):
             raise HTTPException(409, "原图已丢失，请重新上传")
         seed_path = settings.workspace(job_id.hex) / "rebuild-seed.json"
         options = JobOptions.model_validate(previous["options"])
-        if not seed_path.exists():
+        if changes and changes.reuse_structure:
+            layout = recoverable_recognition(settings, previous)
+            if layout is None:
+                raise HTTPException(409, "没有可恢复的有效识别结构，请重新识别户型图")
+            timed_out = "超时" in (previous.get("error") or "")
+            warning = REVIEW_TIMEOUT_WARNING if timed_out else "AI 结构复核未完成。已恢复识别结构，请逐项对照原图核对后再继续。"
+            if len(layout.warnings) < 30 and warning not in layout.warnings:
+                layout.warnings.append(warning)
+            new_id = uuid4().hex
+            workspace = settings.workspace(new_id)
+            workspace.mkdir(parents=True)
+            await asyncio.to_thread(shutil.copyfile, source, workspace / "source.png")
+            (workspace / "rebuild-seed.json").write_text(json.dumps({
+                "layout": layout.model_dump(), "recovered_structure_of": job_id.hex,
+                "ai_review": {"status": "timed_out" if timed_out else "incomplete", "message": warning},
+                "agents": [],
+            }, ensure_ascii=False), encoding="utf-8")
+            await store.create(new_id, previous["name"], options.model_dump())
+            request.app.state.runner.schedule(new_id)
+            return public(await store.get(new_id))
+        if changes:
+            overrides = changes.model_dump(exclude_unset=True, exclude={"reuse_structure"})
+            if "model" in overrides and overrides["model"] != options.model and "reasoning_effort" not in overrides:
+                overrides["reasoning_effort"] = None
+            options = options.model_copy(update=overrides)
+        seed = json.loads(seed_path.read_text(encoding="utf-8")) if seed_path.exists() else {}
+        if changes or not seed or any(seed.get(key) for key in ("refine_of", "restructure_of", "confirmed_structure")):
             options = await resolve_model(options)
         new_id = uuid4().hex
         workspace = settings.workspace(new_id)
@@ -324,7 +399,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         return public(await store.get(new_id))
 
     @app.post("/api/jobs/{job_id}/rebuild", status_code=201)
-    async def rebuild(job_id: UUID, request: Request):
+    async def rebuild(job_id: UUID, request: Request, replan: bool = False, restructure: bool = False):
         previous = await require_job(job_id.hex)
         if previous["status"] != "succeeded":
             raise HTTPException(409, "请等待户型生成成功后再更新家具")
@@ -343,6 +418,11 @@ def create_app(settings=None, *, client=None, model_builder=None):
         except (OSError, ValueError, KeyError) as exc:
             raise HTTPException(409, "原始结构数据不完整，请重新上传户型图") from exc
         await furniture_catalog()
+        options = JobOptions.model_validate(
+            {**previous["options"], "furniture_mode": "library"}
+        )
+        if replan or restructure:
+            options = await resolve_model(options)
         new_id = uuid4().hex
         workspace = settings.workspace(new_id)
         workspace.mkdir(parents=True)
@@ -354,17 +434,30 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "furniture": furniture.model_dump(),
             "rebuild_of": previous["id"],
         }
+        inherited = previous["result"].get("consistency", {}).get("confirmation")
+        if inherited and not restructure and inherited["structure_hash"] == structure_hash(layout):
+            seed["confirmation"] = inherited
+        if restructure:
+            seed["restructure_of"] = previous["id"]
+        elif replan:
+            seed["refine_of"] = previous["id"]
+        else:
+            seed["preserve_design"] = bool(
+                previous["result"].get("edited_of")
+                or previous["result"].get("design_mode") == "manual"
+            )
         (workspace / "rebuild-seed.json").write_text(
             json.dumps(seed, ensure_ascii=False), encoding="utf-8"
         )
-        options = JobOptions.model_validate(
-            {**previous["options"], "furniture_mode": "library"}
-        )
         await store.create(
             new_id,
-            previous["name"],
+            previous["name"][:100] + (" · 结构复核" if restructure else " · 优化方案" if replan else " · 效果更新"),
             options.model_dump(),
-            message="复用原户型布局，精细家具更新任务已加入队列",
+            message="对照原图复核墙体、门窗与房间连通，再生成新方案"
+            if restructure
+            else "保留户型结构，重新规划家具与照明"
+            if replan
+            else "保留布局，更新材质、灯具与三维细节",
         )
         request.app.state.runner.schedule(new_id)
         return public(await store.get(new_id))
@@ -390,6 +483,9 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "rebuild_of": previous["id"],
             "edited_of": previous["id"],
         }
+        inherited = previous["result"].get("consistency", {}).get("confirmation")
+        if inherited and inherited["structure_hash"] == structure_hash(document.layout):
+            seed["confirmation"] = inherited
         (workspace / "rebuild-seed.json").write_text(
             json.dumps(seed, ensure_ascii=False), encoding="utf-8"
         )
@@ -445,6 +541,8 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 "layout.json",
                 "manifest.json",
                 "furniture-report.json",
+                "quality-report.json",
+                "consistency-report.json",
             }
             and job["status"] != "succeeded"
         ):
@@ -458,7 +556,9 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "layout.json": "application/json",
             "manifest.json": "application/json",
             "furniture-report.json": "application/json",
+            "quality-report.json": "application/json",
             "blender.log": "text/plain",
+            "modeling.log": "text/plain",
         }.get(filename, "application/octet-stream")
         return FileResponse(
             path,

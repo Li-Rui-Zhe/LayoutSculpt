@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Box,
   Image,
@@ -27,22 +28,32 @@ import {
   Info,
   ArrowRight,
   PencilRuler,
+  TriangleAlert,
+  X,
 } from "lucide-react";
 import Viewport from "./Viewport.jsx";
 import Modal from "./Modal.jsx";
 import { MaterialDock } from "./Materials.jsx";
 import { useStudio, initialStudio } from "../hooks/useStudio.js";
 import { effortLabel } from "../hooks/useModels.js";
-import { presets } from "../catalog.js";
+import { presets, showcase } from "../catalog.js";
 import { terminal } from "../api.js";
 import { StatusBadge } from "./TaskRail.jsx";
 import ManualEditor from "../editor/ManualEditor.jsx";
+import StructureReview from "./StructureReview.jsx";
+import RetryDialog from "./RetryDialog.jsx";
+import { generationError } from "../hooks/modelSelection.js";
 
 const lightIcons = {
   midday: Sun,
   night: Moon,
 };
-const defaultSettings = { shadows: true, rotate: false, grid: false };
+const defaultSettings = {
+  shadows: true,
+  rotate: false,
+  grid: false,
+  cutaway: true,
+};
 export function IconButton({ label, icon: Icon, onClick, disabled, active }) {
   return (
     <button
@@ -58,6 +69,21 @@ export function IconButton({ label, icon: Icon, onClick, disabled, active }) {
   );
 }
 function stagesFor(job) {
+  if (job?.restructure_of)
+    return [
+      ["读取原图与现有结构", 5],
+      ["复核墙体与门窗", 40],
+      ["规划家具布置", 58],
+      ["构建三维模型", 82],
+      ["成果交付", 100],
+    ];
+  if (job?.refine_of)
+    return [
+      ["保留原户型结构", 5],
+      ["重新规划家具", 58],
+      ["构建三维模型", 82],
+      ["成果交付", 100],
+    ];
   if (job?.edited_of)
     return [
       ["读取人工设计", 5],
@@ -67,7 +93,7 @@ function stagesFor(job) {
   return job?.rebuild_of
     ? [
         ["复用户型布局", 5],
-        ["精细家具建模", 82],
+        ["更新三维效果", 82],
         ["成果交付", 100],
       ]
     : [
@@ -83,17 +109,37 @@ function Pipeline({ job }) {
   return (
     <ol className="task-pipeline">
       {steps.map(([name, threshold], index) => {
+        const reviewIncomplete =
+          threshold === 40 &&
+          ["timed_out", "incomplete"].includes(job?.result?.ai_review?.status);
         const done =
           job?.status === "succeeded" ||
           job?.progress >= (steps[index + 1]?.[1] ?? 100);
         const active = !done && job?.progress >= threshold;
         return (
-          <li key={name} className={done ? "done" : active ? "current" : ""}>
+          <li
+            key={name}
+            className={
+              reviewIncomplete
+                ? "review-incomplete"
+                : done
+                  ? "done"
+                  : active
+                    ? "current"
+                    : ""
+            }
+          >
             <span>
-              {done ? <Check size={13} /> : String(index + 1).padStart(2, "0")}
+              {reviewIncomplete ? (
+                <TriangleAlert size={13} />
+              ) : done ? (
+                <Check size={13} />
+              ) : (
+                String(index + 1).padStart(2, "0")
+              )}
             </span>
-            <b>{name}</b>
-            {active && !terminal(job.status) && (
+            <b>{reviewIncomplete ? "AI 复核未完成，需人工核对" : name}</b>
+            {active && !reviewIncomplete && job.status === "running" && (
               <LoaderCircle size={12} className="spin" />
             )}
           </li>
@@ -126,7 +172,7 @@ function Activity({ job, events }) {
               </time>
               <div>
                 {event.agent && <b>{event.agent}</b>}
-                <p>{event.message}</p>
+                <p>{generationError(event.message)}</p>
               </div>
             </div>
           ))
@@ -136,14 +182,14 @@ function Activity({ job, events }) {
       </div>
       {job.error && (
         <div className="form-error" role="alert">
-          {job.error}
+          {generationError(job.error)}
         </div>
       )}
     </section>
   );
 }
 function Deliverables({ job, onCapture }) {
-  if (!job?.result)
+  if (job?.status !== "succeeded" || !job?.result?.model_url)
     return (
       <div className="empty-state">
         <FolderDown size={38} />
@@ -175,13 +221,17 @@ function Deliverables({ job, onCapture }) {
             "可在三维软件中查看和继续使用",
             result.model_url,
           ],
-          [
-            Box,
-            "Blender 工程",
-            "BLEND",
-            "包含模型、家具与打包贴图",
-            result.blend_url,
-          ],
+          ...(result.blend_url
+            ? [
+                [
+                  Box,
+                  "Blender 工程",
+                  "BLEND",
+                  "包含模型、家具与打包贴图",
+                  result.blend_url,
+                ],
+              ]
+            : []),
           [
             FileJson,
             "户型结构数据",
@@ -196,6 +246,28 @@ function Deliverables({ job, onCapture }) {
             "模型参数、识别说明与成果索引",
             `/api/jobs/${job.id}/artifacts/manifest.json`,
           ],
+          ...(result.quality_url
+            ? [
+                [
+                  ListChecks,
+                  "设计检查",
+                  "JSON",
+                  "家具碰撞检查、照明配置与改进记录",
+                  result.quality_url,
+                ],
+              ]
+            : []),
+          ...(result.consistency_url
+            ? [
+                [
+                  ListChecks,
+                  "结构一致性",
+                  "JSON",
+                  "墙体、门窗、地板和轮廓的校验记录",
+                  result.consistency_url,
+                ],
+              ]
+            : []),
         ].map(([Icon, title, type, desc, url]) => (
           <a className="deliverable-card" key={title} href={url} download>
             <Icon size={25} strokeWidth={1.4} />
@@ -227,12 +299,43 @@ export default function TaskWorkspace({
   projects,
   onCreate,
   active = true,
+  headingHost,
 }) {
   const id = job?.id || "sample";
-  const { state, update, undo, redo, canUndo, canRedo } = useStudio(id);
+  const { state, update, undo, redo, canUndo, canRedo, storageError } =
+    useStudio(id);
   const hasModel = !job || job.status === "succeeded";
+  const reviewing = job?.status === "awaiting_review";
   const [tab, setTab] = useState(hasModel ? "design" : "activity");
-  const [panel, setPanel] = useState(hasModel ? "design" : "task");
+  const [panel, setPanel] = useState(hasModel ? "overview" : "task");
+  const [inspectorOpen, setInspectorOpen] = useState(
+    () => !matchMedia("(max-width: 1000px)").matches,
+  );
+  const [mobile, setMobile] = useState(
+    () => matchMedia("(max-width: 1000px)").matches,
+  );
+  useEffect(() => {
+    const media = matchMedia("(max-width: 1000px)");
+    const change = () => {
+      setMobile(media.matches);
+      setInspectorOpen(!media.matches);
+    };
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, []);
+  useEffect(() => {
+    if (!inspectorOpen || !active) return;
+    const close = (event) => {
+      if (event.key === "Escape") {
+        setInspectorOpen(false);
+        host.current
+          ?.querySelector('.workspace-tools button[aria-expanded="true"]')
+          ?.focus();
+      }
+    };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [inspectorOpen, active]);
   const [loading, setLoading] = useState(true);
   const [modelError, setModelError] = useState("");
   const [zoom, setZoom] = useState(100);
@@ -243,16 +346,46 @@ export default function TaskWorkspace({
   const [actionError, setActionError] = useState("");
   const [imported, setImported] = useState(null);
   const [notice, setNotice] = useState("");
+  const [improving, setImproving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [improvement, setImprovement] = useState("restructure");
+  const [captureRequested, setCaptureRequested] = useState(false);
+  const actionLock = useRef(false);
+  const previousStatus = useRef(job?.status);
+  useEffect(() => {
+    if (job?.status !== previousStatus.current) {
+      setTab(
+        job?.status === "succeeded"
+          ? "design"
+          : job?.status === "awaiting_review"
+            ? "review"
+            : "activity",
+      );
+      setPanel(job?.status === "succeeded" ? "overview" : "task");
+      setInspectorOpen(!matchMedia("(max-width: 1000px)").matches);
+      previousStatus.current = job?.status;
+    }
+  }, [job?.status]);
+  useEffect(() => {
+    if (captureRequested && tab === "design" && !loading && !modelError) {
+      const image = viewer.current?.snapshot();
+      if (image) {
+        setCapture(image);
+        setCaptureRequested(false);
+      }
+    }
+  }, [captureRequested, tab, loading, modelError]);
   const viewer = useRef(null),
     picker = useRef(null),
     host = useRef(null);
-  const settings = state.settings || defaultSettings;
+  const settings = { ...defaultSettings, ...state.settings };
   const title =
-    job?.name.replace(/\.(png|jpe?g|webp)$/i, "") ||
+    job?.name
+      .replace(/(?: · (?:优化方案|效果更新|结构复核))+$/, "")
+      .replace(/\.(png|jpe?g|webp)$/i, "") ||
     imported?.name ||
-    "自然主义 · 示例空间";
-  const url =
-    job?.result?.model_url || imported?.url || "/models/apartment.glb";
+    showcase.title;
+  const url = job?.result?.model_url || imported?.url || showcase.model_url;
   const currentResult = job?.result;
   const reset = (top = false) => {
     setView(top ? "top" : "perspective");
@@ -264,15 +397,19 @@ export default function TaskWorkspace({
       category,
       selected: { ...s.selected, [category]: material.id },
     }));
-  const action = async (verb) => {
+  const action = async (verb, changes) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setBusy(true);
     setActionError("");
     try {
-      await projects[verb](id);
+      await projects[verb](id, changes);
+      setImproving(false);
     } catch (e) {
       setActionError(e.message);
     } finally {
       setBusy(false);
+      actionLock.current = false;
     }
   };
   const exportImage = () => {
@@ -306,79 +443,84 @@ export default function TaskWorkspace({
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [undo, redo, active, tab]);
+  const heading = (
+    <header className="task-heading">
+      <div className="project-title">
+        <h1 title={job?.name || title}>{title}</h1>
+        <StatusBadge status={job?.status} />
+      </div>
+      {job?.status === "succeeded" && (
+        <div className="project-actions">
+          {tab !== "edit" && (
+            <button
+              type="button"
+              className="primary-button layout-edit-button"
+              title="手动调整墙体、门窗、家具和灯具"
+              onClick={() => setTab("edit")}
+            >
+              <PencilRuler size={16} />
+              <span>手动调整布局</span>
+            </button>
+          )}
+          <button
+            className="secondary-button export-button"
+            onClick={() => setTab("assets")}
+          >
+            <Download size={15} /> <span>导出成果</span>
+          </button>
+        </div>
+      )}
+    </header>
+  );
   return (
     <div
-      className={`task-workspace ${tab === "edit" ? "is-editing" : ""}`}
+      className={`task-workspace ${tab === "edit" ? "is-editing" : ""} ${reviewing ? "is-reviewing" : ""}`}
       ref={host}
       hidden={!active}
     >
-      <header className="task-heading">
-        <div>
-          <div className="task-heading-meta">
-            <span>
-              {job ? `任务 #${id.slice(0, 8).toUpperCase()}` : "示例工作区"}
-            </span>
-            <StatusBadge status={job?.status} />
-            {job?.edited_of ? (
-              <span>人工设计版本</span>
-            ) : (
-              job?.rebuild_of && <span>家具更新</span>
-            )}
-          </div>
-          <h1>{title}</h1>
-          <p>
-            {job
-              ? `${new Date(job.created_at).toLocaleString("zh-CN")} 创建 · ${currentResult?.title || job.stage}`
-              : "试试不同的光照与材质，探索空间的更多可能。"}
-          </p>
-        </div>
-        <div className="heading-actions">
-          {job?.status === "succeeded" && (
-            <button
-              className={`secondary-button ${tab === "edit" ? "edit-active" : ""}`}
-              onClick={() => setTab("edit")}
-            >
-              <PencilRuler size={15} />
-              人工设计
-            </button>
-          )}
-          {hasModel && (
-            <button
-              className="secondary-button"
-              onClick={() => {
-                setTab("design");
-                if (tab === "design") exportImage();
-                else setNotice("已打开设计预览，点击相机即可导出当前效果。");
-              }}
-            >
-              <Camera size={15} />
-              导出效果图
-            </button>
-          )}
-          {job?.status === "succeeded" ? (
-            <button className="primary-button" onClick={() => setTab("assets")}>
-              <FolderDown size={15} />
-              交付成果
-            </button>
-          ) : !job ? (
-            <button className="primary-button" onClick={onCreate}>
-              <Plus size={15} />
-              生成我的户型
-            </button>
-          ) : null}
-        </div>
-      </header>
+      {active && headingHost
+        ? createPortal(heading, headingHost)
+        : !headingHost && heading}
+      {storageError && (
+        <p className="connection-alert" role="status">
+          {storageError}
+        </p>
+      )}
       {tab === "edit" && job && (
         <ManualEditor
           key={job.id}
           job={job}
           active={active}
           projects={projects}
-          onClose={() => setTab("design")}
+          onClose={() =>
+            setTab(reviewing ? "review" : hasModel ? "design" : "activity")
+          }
         />
       )}
-      <div className="workspace-columns" hidden={tab === "edit"}>
+      {reviewing && tab !== "edit" && (
+        <StructureReview
+          job={job}
+          projects={projects}
+          onEdit={() => setTab("edit")}
+        />
+      )}
+      <div
+        className={`workspace-columns ${inspectorOpen ? "has-inspector" : "preview-only"}`}
+        hidden={tab === "edit" || reviewing}
+      >
         <div className="design-column">
+          {currentResult?.delivery_notice && (
+            <div className="delivery-notice" role="status">
+              <TriangleAlert size={17} />
+              <p>{currentResult.delivery_notice}</p>
+              <button
+                className="text-button"
+                onClick={() => setImproving(true)}
+              >
+                完善家具 <ArrowRight size={13} />
+              </button>
+            </div>
+          )}
           <nav className="workspace-tabs" aria-label="任务工作区内容">
             {[
               ["design", Box, "设计预览"],
@@ -392,16 +534,72 @@ export default function TaskWorkspace({
                   key={key}
                   className={tab === key ? "active" : ""}
                   aria-pressed={tab === key}
+                  aria-label={label}
                   onClick={() => setTab(key)}
                 >
                   <Icon size={15} />
                   {label}
-                  {key === "assets" && job?.result && <span>4</span>}
+                  {key === "assets" && job?.result && (
+                    <span>
+                      {3 +
+                        Number(!!job.result.blend_url) +
+                        Number(!!job.result.consistency_url) +
+                        Number(!!job.result.quality_url)}
+                    </span>
+                  )}
                 </button>
               ))}
-            <span className="workspace-tabs-end">
-              {hasModel ? "设计工作区" : "生成工作区"}
-            </span>
+            <div className="workspace-tools">
+              {hasModel && (
+                <button
+                  aria-label="外观设置"
+                  aria-expanded={inspectorOpen && panel === "design"}
+                  aria-controls={`inspector-${id}`}
+                  className={
+                    inspectorOpen && panel === "design" ? "active" : ""
+                  }
+                  onClick={() => {
+                    setInspectorOpen(!(inspectorOpen && panel === "design"));
+                    setPanel("design");
+                  }}
+                >
+                  <SlidersHorizontal size={15} />
+                  <span className="tool-label">外观设置</span>
+                </button>
+              )}
+              {job && (
+                <button
+                  aria-label="方案概览"
+                  aria-expanded={inspectorOpen && panel === "overview"}
+                  aria-controls={`inspector-${id}`}
+                  className={
+                    inspectorOpen && panel === "overview" ? "active" : ""
+                  }
+                  onClick={() => {
+                    setPanel("overview");
+                    setInspectorOpen(!(inspectorOpen && panel === "overview"));
+                  }}
+                >
+                  <Box size={15} />
+                  <span className="tool-label">方案概览</span>
+                </button>
+              )}
+              {job && (
+                <button
+                  aria-label="任务详情"
+                  aria-expanded={inspectorOpen && panel === "task"}
+                  aria-controls={`inspector-${id}`}
+                  className={inspectorOpen && panel === "task" ? "active" : ""}
+                  onClick={() => {
+                    setInspectorOpen(!(inspectorOpen && panel === "task"));
+                    setPanel("task");
+                  }}
+                >
+                  <Info size={15} />
+                  <span className="tool-label">任务详情</span>
+                </button>
+              )}
+            </div>
           </nav>
           <div
             className={`work-surface ${tab === "design" ? "canvas-surface" : ""}`}
@@ -412,7 +610,9 @@ export default function TaskWorkspace({
                   <Viewport
                     ref={viewer}
                     url={url}
-                    active={active && tab === "design"}
+                    active={
+                      active && tab === "design" && !(mobile && inspectorOpen)
+                    }
                     state={state}
                     settings={settings}
                     onLoading={setLoading}
@@ -433,6 +633,26 @@ export default function TaskWorkspace({
                     </small>
                   </div>
                   <div className="canvas-toolbar">
+                    <div className="quick-lighting" aria-label="预览光照">
+                      {presets.map((preset) => {
+                        const Icon = lightIcons[preset.id];
+                        return (
+                          <button
+                            key={preset.id}
+                            aria-label={preset.name}
+                            aria-pressed={state.preset === preset.id}
+                            className={
+                              state.preset === preset.id ? "active" : ""
+                            }
+                            onClick={() => update({ preset: preset.id })}
+                          >
+                            <Icon size={15} />
+                            <span>{preset.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <span />
                     <IconButton
                       label="撤销"
                       icon={Undo2}
@@ -463,6 +683,36 @@ export default function TaskWorkspace({
                       }}
                     />
                   </div>
+                  <div
+                    className="wall-display-options"
+                    role="group"
+                    aria-label="墙体显示方式"
+                  >
+                    <div className="wall-display-switch">
+                      {[
+                        [true, "剖切展示", "剖切展示", "查看室内布局与家具"],
+                        [false, "完整墙体", "完整墙体", "查看完整墙高与门窗"],
+                      ].map(([cutaway, label, accessibleLabel, title]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          aria-label={accessibleLabel}
+                          aria-pressed={settings.cutaway === cutaway}
+                          title={title}
+                          className={
+                            settings.cutaway === cutaway ? "active" : ""
+                          }
+                          disabled={loading || !!modelError}
+                          onClick={() => {
+                            if (settings.cutaway !== cutaway)
+                              update({ settings: { ...settings, cutaway } });
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="canvas-controls">
                     <div>
                       <button
@@ -483,7 +733,7 @@ export default function TaskWorkspace({
                     <IconButton
                       label="居中并适配户型"
                       icon={Focus}
-                      onClick={() => reset()}
+                      onClick={() => reset(view === "top")}
                     />
                     <span />
                     <IconButton
@@ -499,8 +749,8 @@ export default function TaskWorkspace({
                     />
                   </div>
                   <div className="canvas-caption">
-                    <span>拖动旋转 · 滚轮缩放 · 右键平移</span>
-                    <span>实时三维预览</span>
+                    <span>拖动旋转 · 滚轮缩放</span>
+                    <span>右键平移</span>
                   </div>
                   {loading && (
                     <div className="canvas-loading">
@@ -575,16 +825,15 @@ export default function TaskWorkspace({
               <Activity job={job} events={projects.events} />
             )}
             {tab === "assets" && (
-              <Deliverables job={job} onCapture={() => setTab("design")} />
+              <Deliverables
+                job={job}
+                onCapture={() => {
+                  setCaptureRequested(true);
+                  setTab("design");
+                }}
+              />
             )}
           </div>
-          {tab === "design" && hasModel && (
-            <MaterialDock
-              state={state}
-              onSelect={selectMaterial}
-              onCategory={(category) => update({ category })}
-            />
-          )}
           <div className="workspace-bottom">
             <span>
               <i />
@@ -599,8 +848,18 @@ export default function TaskWorkspace({
             </span>
           </div>
         </div>
-        <aside className="inspector">
+        <aside
+          className="inspector"
+          id={`inspector-${id}`}
+          hidden={!inspectorOpen}
+        >
           <div className="inspector-tabs">
+            <button
+              className={panel === "overview" ? "active" : ""}
+              onClick={() => setPanel("overview")}
+            >
+              概览
+            </button>
             <button
               className={panel === "design" ? "active" : ""}
               onClick={() => setPanel("design")}
@@ -615,10 +874,158 @@ export default function TaskWorkspace({
               <ListChecks size={14} />
               任务
             </button>
+            <button
+              className="inspector-close"
+              aria-label="收起设置面板"
+              onClick={() => setInspectorOpen(false)}
+            >
+              <X size={17} />
+            </button>
           </div>
           <div className="inspector-content">
-            {panel === "design" ? (
+            {panel === "overview" ? (
+              <div className="overview-panel">
+                <div className="overview-heading">
+                  <span className="eyebrow">空间方案</span>
+                  <h2>
+                    {job || imported
+                      ? "你的空间方案"
+                      : "你的家，可以这样开始。"}
+                  </h2>
+                  <p>
+                    {job || imported
+                      ? "从原始户型，查看完整空间。"
+                      : "先逛逛这个家，再创造你的。"}
+                  </p>
+                </div>
+                {job?.source_url ? (
+                  <button
+                    className="source-preview"
+                    aria-label="查看原始户型图"
+                    onClick={() => {
+                      setTab("source");
+                      if (mobile) setInspectorOpen(false);
+                    }}
+                  >
+                    <img src={job.source_url} alt="当前方案的原始户型图" />
+                    <span>
+                      原图对照 <ArrowUpRight size={14} />
+                    </span>
+                  </button>
+                ) : (
+                  <div className="sample-overview">
+                    <span className="sample-eyebrow">THE FOREST HOME</span>
+                    <h3>林间暖居</h3>
+                    <p>阳光、木色，以及慢下来的生活。</p>
+                    <div
+                      className="sample-palette"
+                      aria-label="奶油白、胡桃木、鼠尾草绿配色"
+                    >
+                      <i style={{ background: "#e9e1ce" }} />
+                      <i style={{ background: "#79583e" }} />
+                      <i style={{ background: "#87947a" }} />
+                      <span>自然 · 温润 · 松弛</span>
+                    </div>
+                    <div className="sample-features">
+                      <span>开放客餐厅</span>
+                      <span>岛台厨房</span>
+                      <span>独立书房</span>
+                      <span>绿植露台</span>
+                    </div>
+                  </div>
+                )}
+                <div className="overview-stats">
+                  <div>
+                    <strong>
+                      {currentResult?.area ??
+                        (!job && !imported ? showcase.area : "—")}
+                      <small>㎡</small>
+                    </strong>
+                    <span>户型面积</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {currentResult?.room_count ??
+                        (!job && !imported ? showcase.room_count : "—")}
+                    </strong>
+                    <span>空间数量</span>
+                  </div>
+                </div>
+                {currentResult && (
+                  <div className="overview-verification">
+                    <h3>结构核对</h3>
+                    <p>
+                      <span
+                        className={`review-dot ${currentResult.consistency?.source_reviewed ? "verified" : "pending"}`}
+                      />
+                      {currentResult.consistency?.source_reviewed
+                        ? "原图结构已人工核对"
+                        : "原图结构待人工核对"}
+                    </p>
+                    <p>
+                      <span
+                        className={`review-dot ${currentResult.consistency?.geometry_verified ? "verified" : "pending"}`}
+                      />
+                      {currentResult.consistency?.geometry_verified
+                        ? "三维几何校验通过"
+                        : "三维几何尚未校验"}
+                    </p>
+                    {!!currentResult.quality?.issues.length && (
+                      <button
+                        className="text-button"
+                        onClick={() => setPanel("task")}
+                      >
+                        {currentResult.quality.issues.length} 处问题待查看{" "}
+                        <ArrowRight size={13} />
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="overview-actions">
+                  {!job && (
+                    <button
+                      className="primary-button full-width"
+                      onClick={onCreate}
+                    >
+                      <Plus size={16} />
+                      生成我的户型
+                    </button>
+                  )}
+                  <button
+                    className="secondary-button full-width"
+                    onClick={() => setPanel("design")}
+                  >
+                    <SlidersHorizontal size={16} />
+                    调整外观
+                  </button>
+                  {job?.status === "succeeded" && (
+                    <button
+                      className="text-button full-width"
+                      disabled={busy}
+                      onClick={() => setImproving(true)}
+                    >
+                      改进方案 <ArrowRight size={14} />
+                    </button>
+                  )}
+                </div>
+                <p className="overview-footnote">
+                  {job ? "当前任务与成果保存在本机" : "示例空间可自由探索"}
+                </p>
+              </div>
+            ) : panel === "design" ? (
               <>
+                {hasModel && (
+                  <div className="inspector-section inspector-materials">
+                    <div className="section-heading">
+                      <h2>材质与配色</h2>
+                    </div>
+                    <MaterialDock
+                      state={state}
+                      onSelect={selectMaterial}
+                      onCategory={(category) => update({ category })}
+                    />
+                  </div>
+                )}
                 <div className="inspector-section">
                   <div className="section-heading">
                     <h2>空间概览</h2>
@@ -627,13 +1034,17 @@ export default function TaskWorkspace({
                   <div className="space-stats">
                     <div>
                       <strong>
-                        {currentResult?.area ?? (!job && !imported ? 86 : "—")}
+                        {currentResult?.area ??
+                          (!job && !imported ? showcase.area : "—")}
                         <small>㎡</small>
                       </strong>
                       <span>建筑轮廓面积</span>
                     </div>
                     <div>
-                      <strong>{currentResult?.room_count ?? "—"}</strong>
+                      <strong>
+                        {currentResult?.room_count ??
+                          (!job && !imported ? showcase.room_count : "—")}
+                      </strong>
                       <span>识别空间</span>
                     </div>
                   </div>
@@ -644,9 +1055,35 @@ export default function TaskWorkspace({
                   </div>
                 ) : (
                   <>
+                    {currentResult?.quality && (
+                      <div className="inspector-section">
+                        <div className="section-heading">
+                          <h2>设计检查</h2>
+                          <Check size={14} />
+                        </div>
+                        <p className="verification-state">
+                          {currentResult.consistency?.source_reviewed
+                            ? "原图结构已人工核对"
+                            : "原图结构尚未人工核对"}{" "}
+                          ·{" "}
+                          {currentResult.consistency?.geometry_verified
+                            ? "模型截面校验通过"
+                            : "模型尚未执行截面校验"}
+                        </p>
+                        <p className="field-note">
+                          {currentResult.quality.furniture_count} 件家具 ·{" "}
+                          {currentResult.quality.light_count} 盏灯
+                        </p>
+                        <p className="field-note">
+                          {currentResult.quality.issues.length
+                            ? `有 ${currentResult.quality.issues.length} 处结构或摆放问题，详见任务说明。`
+                            : "未检测到明显的家具穿墙、重叠或堵门。"}
+                        </p>
+                      </div>
+                    )}
                     <div className="inspector-section">
                       <div className="section-heading">
-                        <h2>白天 / 夜晚</h2>
+                        <h2>环境与照明</h2>
                         <span>
                           {presets.find((p) => p.id === state.preset)?.time}
                         </span>
@@ -656,12 +1093,14 @@ export default function TaskWorkspace({
                           const Icon = lightIcons[preset.id];
                           return (
                             <button
+                              type="button"
                               key={preset.id}
+                              aria-label={`切换到${preset.name}`}
+                              aria-pressed={state.preset === preset.id}
+                              onClick={() => update({ preset: preset.id })}
                               className={
                                 state.preset === preset.id ? "active" : ""
                               }
-                              aria-pressed={state.preset === preset.id}
-                              onClick={() => update({ preset: preset.id })}
                             >
                               {thumbs[preset.id] ? (
                                 <img src={thumbs[preset.id]} alt="" />
@@ -681,7 +1120,9 @@ export default function TaskWorkspace({
                       </div>
                       {state.preset === "night" && (
                         <p className="field-note">
-                          夜晚由人工设计中摆放的灯具照明。新增或修改灯具后保存三维版本即可查看。
+                          {id === "sample"
+                            ? "切换夜晚，查看空间的暖光照明效果。"
+                            : "夜晚由方案中的灯具照明。点击顶部「手动调整布局」可调整灯位、亮度和色温。旧任务可更新三维效果以补充照明。"}
                         </p>
                       )}
                       <div className="slider-heading">
@@ -799,7 +1240,7 @@ export default function TaskWorkspace({
                             }[job.options.style]
                           }
                         </dd>
-                        <dt>空间复核</dt>
+                        <dt>AI 结构复核</dt>
                         <dd>
                           {job.options.collaboration ? "已启用" : "未启用"}
                         </dd>
@@ -873,23 +1314,29 @@ export default function TaskWorkspace({
               </>
             )}
           </div>
-          {job && (
+          {job && job.status !== "succeeded" && (
             <div className="inspector-footer">
+              {job.can_recover_structure && (
+                <>
+                  <p className="field-note">
+                    识别结果已保留，可以直接核对，无需重新识别。
+                  </p>
+                  <button
+                    className="primary-button full-width"
+                    disabled={busy}
+                    onClick={() => action("retry", { reuse_structure: true })}
+                  >
+                    <PencilRuler size={14} />
+                    继续核对已识别结构
+                  </button>
+                </>
+              )}
               {actionError && (
                 <p className="field-error" role="alert">
                   {actionError}
                 </p>
               )}
-              {job.status === "succeeded" ? (
-                <button
-                  className="secondary-button full-width"
-                  disabled={busy}
-                  onClick={() => action("rebuild")}
-                >
-                  <RotateCcw size={14} />
-                  {busy ? "正在创建任务…" : "新建精细家具任务"}
-                </button>
-              ) : !terminal(job.status) ? (
+              {!terminal(job.status) ? (
                 <button
                   className="secondary-button full-width"
                   disabled={busy}
@@ -900,19 +1347,19 @@ export default function TaskWorkspace({
                 </button>
               ) : (
                 <button
-                  className="primary-button full-width"
+                  className={`${job.can_recover_structure ? "secondary-button" : "primary-button"} full-width`}
                   disabled={busy}
-                  onClick={() => action("retry")}
+                  onClick={() => {
+                    if (job.rebuild_of && !job.refine_of && !job.restructure_of)
+                      action("retry");
+                    else setRetrying(true);
+                  }}
                 >
                   <RotateCcw size={14} />
                   新建重试任务
                 </button>
               )}
-              <small>
-                {job.status === "succeeded"
-                  ? "复用布局生成新任务，保留当前成果"
-                  : "当前任务与其他生成相互独立"}
-              </small>
+              <small>当前任务与其他生成相互独立</small>
             </div>
           )}
         </aside>
@@ -921,6 +1368,66 @@ export default function TaskWorkspace({
         <div className="toast" role="status">
           {notice}
         </div>
+      )}
+      {improving && (
+        <Modal
+          title="改进当前方案"
+          onClose={() => !busy && setImproving(false)}
+          className="improvement-dialog"
+        >
+          <fieldset disabled={busy} className="improvement-options">
+            <legend>选择这次需要改进的内容</legend>
+            {[
+              [
+                "restructure",
+                "核对户型结构",
+                "重新对照原图检查墙体、房间和门窗，确认后生成新版本。",
+              ],
+              [
+                "refine",
+                "重新布置家具",
+                "保留墙体与门窗，重新规划家具和照明。",
+              ],
+              [
+                "rebuild",
+                "更新三维效果",
+                "使用当前布局重新建模，更新材质和构件细节。",
+              ],
+            ].map(([value, label, description]) => (
+              <label key={value}>
+                <input
+                  type="radio"
+                  name="improvement"
+                  checked={improvement === value}
+                  onChange={() => setImprovement(value)}
+                />
+                <span>
+                  <b>{label}</b>
+                  <small>{description}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          {actionError && (
+            <p role="alert" className="field-error">
+              {actionError}
+            </p>
+          )}
+          <button
+            className="primary-button full-width"
+            disabled={busy}
+            onClick={() => action(improvement)}
+          >
+            {busy ? "正在创建版本…" : "创建改进版本"}
+          </button>
+        </Modal>
+      )}
+      {retrying && job && (
+        <RetryDialog
+          job={job}
+          projects={projects}
+          onClose={() => setRetrying(false)}
+        />
       )}
       {capture && (
         <Modal

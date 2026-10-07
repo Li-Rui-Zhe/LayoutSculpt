@@ -6,8 +6,11 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
+import { installCutaway, updateCutaway } from "./cutaway.js";
 import { installFixtureLights, updateFixtureLights } from "./fixtureLights.js";
-import { materials, presets } from "../catalog.js";
+import { materials, presets, showcase } from "../catalog.js";
+import { frameBounds, visualCenter, perspectiveCenter } from "./viewFraming.js";
 
 function disposeModel(root) {
   const geometries = new Set(),
@@ -50,14 +53,13 @@ export class StudioScene {
       preserveDrawingBuffer: true,
     });
     this.renderer.domElement.dataset.rendererId = crypto.randomUUID();
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     host.appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#19262c");
-    this.scene.fog = new THREE.FogExp2("#19262c", 0.014);
     const pmrem = new THREE.PMREMGenerator(this.renderer),
       room = new RoomEnvironment();
     this.environment = pmrem.fromScene(room, 0.04);
@@ -65,7 +67,16 @@ export class StudioScene {
     this.scene.environmentIntensity = 0.32;
     room.dispose();
     pmrem.dispose();
-    this.camera = new THREE.OrthographicCamera(-10, 10, 8, -8, 0.1, 200);
+    this.orthographicCamera = new THREE.OrthographicCamera(
+      -10,
+      10,
+      8,
+      -8,
+      0.1,
+      200,
+    );
+    this.perspectiveCamera = new THREE.PerspectiveCamera(22, 1, 0.1, 200);
+    this.camera = this.perspectiveCamera;
     this.camera.position.set(12, 14, 18);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 0.55, 0);
@@ -76,6 +87,8 @@ export class StudioScene {
     this.controls.zoomSpeed = 0.7;
     this.controls.minZoom = 0.65;
     this.controls.maxZoom = 2.5;
+    this.controls.minDistance = 3;
+    this.controls.maxDistance = 100;
     this.controls.minPolarAngle = 0.08;
     this.controls.maxPolarAngle = Math.PI * 0.43;
     this.controls.screenSpacePanning = false;
@@ -88,8 +101,12 @@ export class StudioScene {
       this.interacting = false;
     });
     this.controls.addEventListener("change", () => {
+      updateCutaway(this.model, this.camera, {
+        enabled: this.cutaway !== false,
+        top: this.topView,
+      });
       this.dirty = true;
-      const zoom = Math.round(this.camera.zoom * 100);
+      const zoom = this.zoomPercent();
       if (zoom !== this.lastZoom) {
         this.lastZoom = zoom;
         this.callbacks.onZoom?.(zoom);
@@ -103,14 +120,15 @@ export class StudioScene {
       host.clientWidth,
       host.clientHeight,
     );
-    this.ao.blendIntensity = 0.65;
+    this.ao.blendIntensity = 0.5;
     this.ao.updateGtaoMaterial({
-      radius: 0.4,
-      thickness: 1,
+      radius: 0.24,
+      thickness: 0.6,
       distanceExponent: 1.5,
     });
     this.composer.addPass(this.ao);
     this.composer.addPass(new OutputPass());
+    this.composer.addPass(new SMAAPass());
     this.hemi = new THREE.HemisphereLight("#dce8ee", "#64503a", 0.8);
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight("#ffce95", 3.7);
@@ -126,6 +144,7 @@ export class StudioScene {
     });
     this.sun.shadow.normalBias = 0.04;
     this.sun.shadow.bias = -0.0002;
+    this.sun.shadow.radius = 3;
     this.scene.add(this.sun, this.sun.target);
     this.fill = new THREE.DirectionalLight("#b7e3f0", 1.1);
     this.fill.position.set(8, 5, 3);
@@ -133,9 +152,9 @@ export class StudioScene {
     this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
       new THREE.MeshStandardMaterial({
-        color: "#1c292e",
-        roughness: 0.84,
-        metalness: 0.1,
+        color: "#dce2dd",
+        roughness: 1,
+        metalness: 0,
       }),
     );
     this.ground.rotation.x = -Math.PI / 2;
@@ -225,20 +244,45 @@ export class StudioScene {
       this.composer.setSize(w, h);
     }
     const aspect = w / h;
-    const diagonal = Math.hypot(this.modelSize.x, this.modelSize.z);
-    // 按模型包围盒适配独立画布，留出完整旋转所需的空间。
-    const projectedHeight = this.topView
-      ? this.modelSize.z
-      : diagonal * 0.76 + this.modelSize.y * 0.66;
-    const projectedWidth = this.topView ? this.modelSize.x : diagonal;
-    const v =
-      Math.max(projectedHeight / 2, projectedWidth / (2 * aspect)) * 1.16;
+    const direction = this.camera.position
+      .clone()
+      .sub(this.controls.target)
+      .normalize();
+    const framing = frameBounds(
+      this.modelSize,
+      direction,
+      aspect,
+      this.camera.fov || 35,
+      1.12,
+      this.framingPoints,
+    );
+    const v = framing.halfHeight;
     Object.assign(this.camera, {
       left: -v * aspect,
       right: v * aspect,
       top: v,
       bottom: -v,
+      aspect,
     });
+    this.frameHeight = v;
+    if (this.camera.isPerspectiveCamera) {
+      const distance = framing.distance;
+      const previousDistance = this.camera.position.distanceTo(
+        this.controls.target,
+      );
+      const relativeZoom =
+        !this.fittingCamera && this.fitDistance
+          ? this.fitDistance / previousDistance
+          : 1;
+      if (this.fittingCamera || this.fitDistance) {
+        this.camera.position
+          .copy(this.controls.target)
+          .addScaledVector(direction, distance / relativeZoom);
+        this.fitDistance = distance;
+      }
+      this.controls.minDistance = Math.max(1, this.modelSize.length() * 0.3);
+      this.controls.maxDistance = Math.max(60, distance * 3);
+    }
     this.camera.updateProjectionMatrix();
     this.dirty = true;
     this.thumbnailsDue = performance.now() + 400;
@@ -277,12 +321,27 @@ export class StudioScene {
     this.modelUrl = url;
     this.originals = entry.originals || new Map();
     if (!entry.originals) {
-      installFixtureLights(this.model);
+      installCutaway(this.model);
+      installFixtureLights(this.model, {
+        sample: url === "/models/apartment.glb" || url === showcase.model_url,
+      });
+      const lightSurfaces = new Set(
+        (this.model.userData.designLights || []).flatMap(
+          ({ surfaces }) => surfaces || [],
+        ),
+      );
       this.model.traverse((obj) => {
         if (!obj.isMesh) return;
-        obj.castShadow = !obj.userData.fixture_id;
+        obj.castShadow = !obj.userData.fixture_id && !lightSurfaces.has(obj);
         obj.receiveShadow = true;
         [obj.material].flat().forEach((m) => {
+          for (const texture of [m.map, m.normalMap]) {
+            if (texture)
+              texture.anisotropy = Math.min(
+                8,
+                this.renderer.capabilities.getMaxAnisotropy(),
+              );
+          }
           if (!this.originals.has(m.uuid))
             this.originals.set(m.uuid, {
               material: m,
@@ -309,8 +368,21 @@ export class StudioScene {
     this.controls.cursor.copy(this.center);
     this.controls.maxTargetRadius =
       Math.hypot(this.modelSize.x, this.modelSize.z) * 0.3;
-    this.camera.far = Math.max(200, this.modelSize.length() * 6);
+    for (const camera of [
+      this.camera,
+      this.orthographicCamera,
+      this.perspectiveCamera,
+    ].filter(Boolean))
+      camera.far = Math.max(200, this.modelSize.length() * 6);
     this.scene.add(this.model);
+    const shadowSize = Math.hypot(this.modelSize.x, this.modelSize.z) * 0.6 + 1;
+    Object.assign(this.sun.shadow.camera, {
+      left: -shadowSize,
+      right: shadowSize,
+      top: shadowSize,
+      bottom: -shadowSize,
+    });
+    this.sun.shadow.camera.updateProjectionMatrix();
     this.ground.position.y = -0.04;
     this.guide.position.y = 0.445;
     this.guide.scale.set(this.modelSize.x / 10.4, 1, this.modelSize.z / 8);
@@ -339,7 +411,7 @@ export class StudioScene {
     this.renderer.domElement.style.visibility = "visible";
     this.callbacks.onError?.("");
     this.callbacks.onView?.(this.topView ? "top" : "perspective");
-    this.callbacks.onZoom?.(Math.round(this.camera.zoom * 100));
+    this.callbacks.onZoom?.(this.zoomPercent());
     this.callbacks.onLoading?.(false);
     this.dirty = false;
   }
@@ -388,15 +460,31 @@ export class StudioScene {
     this.sun.color.set(p.color);
     this.sun.position.set(...p.position.map((v) => v * 1.8));
     this.sun.intensity = p.intensity * (0.45 + (level / 100) * 0.75);
-    this.hemi.intensity = p.ambient;
+    this.hemi.intensity = p.ambient * (0.5 + level / 100);
+    this.hemi.color.set(id === "night" ? "#b4c6de" : "#dce8ee");
+    this.hemi.groundColor.set(id === "night" ? "#b9a28e" : "#64503a");
     this.renderer.toneMappingExposure = p.exposure;
-    this.fill.intensity = id === "night" ? 0.06 : 1.1;
-    this.scene.environmentIntensity = id === "night" ? 0.06 : 0.32;
+    this.fill.intensity = id === "night" ? 0.12 : 0.85;
+    this.scene.environmentIntensity = id === "night" ? 0.18 : 0.4;
+    this.scene.background.set(id === "night" ? "#45555e" : "#d8dcd7");
+    this.ground.material.color.set(id === "night" ? "#394852" : "#dce2dd");
+    if (this.modelUrl === showcase.model_url) {
+      this.scene.background.set(id === "night" ? "#253a35" : "#eee5d5");
+      this.ground.material.color.set(id === "night" ? "#253a35" : "#eee5d5");
+      this.sun.position.set(-8, 10, 6);
+      this.sun.intensity *= id === "night" ? 1 : 1.05;
+      this.hemi.intensity *= id === "night" ? 1 : 0.5;
+      this.fill.intensity = id === "night" ? 0.12 : 0.35;
+      this.scene.environmentIntensity = id === "night" ? 0.22 : 0.38;
+    }
     updateFixtureLights(this.model, id === "night");
     this.renderer.domElement.dataset.lightingPreset =
       id === "night" ? "night" : "midday";
     this.renderer.domElement.dataset.designLightCount = String(
       this.model?.userData.designLights?.length || 0,
+    );
+    this.renderer.domElement.dataset.hiddenFixtureVisualCount = String(
+      this.model?.userData.hiddenFixtureVisualCount || 0,
     );
   }
 
@@ -490,7 +578,13 @@ export class StudioScene {
     return this.surfaceTextures.get(key);
   }
 
-  settings({ shadows = true, rotate = false, grid = true }) {
+  settings({ shadows = true, rotate = false, grid = true, cutaway = true }) {
+    this.cutaway = cutaway;
+    this.renderer.domElement.dataset.wallView = cutaway ? "cutaway" : "full";
+    updateCutaway(this.model, this.camera, {
+      enabled: cutaway,
+      top: this.topView,
+    });
     if (this.renderer.shadowMap.enabled !== shadows) {
       this.renderer.shadowMap.enabled = shadows;
       this.scene.traverse((o) => {
@@ -509,22 +603,103 @@ export class StudioScene {
     this.controls.enableDamping = false;
     this.controls.update();
     this.topView = top;
+    const nextCamera = top ? this.orthographicCamera : this.perspectiveCamera;
+    if (nextCamera && nextCamera !== this.camera) {
+      this.camera = nextCamera;
+      this.controls.object = nextCamera;
+      for (const pass of this.composer.passes || []) {
+        if ("camera" in pass) pass.camera = nextCamera;
+      }
+      if (this.ao?.gtaoMaterial) {
+        this.ao.gtaoMaterial.defines.PERSPECTIVE_CAMERA =
+          nextCamera.isPerspectiveCamera ? 1 : 0;
+        this.ao.gtaoMaterial.needsUpdate = true;
+      }
+    }
     this.controls.enableRotate = !top;
     this.controls.minPolarAngle = top ? 0 : 0.08;
     this.controls.target.copy(this.center);
     const distance = Math.max(20, this.modelSize.length() * 2);
-    const offset = new THREE.Vector3(...(top ? [0, 1, 0.00001] : [1, 1.3, 1.5]))
+    const wideCanvas =
+      (this.host?.clientWidth || this.width || 1) /
+        (this.host?.clientHeight || this.height || 1) >=
+      1.2;
+    const longAlongZ = this.modelSize.z > this.modelSize.x;
+    const showZAcross = wideCanvas ? longAlongZ : !longAlongZ;
+    const offset = new THREE.Vector3(
+      ...(top
+        ? [0, 1, 0.00001]
+        : this.modelUrl === showcase.model_url
+          ? [1.1, 2.4, 2.6]
+          : showZAcross
+            ? [1.85, 3.1, 0.55]
+            : [0.55, 3.1, 1.85]),
+    )
       .normalize()
       .multiplyScalar(distance);
-    this.camera.position.copy(this.center).add(offset);
+    updateCutaway(this.model, this.camera, {
+      enabled: this.cutaway !== false,
+      top,
+    });
+    const points = [];
+    this.model?.updateMatrixWorld(true);
+    this.model?.traverseVisible((obj) => {
+      if (!obj.isMesh || !obj.geometry) return;
+      obj.geometry.computeBoundingBox();
+      const box = obj.geometry.boundingBox;
+      if (!box || box.isEmpty()) return;
+      for (const x of [box.min.x, box.max.x])
+        for (const y of [box.min.y, box.max.y])
+          for (const z of [box.min.z, box.max.z]) {
+            points.push(
+              new THREE.Vector3(x, y, z)
+                .applyMatrix4(obj.matrixWorld)
+                .sub(this.center),
+            );
+          }
+    });
+    const aspect =
+      (this.host?.clientWidth || this.width || 1) /
+      (this.host?.clientHeight || this.height || 1);
+    const shift = points.length
+      ? top
+        ? visualCenter(points, offset)
+        : perspectiveCenter(points, offset, aspect, this.camera.fov || 22)
+      : new THREE.Vector3();
+    this.framingPoints = points.length
+      ? points.map((point) => point.sub(shift))
+      : null;
+    this.controls.target.copy(this.center).add(shift);
+    this.camera.position.copy(this.controls.target).add(offset);
     this.camera.zoom = 1;
+    this.fittingCamera = true;
     this.resize();
+    this.fittingCamera = false;
     this.controls.update();
     this.controls.enableDamping = true;
     this.controls.autoRotate = this.autoRotate && !top;
+    updateCutaway(this.model, this.camera, {
+      enabled: this.cutaway !== false,
+      top,
+    });
     this.dirty = true;
   }
   zoom(factor) {
+    if (this.camera.isPerspectiveCamera) {
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      const distance = THREE.MathUtils.clamp(
+        offset.length() / factor,
+        this.controls.minDistance,
+        this.controls.maxDistance,
+      );
+      this.camera.position
+        .copy(this.controls.target)
+        .add(offset.setLength(distance));
+      this.controls.update();
+      this.dirty = true;
+      this.callbacks.onZoom?.(this.zoomPercent());
+      return;
+    }
     this.camera.zoom = THREE.MathUtils.clamp(
       this.camera.zoom * factor,
       this.controls.minZoom,
@@ -533,6 +708,14 @@ export class StudioScene {
     this.camera.updateProjectionMatrix();
     this.dirty = true;
     this.callbacks.onZoom?.(Math.round(this.camera.zoom * 100));
+  }
+  zoomPercent() {
+    return Math.round(
+      this.camera.isPerspectiveCamera && this.fitDistance
+        ? (100 * this.fitDistance) /
+            this.camera.position.distanceTo(this.controls.target)
+        : this.camera.zoom * 100,
+    );
   }
   snapshot() {
     this.composer.render();

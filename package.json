@@ -1,16 +1,19 @@
 {
-  "name": "habitat-floorplan-studio",
+  "name": "zaogejia",
   "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node scripts/backend.mjs start",
     "dev": "vite --config frontend/vite.config.js",
-    "dev:api": "python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000",
+    "dev:api": "node scripts/backend.mjs dev",
     "dev:all": "python scripts/dev.py",
     "build": "vite build --config frontend/vite.config.js",
     "preview": "vite preview --config frontend/vite.config.js --host 127.0.0.1",
-    "test:backend": "python -m pytest backend/tests -q",
-    "test:frontend": "node --test frontend/tests/*.test.js"
+    "test:backend": "node scripts/backend.mjs test",
+    "test:frontend": "node --test frontend/tests/*.test.js",
+    "test:prelaunch": "node scripts/prelaunch.mjs",
+    "test:visual": "node scripts/visual_review.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.49.0",
@@ -21,6 +24,7 @@
     "vite": "^8.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@vitejs/plugin-react": "^6.1.1",
     "prettier": "^3.9.9"
   }

@@ -114,3 +114,18 @@ def test_concave_room_rejects_furniture_crossing_gap_even_with_corners_inside():
     body["furniture"]["items"][0].update(x=2.75, y=4, width=4.5, depth=1)
     with pytest.raises(ValidationError, match="凹形"):
         ManualEditRequest.model_validate(body)
+
+
+def test_rebuilding_manual_design_does_not_reintroduce_deleted_lights(tmp_path):
+    with TestClient(app_for(tmp_path, FakeCodex())) as client:
+        source = wait_job(client, create_job(client)["id"])
+        body = document()
+        body["layout"]["lights"] = []
+        edited = client.post(f"/api/jobs/{source['id']}/edit", json=body)
+        manual = wait_job(client, edited.json()["id"])
+        rebuilt = client.post(f"/api/jobs/{manual['id']}/rebuild")
+        result = wait_job(client, rebuilt.json()["id"])
+        assert result["status"] == "succeeded", result
+        data = client.get(result["result"]["layout_url"]).json()
+        assert not data["lights"]
+        assert result["result"]["design_mode"] == "manual"

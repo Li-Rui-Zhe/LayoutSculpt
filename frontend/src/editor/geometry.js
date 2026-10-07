@@ -237,6 +237,8 @@ export const furnitureNames = {
   plant: "绿植",
   rug: "地毯",
   desk: "书桌",
+  shower: "淋浴间",
+  refrigerator: "冰箱",
 };
 export const openingNames = {
   door: "门",
@@ -288,6 +290,7 @@ export function center(points) {
 export function bounds(layout) {
   const points = [
     ...layout.outline,
+    ...layout.rooms.flatMap((room) => room.polygon),
     ...layout.walls.flatMap((wall) => [wall.start, wall.end]),
   ];
   const minX = Math.min(...points.map((p) => p.x)),
@@ -320,7 +323,7 @@ export function toDraft(data) {
       ]),
     ),
     furniture: {
-      items: clone(data.furniture),
+      items: clone(data.furniture || []),
       notes: clone(data.furniture_notes || []),
     },
   };
