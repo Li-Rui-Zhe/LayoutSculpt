@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { materials, materialCategories } from "../catalog.js";
+import MaterialSample from "../components/MaterialSample.jsx";
 
 const labels = { walls: "墙面", floor: "地板", fabric: "软装" };
 export default function MaterialLibrary({
@@ -16,7 +17,7 @@ export default function MaterialLibrary({
   const options = materials.filter(
     (m) =>
       materialCategories[category].includes(m.id) &&
-      `${m.name} ${m.sub} ${m.color}`.includes(query.trim()),
+      `${m.name} ${m.sub} ${m.family} ${m.usage}`.includes(query.trim()),
   );
   const selected = options.find((m) => m.id === selectedId) || options[0];
   const target = rooms.some((r) => r.id === roomId) ? roomId : "all";
@@ -25,7 +26,7 @@ export default function MaterialLibrary({
       <div className="library-filters">
         <div className="library-tabs" aria-label="材质用途">
           {Object.entries(labels)
-            .filter(([id]) => !floorOnly || id === "floor")
+            .filter(([id]) => (floorOnly ? id === "floor" : id !== "fabric"))
             .map(([id, label]) => (
               <button
                 key={id}
@@ -38,8 +39,8 @@ export default function MaterialLibrary({
         </div>
         <input
           className="material-search"
-          aria-label="搜索材质与配色"
-          placeholder="搜索颜色、纹理或名称"
+          aria-label="搜索材质"
+          placeholder="搜索木地板、瓷砖、墙布、面料"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -47,9 +48,10 @@ export default function MaterialLibrary({
       <div className="library-content">
         <div className="library-browser">
           <div className="library-result-label">
-            {options.length} 款{labels[category]}材质 · 与工作台配色同步
+            {options.length} 款{labels[category]}
+            {category === "fabric" ? "搭配" : "材质"} · 与工作台选材同步
           </div>
-          <div className="library-cards" aria-label="材质与配色列表">
+          <div className="library-cards" aria-label="材质样板列表">
             {options.map((m) => (
               <button
                 key={m.id}
@@ -57,10 +59,7 @@ export default function MaterialLibrary({
                 aria-pressed={selected?.id === m.id}
                 onClick={() => setSelectedId(m.id)}
               >
-                <span
-                  className={`material-sample texture-${m.texture || "plain"}`}
-                  style={{ "--swatch": m.color }}
-                />
+                <MaterialSample material={m} className="material-sample" />
                 <strong>{m.name}</strong>
                 <small>{m.sub}</small>
               </button>
@@ -78,14 +77,18 @@ export default function MaterialLibrary({
                 <h2>{selected.name}</h2>
                 <p>{selected.sub}</p>
               </div>
-              <div
-                className={`material-large-sample texture-${selected.texture || "plain"}`}
-                style={{ "--swatch": selected.color }}
+              <MaterialSample
+                material={selected}
+                className="material-large-sample"
               />
               <dl className="library-metadata">
                 <div>
-                  <dt>颜色</dt>
-                  <dd>{selected.color.toUpperCase()}</dd>
+                  <dt>材质类型</dt>
+                  <dd>{selected.family}</dd>
+                </div>
+                <div>
+                  <dt>表面质感</dt>
+                  <dd>{selected.finish}</dd>
                 </div>
                 <div>
                   <dt>适用区域</dt>
@@ -97,6 +100,7 @@ export default function MaterialLibrary({
                   </dd>
                 </div>
               </dl>
+              <p className="library-note">{selected.usage}</p>
               {onApply && (
                 <div className="library-placement">
                   <strong>{targetName}</strong>
@@ -134,14 +138,16 @@ export default function MaterialLibrary({
                       ? target === "all"
                         ? "全屋统一应用；选择具体房间可保留其他区域的地板。"
                         : "只修改所选房间的地板。"
-                      : "应用于当前方案的同类表面。"}
+                      : category === "fabric"
+                        ? "按坐垫、靠枕、床品、窗帘与地毯分别搭配。"
+                        : "应用于当前方案的墙面饰面。"}
                   </small>
                 </div>
               )}
               <p className="library-note">
                 {floorOnly
                   ? "应用后返回人工设计，点击保存三维方案即可写入模型。"
-                  : "配色预览自动保存在本机。房间地板可转入人工设计，保存为独立三维方案。"}
+                  : "选材预览自动保存在本机。房间地板可转入人工设计，保存为独立三维方案。"}
               </p>
             </>
           )}

@@ -586,6 +586,8 @@ def test_manual_edit_isolated_materials_passage_and_retry_without_codex(tmp_path
         payload["layout"]["rooms"][0]["floor_finish"] = "walnut"
         payload["layout"]["rooms"][0]["floor_material"] = "honey"
         payload["layout"]["walls"][0]["finish"] = "sage"
+        payload["layout"]["walls"][0]["wall_material"] = "wall-oak"
+        payload["layout"]["walls"][1]["wall_material"] = "wall-lime"
         payload["layout"]["openings"][0]["kind"] = "passage"
         payload["furniture"]["items"][0]["x"] = 3
         failure["enabled"] = True
@@ -606,6 +608,9 @@ def test_manual_edit_isolated_materials_passage_and_retry_without_codex(tmp_path
         assert data["rooms"][0]["floor_finish"] == "walnut"
         assert data["rooms"][0]["floor_material"] == "honey"
         assert data["walls"][0]["finish"] == "sage"
+        assert data["walls"][0]["wall_material"] == "wall-oak"
+        assert data["walls"][1]["wall_material"] == "wall-lime"
+        assert data["walls"][2]["wall_material"] is None
         assert data["openings"][0]["kind"] == "passage"
         assert data["furniture"][0]["x"] == 3
         assert len(codex.calls) == count

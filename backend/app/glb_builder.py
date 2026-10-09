@@ -9,12 +9,12 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
-from backend.app.surface_materials import floor_material
+from backend.app.surface_materials import floor_material, wall_material, MATERIALS as SURFACE_MATERIALS
 from PIL import Image
 from shapely.geometry import Point, Polygon
 
 from .config import ROOT
-from .architecture import wall_sections
+from .architecture import wall_sections, wall_finish_key
 from .furniture_details import construct, construct_basic, kitchen_details
 from .diy_schema import DiyDesign
 from .diy_geometry import design_meshes
@@ -493,6 +493,8 @@ class Builder:
                 baseColorFactor=[*(round(c * 255) for c in color), 255],
                 roughnessFactor=0.75,
             ) if color else None)
+            if finish.startswith("material:"):
+                material = wall_material(finish.removeprefix("material:"))
             # Explicit engine avoids runtime executable discovery. This removes
             # hidden coplanar caps at window-sill/lintel heights as well as seams.
             lower = groups.get((finish, False), [])
@@ -501,6 +503,8 @@ class Builder:
             preview = trimesh.boolean.union(lower, engine="manifold") if lower else None
             self.add("墙体_连续结构", mesh, "wall", material=material,
                      metadata={"cutaway_full": True, "architecture_network": True,
+                               "wall_ids": [w["id"] for w in self.document["walls"] if wall_finish_key(w) == finish],
+                               "wall_material": finish.removeprefix("material:") if finish.startswith("material:") else None,
                                "cut_height": CUT_HEIGHT,
                                "cutaway_geometry": {
                                    "positions": np.round(preview.vertices, 6).reshape(-1).tolist(),
@@ -651,16 +655,17 @@ class Builder:
 
         def extras(tree):
             for material in tree.get("materials", []):
-                if "normalTexture" in material:
-                    material["normalTexture"]["scale"] = 0.18
                 name = material.get("name", "")
+                if "normalTexture" in material:
+                    finish = SURFACE_MATERIALS.get(name.removeprefix("地板_素材_").removeprefix("墙面_素材_"), {})
+                    material["normalTexture"]["scale"] = finish.get("normalStrength", 0.18)
                 role = next(
                     (key for key, value in NAMES.items() if name.startswith(value)),
                     None,
                 )
-                if name.startswith("墙面_微调_"):
+                if name.startswith(("墙面_微调_", "墙面_素材_")):
                     role = "wall"
-                elif name.startswith("地板_微调_"):
+                elif name.startswith(("地板_微调_", "地板_素材_")):
                     role = "floor"
                 category = {
                     "wall": "walls",

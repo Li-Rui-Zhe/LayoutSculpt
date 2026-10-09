@@ -183,10 +183,21 @@ def test_save_conflict_archive_and_original_snapshot_isolation(tmp_path):
         path = f"/api/diy/assets/{asset['id']}"
         changed = design_data()
         changed["name"] = "新名称"
+        changed["parts"][0]["color"] = "#315e49"
         body = {"design": changed, "revision": asset["revision"]}
         assert client.post(path + "/save", json=body).status_code == 200
         assert client.post(path + "/save", json=body).status_code == 409
         assert client.get(path).json()["design"]["name"] == "新名称"
+        saved = client.get(path).json()["design"]
+        assert saved["parts"][0]["color"] == "#315e49"
+        assert saved["parts"][1] == original["parts"][1]
+        scene = trimesh.load(
+            BytesIO(client.get(path + "/model.glb").content),
+            file_type="glb", force="scene",
+        )
+        colors = [g.visual.material.baseColorFactor.tolist() for g in scene.geometry.values()]
+        assert [49, 94, 73, 255] in colors
+        assert [51, 51, 51, 255] in colors
         assert client.post(path + "/archive").status_code == 200
         assert client.get(path).status_code == 404
         assert client.get("/api/diy/assets").json()["items"] == []

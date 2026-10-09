@@ -23,6 +23,8 @@ export default function App() {
   );
   const [diyVisited, setDiyVisited] = useState(() => location.hash === "#diy");
   const [diyAssetId, setDiyAssetId] = useState(null);
+  const [diyMode, setDiyMode] = useState("furniture");
+  const surfaceDiy = surface === "diy" && diyMode !== "furniture";
   const [placementRequest, setPlacementRequest] = useState(null);
   const [materialRequest, setMaterialRequest] = useState(null);
   const [materialContext, setMaterialContext] = useState({ id: "", rooms: [] });
@@ -98,7 +100,9 @@ export default function App() {
         <div className="project-heading-host" ref={setHeadingHost}>
           {surface !== "workspace" && (
             <strong>
-              {surface === "diy" ? "家具 DIY · 创作工作台" : "素材库 · 模型与材质"}
+              {surface === "diy"
+                ? "DIY 设计 · 家具与墙地面"
+                : "素材库 · 模型与材质"}
             </strong>
           )}
         </div>
@@ -166,8 +170,8 @@ export default function App() {
             <span>示例</span>
           </button>
           <button
-            aria-label="打开家具 DIY"
-            title="家具 DIY"
+            aria-label="打开 DIY 设计"
+            title="DIY 设计 · 家具、墙面、地板"
             className={surface === "diy" ? "active" : ""}
             aria-current={surface === "diy" ? "page" : undefined}
             onClick={() => navigate("diy")}
@@ -200,10 +204,95 @@ export default function App() {
           onSelect={select}
         />
         <section className="factory-workspace">
+          {surface === "diy" && (
+            <div className="diy-hub-nav">
+              <div role="tablist" aria-label="DIY 设计类型">
+                {[
+                  ["furniture", "家具 DIY"],
+                  ["walls", "墙面 DIY"],
+                  ["floor", "地板 DIY"],
+                ].map(([id, title]) => (
+                  <button
+                    key={id}
+                    role="tab"
+                    aria-selected={diyMode === id}
+                    onClick={() => setDiyMode(id)}
+                  >
+                    {title}
+                  </button>
+                ))}
+              </div>
+              {surfaceDiy && (
+                <label>
+                  目标户型
+                  <select
+                    aria-label="DIY 目标户型"
+                    value={projects.job?.id || ""}
+                    onChange={(e) => {
+                      const job = projects.jobs.find(
+                        (job) => job.id === e.target.value,
+                      );
+                      if (job) projects.select(job);
+                    }}
+                  >
+                    <option value="" disabled>
+                      请选择已生成的户型方案
+                    </option>
+                    {projects.jobs
+                      .filter(
+                        (job) =>
+                          job.status === "succeeded" ||
+                          job.id === projects.job?.id,
+                      )
+                      .map((job) => (
+                        <option
+                          key={job.id}
+                          value={job.id}
+                          disabled={job.status !== "succeeded"}
+                        >
+                          {job.name}
+                          {job.status !== "succeeded"
+                            ? ` · ${job.stage || "处理中"}`
+                            : ""}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              <p>
+                {surfaceDiy
+                  ? "在平面图中选中单面墙或房间，设置材质后保存为新的三维版本。"
+                  : "创建家具素材，再放入你的户型方案。"}
+              </p>
+            </div>
+          )}
+          {surfaceDiy && !projects.job && (
+            <div className="empty-state">
+              <Boxes size={32} />
+              <h2>
+                选择一个户型，开始{diyMode === "walls" ? "墙面" : "地板"} DIY
+              </h2>
+              <p>使用上方「目标户型」选择已完成的方案。示例空间仅供预览。</p>
+              {!projects.jobs.some((job) => job.status === "succeeded") && (
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    navigate("workspace");
+                    setCreating(true);
+                  }}
+                >
+                  先生成我的户型
+                </button>
+              )}
+            </div>
+          )}
           {diyVisited && (
-            <div className="studio-page-host" hidden={surface !== "diy"}>
+            <div
+              className="studio-page-host"
+              hidden={surface !== "diy" || surfaceDiy}
+            >
               <DiyStudio
-                active={surface === "diy"}
+                active={surface === "diy" && !surfaceDiy}
                 openAssetRequest={diyAssetId}
                 onClose={() => navigate("workspace")}
               />
@@ -211,12 +300,24 @@ export default function App() {
           )}
           {surface === "library" && (
             <AssetLibrary
-              materialRooms={materialContext.id === (projects.job?.id || "sample") ? materialContext.rooms : []}
+              materialRooms={
+                materialContext.id === (projects.job?.id || "sample")
+                  ? materialContext.rooms
+                  : []
+              }
               materialTargetName={projects.job?.name || "林间暖居 · 示例空间"}
-              onApplyMaterial={!projects.job || projects.job.status === "succeeded" ? (request) => {
-                setMaterialRequest({ ...request, id: crypto.randomUUID(), jobId: projects.job?.id || "sample" });
-                navigate("workspace");
-              } : null}
+              onApplyMaterial={
+                !projects.job || projects.job.status === "succeeded"
+                  ? (request) => {
+                      setMaterialRequest({
+                        ...request,
+                        id: crypto.randomUUID(),
+                        jobId: projects.job?.id || "sample",
+                      });
+                      navigate("workspace");
+                    }
+                  : null
+              }
               jobs={projects.jobs}
               currentJobId={
                 projects.job?.status === "succeeded" ? projects.job.id : ""
@@ -235,13 +336,17 @@ export default function App() {
               }}
               onEditDiy={(id) => {
                 setDiyAssetId({ id });
+                setDiyMode("furniture");
                 navigate("diy");
               }}
               onOpenJob={(id) => {
                 const job = projects.jobs.find((j) => j.id === id);
                 if (job) select(job);
               }}
-              onCreate={() => navigate("diy")}
+              onCreate={() => {
+                setDiyMode("furniture");
+                navigate("diy");
+              }}
             />
           )}
           {projects.error && (
@@ -283,7 +388,13 @@ export default function App() {
           {projects.selectedId === "sample" || projects.job ? (
             <TaskWorkspace
               key={projects.job?.id || "sample"}
-              active={!creating && surface === "workspace"}
+              active={
+                !creating &&
+                (surface === "workspace" || (surfaceDiy && !!projects.job))
+              }
+              diyMode={surfaceDiy ? diyMode : null}
+              onDiyModeChange={setDiyMode}
+              onExitDiy={() => navigate("workspace")}
               job={projects.job}
               headingHost={headingHost}
               projects={projects}
@@ -293,7 +404,11 @@ export default function App() {
                   : null
               }
               onPlacementConsumed={() => setPlacementRequest(null)}
-              materialRequest={materialRequest?.jobId === (projects.job?.id || "sample") ? materialRequest : null}
+              materialRequest={
+                materialRequest?.jobId === (projects.job?.id || "sample")
+                  ? materialRequest
+                  : null
+              }
               onMaterialConsumed={() => setMaterialRequest(null)}
               onMaterialContext={setMaterialContext}
               onCreate={() => setCreating(true)}

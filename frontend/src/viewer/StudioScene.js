@@ -9,7 +9,9 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { installCutaway, updateCutaway } from "./cutaway.js";
 import { installFixtureLights, updateFixtureLights } from "./fixtureLights.js";
-import { materials, presets, showcase } from "../catalog.js";
+import { presets, showcase } from "../catalog.js";
+import { resolveMaterial } from "../materials/custom.js";
+import { isolateSoftSurfaces, surfaceProfile } from "../materials/surfaces.js";
 import { frameBounds, visualCenter, perspectiveCenter } from "./viewFraming.js";
 import { isolateRoomFloors } from "./roomMaterials.js";
 import { selectedFloor } from "../materials/assignments.js";
@@ -325,6 +327,7 @@ export class StudioScene {
     const roomCatalog = isolateRoomFloors(this.model);
     this.callbacks.onRooms?.(roomCatalog);
     if (!entry.originals) {
+      isolateSoftSurfaces(this.model);
       installCutaway(this.model);
       installFixtureLights(this.model, {
         sample: url === showcase.model_url,
@@ -512,32 +515,18 @@ export class StudioScene {
               : null);
       const selection = category === "floor" && material.userData.floor_room_id
         ? selectedFloor(state, material.userData.floor_room_id) : state.selected[category];
-      const chosen = category && materials.find((m) => m.id === selection);
+      const chosen = category && resolveMaterial(selection);
       if (chosen) {
-        material.color.set(chosen.color);
-        const surface =
-          category === "fabric"
-            ? "linen"
-            : chosen.texture === "wood"
-              ? "planks"
-              : chosen.texture === "stone"
-                ? "stone"
-                : chosen.texture === "linen"
-                  ? "linen"
-                  : null;
+        const profile = surfaceProfile(chosen, category, material.userData.soft_role);
+        if (!profile) continue;
+        material.color.set(profile.color);
+        const surface = profile.surface;
         material.map = surface ? this.surfaceTexture(surface, "color") : null;
         material.normalMap = surface
           ? this.surfaceTexture(surface, "normal")
           : null;
-        material.normalScale?.setScalar(surface === "linen" ? 0.35 : 0.25);
-        material.roughness =
-          surface === "linen"
-            ? 0.94
-            : surface === "planks"
-              ? 0.44
-              : surface === "stone"
-                ? 0.62
-                : 0.8;
+        material.normalScale?.setScalar(profile.normalStrength);
+        material.roughness = profile.roughness;
         material.metalness = 0;
         material.needsUpdate = true;
       }

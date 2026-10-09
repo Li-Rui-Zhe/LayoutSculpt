@@ -1,4 +1,5 @@
-import { materials, materialCategories } from "../catalog.js";
+import { compatibleMaterialCategories as materialCategories } from "../catalog.js";
+import { isCustomMaterial, resolveMaterial } from "./custom.js";
 
 export function materialSelection(
   state,
@@ -7,7 +8,11 @@ export function materialSelection(
   roomId = state.floorTarget || "all",
 ) {
   if (!Object.hasOwn(materialCategories, category)) throw Error("未知材质分类");
-  if (materialId !== null && !materialCategories[category].includes(materialId))
+  if (
+    materialId !== null &&
+    !isCustomMaterial(materialId) &&
+    !materialCategories[category].includes(materialId)
+  )
     throw Error("此材质不适用于当前分类");
   if (category === "floor" && roomId !== "all") {
     return {
@@ -44,7 +49,7 @@ export function applyFloorDraft(document, state, originalRooms = []) {
       }
       continue;
     }
-    if (!materialCategories.floor.includes(id))
+    if (!isCustomMaterial(id) && !materialCategories.floor.includes(id))
       throw Error("地板材质无效，请重新选择");
     room.floor_material = id;
   }
@@ -52,5 +57,5 @@ export function applyFloorDraft(document, state, originalRooms = []) {
 }
 
 export function floorColor(room, fallback) {
-  return materials.find((m) => m.id === room.floor_material)?.color || fallback;
+  return resolveMaterial(room.floor_material)?.color || fallback;
 }

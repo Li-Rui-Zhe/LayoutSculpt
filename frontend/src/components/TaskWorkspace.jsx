@@ -306,6 +306,9 @@ export default function TaskWorkspace({
   materialRequest,
   onMaterialConsumed,
   onMaterialContext,
+  diyMode = null,
+  onExitDiy,
+  onDiyModeChange,
 }) {
   const id = job?.id || "sample";
   const { state, update, undo, redo, canUndo, canRedo, storageError } =
@@ -319,6 +322,9 @@ export default function TaskWorkspace({
   const hasModel = !job || job.status === "succeeded";
   const reviewing = job?.status === "awaiting_review";
   const [tab, setTab] = useState(hasModel ? "design" : "activity");
+  useEffect(() => {
+    if (diyMode && job?.status === "succeeded") setTab("edit");
+  }, [diyMode, job?.status]);
   useEffect(() => {
     if (placementRequest && job?.status === "succeeded") setTab("edit");
   }, [placementRequest, job?.status]);
@@ -530,13 +536,16 @@ export default function TaskWorkspace({
           job={job}
           active={active}
           projects={projects}
+          designMode={diyMode}
+          onDesignModeChange={onDiyModeChange}
           placementRequest={placementRequest}
           onPlacementConsumed={onPlacementConsumed}
           floorRequest={floorRequest}
           onFloorConsumed={() => setFloorRequest(null)}
-          onClose={() =>
-            setTab(reviewing ? "review" : hasModel ? "design" : "activity")
-          }
+          onClose={() => {
+            setTab(reviewing ? "review" : hasModel ? "design" : "activity");
+            if (diyMode) onExitDiy?.();
+          }}
         />
       )}
       {reviewing && tab !== "edit" && (
@@ -1065,7 +1074,7 @@ export default function TaskWorkspace({
                 {hasModel && (
                   <div className="inspector-section inspector-materials">
                     <div className="section-heading">
-                      <h2>材质与配色</h2>
+                      <h2>墙面与地板</h2>
                     </div>
                     <MaterialDock
                       state={state}

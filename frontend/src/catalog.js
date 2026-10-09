@@ -5,6 +5,17 @@ export { showcase };
 
 export const materials = materialCatalog.items;
 export const materialCategories = materialCatalog.categories;
+export const compatibleMaterialCategories = Object.fromEntries(
+  Object.entries(materialCategories).map(([category, ids]) => [
+    category,
+    [
+      ...new Set([
+        ...ids,
+        ...(materialCatalog.legacy_categories?.[category] || []),
+      ]),
+    ],
+  ]),
+);
 export const presets = [
   {
     id: "midday",

@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import NumberField from "./NumberField.jsx";
 import DiyStudio from "../diy/DiyStudio.jsx";
+import SurfaceFinishPicker from "./SurfaceFinishPicker.jsx";
 import AssetLibrary from "../library/AssetLibrary.jsx";
 import { placeLibraryFurniture } from "../library/placement.js";
 import { updatePlacedDesign, placedDesign } from "../diy/design.js";
@@ -39,6 +40,7 @@ import PolygonFields from "./PolygonFields.jsx";
 import { useEditDraft } from "./useEditDraft.js";
 import { materials, materialCategories } from "../catalog.js";
 import { applyFloorDraft, floorColor } from "../materials/assignments.js";
+import { resolveMaterial } from "../materials/custom.js";
 import { usePlanNavigation } from "./usePlanNavigation.js";
 import { deriveOutline, fitOutline, sameArchitecture } from "./autoOutline.js";
 import {
@@ -124,6 +126,8 @@ export default function ManualEditor({
   onPlacementConsumed,
   floorRequest,
   onFloorConsumed,
+  designMode = null,
+  onDesignModeChange,
 }) {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const consumedPlacement = useRef(null);
@@ -154,11 +158,28 @@ export default function ManualEditor({
     setSelected({ type: "rooms", index: Math.max(0, index) });
     onFloorConsumed?.();
   }, [floorRequest, draft.document, onFloorConsumed]);
-  const [tool, setTool] = useState(reviewing ? "walls" : "furniture"),
+  const initialTool =
+    designMode === "floor"
+      ? "rooms"
+      : designMode === "walls" || reviewing
+        ? "walls"
+        : "furniture";
+  const [tool, setTool] = useState(initialTool),
     [selected, setSelected] = useState({
-      type: reviewing ? "walls" : "furniture",
+      type: initialTool,
       index: 0,
     });
+  useEffect(() => {
+    if (!designMode) return;
+    const type = designMode === "walls" ? "walls" : "rooms";
+    setTool(type);
+    setSelected({ type, index: 0 });
+    setDrawing(null);
+    setPendingDelete(null);
+    setOpeningKind(null);
+    setOpeningPreview(null);
+    setOpeningAnchor(null);
+  }, [designMode]);
   const [acknowledged, setAcknowledged] = useState(false);
   useEffect(() => setAcknowledged(false), [draft.document]);
   const saveLock = useRef(false);
@@ -858,8 +879,10 @@ export default function ManualEditor({
       <div className="edit-toolbar">
         <div className="edit-tool-tabs">
           {tools
-            .filter(
-              ([id]) => !reviewing || !["furniture", "lights"].includes(id),
+            .filter(([id]) =>
+              designMode
+                ? ["walls", "rooms"].includes(id)
+                : !reviewing || !["furniture", "lights"].includes(id),
             )
             .map(([id, Icon, label]) => (
               <button
@@ -869,6 +892,8 @@ export default function ManualEditor({
                 disabled={busy}
                 onClick={() => {
                   setTool(id);
+                  if (designMode)
+                    onDesignModeChange?.(id === "walls" ? "walls" : "floor");
                   setDrawing(null);
                   setPendingDelete(null);
                   cancelOpening();
@@ -1034,7 +1059,13 @@ export default function ManualEditor({
                         ? document.layout.rooms.find(
                             (r) => r.id === object.room_id,
                           )?.name
-                        : "点击编辑"}
+                        : type === "walls"
+                          ? resolveMaterial(object.wall_material)?.name ||
+                            "基础饰面"
+                          : type === "rooms"
+                            ? resolveMaterial(object.floor_material)?.name ||
+                              "基础地板"
+                            : "点击编辑"}
                     </small>
                   </button>
                 ))}
@@ -1450,9 +1481,8 @@ export default function ManualEditor({
                     active("walls", index) ||
                     (openingTool && targetWallId === wall.id)
                       ? "#318765"
-                      : wall.exterior
-                        ? "#445a55"
-                        : "#748880"
+                      : resolveMaterial(wall.wall_material)?.color ||
+                        (wall.exterior ? "#445a55" : "#748880")
                   }
                   strokeWidth={
                     wall.thickness +
@@ -2157,6 +2187,18 @@ export default function ManualEditor({
                 )}
                 {selected.type === "walls" && (
                   <>
+                    <SurfaceFinishPicker
+                      category="walls"
+                      value={item.wall_material}
+                      onChange={(id) =>
+                        patch((_, target) => {
+                          target.wall_material = id;
+                        })
+                      }
+                    />
+                    <p className="field-note">
+                      当前墙体：{item.id} · 保存后写入该墙体的三维饰面。
+                    </p>
                     <label className="edit-label">
                       墙体类型
                       <select
@@ -2193,12 +2235,14 @@ export default function ManualEditor({
                       拖动墙线会联动相连边界
                     </p>
                     <label className="edit-label">
-                      墙面材质
+                      基础墙面饰面
                       <select
                         value={item.finish || "default"}
+                        aria-label="基础墙面饰面"
                         onChange={(e) =>
                           patch((_, target) => {
                             target.finish = e.target.value;
+                            target.wall_material = null;
                           })
                         }
                       >
@@ -2246,6 +2290,16 @@ export default function ManualEditor({
                         <option value="off">移除地板，保留空间</option>
                       </select>
                     </label>
+                    <SurfaceFinishPicker
+                      category="floor"
+                      value={item.floor_material}
+                      disabled={item.floor_enabled === false}
+                      onChange={(id) =>
+                        patch((_, target) => {
+                          target.floor_material = id;
+                        })
+                      }
+                    />
                     <label className="edit-label">
                       空间名称
                       <input
@@ -2303,6 +2357,16 @@ export default function ManualEditor({
                           </option>
                         ))}
                         <optgroup label="素材库 · 地板配色">
+                          {item.floor_material &&
+                            !materialCategories.floor.includes(
+                              item.floor_material,
+                            ) &&
+                            resolveMaterial(item.floor_material) && (
+                              <option value={`material:${item.floor_material}`}>
+                                已保存 ·{" "}
+                                {resolveMaterial(item.floor_material).name}
+                              </option>
+                            )}
                           {materialCategories.floor.map((id) => (
                             <option key={id} value={`material:${id}`}>
                               {materials.find((m) => m.id === id).name}

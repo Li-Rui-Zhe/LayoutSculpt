@@ -1,6 +1,549 @@
 {
   "categories": {
     "walls": [
+      "wall-matte",
+      "wall-lime",
+      "wall-cement",
+      "wall-oak",
+      "wall-walnut",
+      "wall-cloth"
+    ],
+    "floor": [
+      "floor-oak",
+      "floor-walnut",
+      "floor-herringbone",
+      "floor-ivory-tile",
+      "floor-gray-tile",
+      "floor-travertine",
+      "floor-terrazzo",
+      "floor-cement"
+    ],
+    "fabric": [
+      "soft-linen",
+      "soft-boucle",
+      "soft-wool",
+      "soft-sage"
+    ]
+  },
+  "items": [
+    {
+      "id": "ivory",
+      "name": "山岚白",
+      "sub": "细腻乳胶漆",
+      "color": "#e6e5df",
+      "texture": "",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "sage",
+      "name": "雾岛绿",
+      "sub": "哑光艺术漆",
+      "color": "#c7cec0",
+      "texture": "",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "sand",
+      "name": "暖砂岩",
+      "sub": "天然石材",
+      "color": "#d1b594",
+      "texture": "stone",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "oak",
+      "name": "自然橡木",
+      "sub": "实木纹理",
+      "color": "#ab7340",
+      "texture": "wood",
+      "type": "floor",
+      "legacy": true
+    },
+    {
+      "id": "gray",
+      "name": "晨雾灰",
+      "sub": "微水泥",
+      "color": "#aebac2",
+      "texture": "stone",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "cream",
+      "name": "奶油白",
+      "sub": "柔光饰面",
+      "color": "#edeee7",
+      "texture": "",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "linen",
+      "name": "织云白",
+      "sub": "亚麻织物",
+      "color": "#d8d6c8",
+      "texture": "linen",
+      "type": "fabric",
+      "legacy": true
+    },
+    {
+      "id": "rust",
+      "name": "陶土棕",
+      "sub": "温润肌理",
+      "color": "#b46b3f",
+      "texture": "",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "walnut",
+      "name": "烟熏胡桃",
+      "sub": "天然木皮",
+      "color": "#785137",
+      "texture": "wood",
+      "type": "floor",
+      "legacy": true
+    },
+    {
+      "id": "blue",
+      "name": "暮山蓝",
+      "sub": "哑光饰面",
+      "color": "#465969",
+      "texture": "",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "gold",
+      "name": "麦穗黄",
+      "sub": "温暖色彩",
+      "color": "#cfa84d",
+      "texture": "",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "honey",
+      "name": "蜂蜜橡木",
+      "sub": "实木纹理",
+      "color": "#d49c57",
+      "texture": "wood",
+      "type": "floor",
+      "legacy": true
+    },
+    {
+      "id": "charcoal",
+      "name": "岩墨黑",
+      "sub": "深色饰面",
+      "color": "#303d46",
+      "texture": "",
+      "type": "walls",
+      "legacy": true
+    },
+    {
+      "id": "teal",
+      "name": "远山青",
+      "sub": "棉麻织物",
+      "color": "#698b8d",
+      "texture": "linen",
+      "type": "fabric",
+      "legacy": true
+    },
+    {
+      "id": "warm",
+      "name": "燕麦米",
+      "sub": "绒感织物",
+      "color": "#c4b497",
+      "texture": "linen",
+      "type": "fabric",
+      "legacy": true
+    },
+    {
+      "id": "wall-matte",
+      "name": "暖白乳胶漆",
+      "sub": "细腻哑光 · 通用墙面",
+      "color": "#e9e5dc",
+      "surface": "plaster",
+      "texture": "plaster",
+      "type": "walls",
+      "family": "乳胶漆",
+      "finish": "哑光",
+      "usage": "客厅、卧室的日常墙面",
+      "roughness": 0.92,
+      "normalStrength": 0.08
+    },
+    {
+      "id": "wall-lime",
+      "name": "米灰艺术漆",
+      "sub": "石灰肌理 · 柔和层次",
+      "color": "#d7cfc0",
+      "surface": "limewash",
+      "texture": "limewash",
+      "type": "walls",
+      "family": "艺术漆",
+      "finish": "哑光",
+      "usage": "客厅、卧室的背景墙",
+      "roughness": 0.94,
+      "normalStrength": 0.18
+    },
+    {
+      "id": "wall-cement",
+      "name": "暖灰微水泥",
+      "sub": "连续饰面 · 细砂质感",
+      "color": "#bdb9ae",
+      "surface": "cement",
+      "texture": "cement",
+      "type": "walls",
+      "family": "微水泥",
+      "finish": "哑光",
+      "usage": "简约客厅、过道墙面",
+      "roughness": 0.86,
+      "normalStrength": 0.12
+    },
+    {
+      "id": "wall-oak",
+      "name": "浅橡木饰面",
+      "sub": "纵向木纹 · 温润触感",
+      "color": "#c5a276",
+      "surface": "veneer",
+      "texture": "veneer",
+      "type": "walls",
+      "family": "木饰面",
+      "finish": "柔光",
+      "usage": "书房、电视背景墙",
+      "roughness": 0.57,
+      "normalStrength": 0.16
+    },
+    {
+      "id": "wall-walnut",
+      "name": "胡桃木饰面",
+      "sub": "深木纹理 · 沉稳自然",
+      "color": "#927257",
+      "surface": "veneer",
+      "texture": "veneer",
+      "type": "walls",
+      "family": "木饰面",
+      "finish": "柔光",
+      "usage": "书房、局部背景墙",
+      "roughness": 0.55,
+      "normalStrength": 0.16
+    },
+    {
+      "id": "wall-cloth",
+      "name": "亚麻墙布",
+      "sub": "细织纹理 · 米白底色",
+      "color": "#ddd5c5",
+      "surface": "woven",
+      "texture": "woven",
+      "type": "walls",
+      "family": "墙布",
+      "finish": "织物哑光",
+      "usage": "卧室、干区背景墙",
+      "roughness": 0.98,
+      "normalStrength": 0.23
+    },
+    {
+      "id": "floor-oak",
+      "name": "原木直铺",
+      "sub": "橡木地板 · 错缝直铺",
+      "color": "#c4a177",
+      "surface": "boards",
+      "texture": "boards",
+      "type": "floor",
+      "family": "木地板",
+      "finish": "柔光",
+      "usage": "客厅、卧室、书房",
+      "roughness": 0.57,
+      "normalStrength": 0.2
+    },
+    {
+      "id": "floor-walnut",
+      "name": "胡桃直铺",
+      "sub": "胡桃木地板 · 错缝直铺",
+      "color": "#96765a",
+      "surface": "boards",
+      "texture": "boards",
+      "type": "floor",
+      "family": "木地板",
+      "finish": "柔光",
+      "usage": "客厅、卧室、书房",
+      "roughness": 0.53,
+      "normalStrength": 0.2
+    },
+    {
+      "id": "floor-herringbone",
+      "name": "橡木人字拼",
+      "sub": "木地板 · 人字拼花",
+      "color": "#c9aa83",
+      "surface": "herringbone",
+      "texture": "herringbone",
+      "type": "floor",
+      "family": "木地板",
+      "finish": "柔光",
+      "usage": "客厅、餐厅、书房",
+      "roughness": 0.57,
+      "normalStrength": 0.2
+    },
+    {
+      "id": "floor-ivory-tile",
+      "name": "奶油柔光砖",
+      "sub": "瓷砖 · 细缝方格",
+      "color": "#e1d9ca",
+      "surface": "tiles",
+      "texture": "tiles",
+      "type": "floor",
+      "family": "瓷砖",
+      "finish": "柔光",
+      "usage": "厨房、餐厅、过道",
+      "roughness": 0.52,
+      "normalStrength": 0.15
+    },
+    {
+      "id": "floor-gray-tile",
+      "name": "暖灰哑光砖",
+      "sub": "瓷砖 · 细缝方格",
+      "color": "#b8b5ac",
+      "surface": "tiles",
+      "texture": "tiles",
+      "type": "floor",
+      "family": "瓷砖",
+      "finish": "哑光",
+      "usage": "厨房、浴室、阳台",
+      "roughness": 0.79,
+      "normalStrength": 0.15
+    },
+    {
+      "id": "floor-travertine",
+      "name": "米色洞石",
+      "sub": "石材 · 横向孔隙肌理",
+      "color": "#d6c5a7",
+      "surface": "travertine",
+      "texture": "travertine",
+      "type": "floor",
+      "family": "石材",
+      "finish": "哑光",
+      "usage": "客厅、玄关",
+      "roughness": 0.78,
+      "normalStrength": 0.22
+    },
+    {
+      "id": "floor-terrazzo",
+      "name": "浅米水磨石",
+      "sub": "石粒饰面 · 细颗粒",
+      "color": "#d8d2c6",
+      "surface": "terrazzo",
+      "texture": "terrazzo",
+      "type": "floor",
+      "family": "水磨石",
+      "finish": "柔光",
+      "usage": "餐厅、玄关、厨房",
+      "roughness": 0.67,
+      "normalStrength": 0.1
+    },
+    {
+      "id": "floor-cement",
+      "name": "暖灰微水泥",
+      "sub": "无缝饰面 · 细砂肌理",
+      "color": "#bab7ad",
+      "surface": "cement",
+      "texture": "cement",
+      "type": "floor",
+      "family": "微水泥",
+      "finish": "哑光",
+      "usage": "客厅、书房、过道",
+      "roughness": 0.86,
+      "normalStrength": 0.12
+    },
+    {
+      "id": "soft-linen",
+      "name": "燕麦棉麻",
+      "sub": "燕麦坐垫 · 亚麻帘 · 米色地毯",
+      "color": "#c9bba5",
+      "surface": "woven",
+      "texture": "woven",
+      "type": "fabric",
+      "family": "软装搭配",
+      "finish": "织物哑光",
+      "usage": "沙发、靠枕、床品、窗帘与地毯分层搭配",
+      "roughness": 0.96,
+      "normalStrength": 0.22,
+      "scheme": {
+        "upholstery": {
+          "color": "#c9bba5",
+          "surface": "woven",
+          "roughness": 0.96,
+          "normalStrength": 0.22
+        },
+        "accent": {
+          "color": "#9e927e",
+          "surface": "woven",
+          "roughness": 0.97,
+          "normalStrength": 0.22
+        },
+        "curtain": {
+          "color": "#e4dfd3",
+          "surface": "woven",
+          "roughness": 0.98,
+          "normalStrength": 0.13
+        },
+        "bedding": {
+          "color": "#d9d1c2",
+          "surface": "woven",
+          "roughness": 0.96,
+          "normalStrength": 0.15
+        },
+        "rug": {
+          "color": "#c9beab",
+          "surface": "wool",
+          "roughness": 1,
+          "normalStrength": 0.3
+        }
+      }
+    },
+    {
+      "id": "soft-boucle",
+      "name": "奶油圈绒",
+      "sub": "奶油圈绒 · 米咖靠枕",
+      "color": "#e1d8c6",
+      "surface": "boucle",
+      "texture": "boucle",
+      "type": "fabric",
+      "family": "软装搭配",
+      "finish": "织物哑光",
+      "usage": "沙发、靠枕、床品、窗帘与地毯分层搭配",
+      "roughness": 0.96,
+      "normalStrength": 0.22,
+      "scheme": {
+        "upholstery": {
+          "color": "#e1d8c6",
+          "surface": "boucle",
+          "roughness": 0.96,
+          "normalStrength": 0.22
+        },
+        "accent": {
+          "color": "#b6a68e",
+          "surface": "woven",
+          "roughness": 0.97,
+          "normalStrength": 0.22
+        },
+        "curtain": {
+          "color": "#e4dfd3",
+          "surface": "woven",
+          "roughness": 0.98,
+          "normalStrength": 0.13
+        },
+        "bedding": {
+          "color": "#d9d1c2",
+          "surface": "woven",
+          "roughness": 0.96,
+          "normalStrength": 0.15
+        },
+        "rug": {
+          "color": "#c9beab",
+          "surface": "wool",
+          "roughness": 1,
+          "normalStrength": 0.3
+        }
+      }
+    },
+    {
+      "id": "soft-wool",
+      "name": "暖灰羊毛",
+      "sub": "暖灰织物 · 炭灰靠枕",
+      "color": "#b7b2a8",
+      "surface": "wool",
+      "texture": "wool",
+      "type": "fabric",
+      "family": "软装搭配",
+      "finish": "织物哑光",
+      "usage": "沙发、靠枕、床品、窗帘与地毯分层搭配",
+      "roughness": 0.96,
+      "normalStrength": 0.22,
+      "scheme": {
+        "upholstery": {
+          "color": "#b7b2a8",
+          "surface": "wool",
+          "roughness": 0.96,
+          "normalStrength": 0.22
+        },
+        "accent": {
+          "color": "#807e73",
+          "surface": "woven",
+          "roughness": 0.97,
+          "normalStrength": 0.22
+        },
+        "curtain": {
+          "color": "#e4dfd3",
+          "surface": "woven",
+          "roughness": 0.98,
+          "normalStrength": 0.13
+        },
+        "bedding": {
+          "color": "#d9d1c2",
+          "surface": "woven",
+          "roughness": 0.96,
+          "normalStrength": 0.15
+        },
+        "rug": {
+          "color": "#c9beab",
+          "surface": "wool",
+          "roughness": 1,
+          "normalStrength": 0.3
+        }
+      }
+    },
+    {
+      "id": "soft-sage",
+      "name": "鼠尾草棉麻",
+      "sub": "浅灰绿坐垫 · 本白窗帘",
+      "color": "#b8bcac",
+      "surface": "woven",
+      "texture": "woven",
+      "type": "fabric",
+      "family": "软装搭配",
+      "finish": "织物哑光",
+      "usage": "沙发、靠枕、床品、窗帘与地毯分层搭配",
+      "roughness": 0.96,
+      "normalStrength": 0.22,
+      "scheme": {
+        "upholstery": {
+          "color": "#b8bcac",
+          "surface": "woven",
+          "roughness": 0.96,
+          "normalStrength": 0.22
+        },
+        "accent": {
+          "color": "#7e8b74",
+          "surface": "woven",
+          "roughness": 0.97,
+          "normalStrength": 0.22
+        },
+        "curtain": {
+          "color": "#e4dfd3",
+          "surface": "woven",
+          "roughness": 0.98,
+          "normalStrength": 0.13
+        },
+        "bedding": {
+          "color": "#d9d1c2",
+          "surface": "woven",
+          "roughness": 0.96,
+          "normalStrength": 0.15
+        },
+        "rug": {
+          "color": "#c9beab",
+          "surface": "wool",
+          "roughness": 1,
+          "normalStrength": 0.3
+        }
+      }
+    }
+  ],
+  "legacy_categories": {
+    "walls": [
       "ivory",
       "sage",
       "gray",
@@ -20,128 +563,15 @@
       "ivory",
       "charcoal"
     ],
-    "fabric": ["cream", "linen", "warm", "teal", "blue", "rust", "sage", "gray"]
-  },
-  "items": [
-    {
-      "id": "ivory",
-      "name": "山岚白",
-      "sub": "细腻乳胶漆",
-      "color": "#e6e5df",
-      "texture": "",
-      "type": "walls"
-    },
-    {
-      "id": "sage",
-      "name": "雾岛绿",
-      "sub": "哑光艺术漆",
-      "color": "#c7cec0",
-      "texture": "",
-      "type": "walls"
-    },
-    {
-      "id": "sand",
-      "name": "暖砂岩",
-      "sub": "天然石材",
-      "color": "#d1b594",
-      "texture": "stone",
-      "type": "walls"
-    },
-    {
-      "id": "oak",
-      "name": "自然橡木",
-      "sub": "实木纹理",
-      "color": "#ab7340",
-      "texture": "wood",
-      "type": "floor"
-    },
-    {
-      "id": "gray",
-      "name": "晨雾灰",
-      "sub": "微水泥",
-      "color": "#aebac2",
-      "texture": "stone",
-      "type": "walls"
-    },
-    {
-      "id": "cream",
-      "name": "奶油白",
-      "sub": "柔光饰面",
-      "color": "#edeee7",
-      "texture": "",
-      "type": "walls"
-    },
-    {
-      "id": "linen",
-      "name": "织云白",
-      "sub": "亚麻织物",
-      "color": "#d8d6c8",
-      "texture": "linen",
-      "type": "fabric"
-    },
-    {
-      "id": "rust",
-      "name": "陶土棕",
-      "sub": "温润肌理",
-      "color": "#b46b3f",
-      "texture": "",
-      "type": "walls"
-    },
-    {
-      "id": "walnut",
-      "name": "烟熏胡桃",
-      "sub": "天然木皮",
-      "color": "#785137",
-      "texture": "wood",
-      "type": "floor"
-    },
-    {
-      "id": "blue",
-      "name": "暮山蓝",
-      "sub": "哑光饰面",
-      "color": "#465969",
-      "texture": "",
-      "type": "walls"
-    },
-    {
-      "id": "gold",
-      "name": "麦穗黄",
-      "sub": "温暖色彩",
-      "color": "#cfa84d",
-      "texture": "",
-      "type": "walls"
-    },
-    {
-      "id": "honey",
-      "name": "蜂蜜橡木",
-      "sub": "实木纹理",
-      "color": "#d49c57",
-      "texture": "wood",
-      "type": "floor"
-    },
-    {
-      "id": "charcoal",
-      "name": "岩墨黑",
-      "sub": "深色饰面",
-      "color": "#303d46",
-      "texture": "",
-      "type": "walls"
-    },
-    {
-      "id": "teal",
-      "name": "远山青",
-      "sub": "棉麻织物",
-      "color": "#698b8d",
-      "texture": "linen",
-      "type": "fabric"
-    },
-    {
-      "id": "warm",
-      "name": "燕麦米",
-      "sub": "绒感织物",
-      "color": "#c4b497",
-      "texture": "linen",
-      "type": "fabric"
-    }
-  ]
+    "fabric": [
+      "cream",
+      "linen",
+      "warm",
+      "teal",
+      "blue",
+      "rust",
+      "sage",
+      "gray"
+    ]
+  }
 }

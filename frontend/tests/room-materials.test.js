@@ -9,6 +9,46 @@ import {
 } from "../src/materials/assignments.js";
 import { isolateRoomFloors } from "../src/viewer/roomMaterials.js";
 import { StudioScene } from "../src/viewer/StudioScene.js";
+import { customMaterial, resolveMaterial } from "../src/materials/custom.js";
+import { floorColor } from "../src/materials/assignments.js";
+
+test("自定义颜色可持久化且按房间隔离，非法色号不进入草稿", () => {
+  const custom = customMaterial(" A1B2C3 ");
+  assert.equal(custom.id, "color:#a1b2c3");
+  const state = JSON.parse(
+    JSON.stringify(
+      materialSelection(initialStudio, custom.id, "floor", "bedroom"),
+    ),
+  );
+  assert.equal(selectedFloor(state, "bedroom"), custom.id);
+  assert.equal(selectedFloor(state, "living"), null);
+  const draft = applyFloorDraft(
+    {
+      layout: {
+        rooms: [{ id: "bedroom" }, { id: "living", floor_material: "oak" }],
+      },
+    },
+    state,
+  );
+  assert.equal(draft.layout.rooms[0].floor_material, custom.id);
+  assert.equal(floorColor(draft.layout.rooms[0], "#000000"), "#a1b2c3");
+  assert.equal(draft.layout.rooms[1].floor_material, "oak");
+  for (const bad of [
+    "color:#xyzxyz",
+    "color:#12345678",
+    "color:#123456\n",
+    "color:red",
+  ])
+    assert.throws(() => materialSelection(initialStudio, bad, "walls"));
+  assert.throws(() => customMaterial("red"));
+  assert.equal(resolveMaterial("oak").id, "oak");
+  assert.equal(resolveMaterial("missing"), undefined);
+  for (const category of ["walls", "fabric"])
+    assert.equal(
+      materialSelection(initialStudio, custom.id, category).selected[category],
+      custom.id,
+    );
+});
 
 test("单房间、全屋替换和还原不会混淆，旧存储兼容且不修改历史状态", () => {
   const base = structuredClone(initialStudio);
@@ -69,6 +109,16 @@ test("共享 GLTF 材质按房间隔离，应用与还原真实材质不串色�
   );
   assert.equal(living.material.color.getHexString(), "eeeeee");
   assert.equal(bedroom.material.color.getHexString(), "303d46");
+  engine.apply(
+    materialSelection(
+      initialStudio,
+      customMaterial("#739ac4").id,
+      "floor",
+      "bedroom",
+    ),
+  );
+  assert.equal(bedroom.material.color.getHexString(), "739ac4");
+  assert.equal(living.material.color.getHexString(), "eeeeee");
   const previous = bedroom.material;
   assert.equal(isolateRoomFloors(model), rooms);
   assert.equal(bedroom.material, previous);

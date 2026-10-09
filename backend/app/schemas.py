@@ -6,7 +6,7 @@ import math
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from shapely.geometry import Polygon, LineString
 from .diy_schema import DiyDesign
-from .surface_materials import FLOOR_MATERIALS
+from .surface_materials import FLOOR_MATERIALS, WALL_MATERIALS, CUSTOM_COLOR_PATTERN
 
 Number = Annotated[float, Field(ge=-60, le=60, allow_inf_nan=False)]
 Positive = Annotated[float, Field(gt=0, le=60, allow_inf_nan=False)]
@@ -38,7 +38,7 @@ class Room(StrictModel):
     polygon: list[Point] = Field(min_length=3, max_length=24)
     floor_finish: Literal["default", "oak", "walnut", "tile", "stone"] = "default"
     floor_enabled: bool = True
-    floor_material: Literal[FLOOR_MATERIALS] | None = None
+    floor_material: Literal[FLOOR_MATERIALS] | Annotated[str, Field(pattern=CUSTOM_COLOR_PATTERN, min_length=13, max_length=13)] | None = None
 
 
 class Wall(StrictModel):
@@ -49,6 +49,7 @@ class Wall(StrictModel):
     height: float = Field(ge=1.8, le=4.5)
     exterior: bool
     finish: Literal["default", "white", "cream", "sage", "gray"] = "default"
+    wall_material: Literal[WALL_MATERIALS] | None = None
 
 
 class Opening(StrictModel):

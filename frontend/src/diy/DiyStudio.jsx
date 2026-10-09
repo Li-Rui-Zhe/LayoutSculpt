@@ -15,6 +15,8 @@ import NumberField from "../editor/NumberField.jsx";
 import { useModels } from "../hooks/useModels.js";
 import { api } from "../api.js";
 import DiyPreview from "./DiyPreview.jsx";
+import ColorDesigner from "./ColorDesigner.jsx";
+import { commitDesign } from "./colors.js";
 import {
   categories,
   shapes,
@@ -170,16 +172,11 @@ export default function DiyStudio({
       clearTimeout(timer);
     };
   }, [asset?.id, generating]);
-  const commit = (update) => {
+  const commit = (update, group) => {
     setHistory((h) => {
       const next =
         typeof update === "function" ? update(copy(h.present)) : update;
-      if (JSON.stringify(next) === JSON.stringify(h.present)) return h;
-      return {
-        past: [...h.past, h.present].slice(-60),
-        present: next,
-        future: [],
-      };
+      return commitDesign(h, next, group);
     });
     setError("");
     setNotice("");
@@ -215,7 +212,7 @@ export default function DiyStudio({
     );
     if (invalid) {
       invalid.focus();
-      setError("请先修正标红的数值；按 Esc 可恢复原值。");
+      setError("请先修正标红的输入；按 Esc 可恢复原值。");
       return false;
     }
     if (issues.length) {
@@ -559,6 +556,13 @@ export default function DiyStudio({
             </div>
           </section>
           <aside className="diy-properties">
+            <ColorDesigner
+              key={`${asset?.id || "draft"}:${baseline}`}
+              design={design}
+              partId={partId}
+              disabled={busy || generating}
+              onCommit={commit}
+            />
             <h3>微调素材</h3>
             {!design ? (
               <p>生成后可点选三维部件，调整尺寸、位置和材质。</p>
@@ -684,16 +688,7 @@ export default function DiyStudio({
                         />
                       ))}
                     </div>
-                    <label className="diy-color">
-                      部件颜色
-                      <input
-                        aria-label="DIY 部件颜色"
-                        type="color"
-                        value={part.color}
-                        onChange={(e) => patchPart("color", e.target.value)}
-                      />
-                      <span>{part.color}</span>
-                    </label>
+                    <p>材质预设（颜色与质感）</p>
                     <div className="diy-materials" aria-label="部件材质预设">
                       {materialPresets.map(({ name, ...material }) => (
                         <button

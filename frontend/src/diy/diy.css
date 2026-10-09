@@ -498,19 +498,78 @@
 .diy-part-fields {
   margin-top: 14px;
 }
-.diy-color {
-  display: flex !important;
+.diy-color-designer {
+  padding: 12px;
+  margin-bottom: 18px;
+  border: 1px solid #d3dfc9;
+  border-radius: 10px;
+  background: #f4f7ee;
+}
+.diy-color-designer h3 {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
-.diy-color input {
-  width: 42px;
-  height: 34px;
+.diy-color-designer .diy-color-target {
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+.diy-color-controls {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.diy-color-controls label {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.diy-color-controls input[type="color"] {
+  width: 44px;
+  height: 38px;
   padding: 3px;
-  margin: 0 !important;
+  margin: 0;
+  cursor: pointer;
 }
-.diy-color span {
+.diy-color-controls input[aria-invalid="true"] {
+  border-color: #b94c36;
+}
+.diy-color-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px 5px;
+}
+.diy-color-swatches button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 1px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   font-size: 10px;
+  color: #4d5845;
+}
+.diy-color-swatches button[aria-pressed="true"] {
+  background: #e3ecd9;
+  border-color: #719559;
+}
+.diy-color-swatches button:hover:not(:disabled) {
+  background: #e3ecd9;
+}
+.diy-color-swatches i {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #00000018;
+}
+.diy-color-designer .diy-color-error {
+  color: #a43b26;
+}
+.diy-color-designer .diy-color-hint {
+  font-size: 10px;
+  margin: 12px 0 0;
 }
 .diy-part-actions {
   display: flex;

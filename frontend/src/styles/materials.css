@@ -119,3 +119,101 @@
     margin-bottom: 13px;
   }
 }
+
+/* Physical finish samples use the same texture maps as the 3D preview. */
+.surface-sample {
+  display: block;
+  position: relative;
+  background-color: var(--swatch);
+  background-image: var(--surface-image);
+  background-size: 160px 160px;
+  background-blend-mode: multiply;
+  overflow: hidden;
+}
+.surface-palette {
+  position: absolute;
+  bottom: 7px;
+  left: 7px;
+  display: flex;
+  gap: 3px;
+}
+.surface-palette i {
+  width: 15px;
+  height: 15px;
+  border: 1px solid #fff9;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px #0002;
+}
+.material-guide {
+  margin: 0 0 13px;
+}
+.material-guide strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: #385849;
+}
+.material-guide p,
+.material-current p {
+  margin: 5px 0 0;
+  font-size: 10px;
+  line-height: 1.65;
+  color: #758376;
+}
+.material-current {
+  margin-top: 14px;
+  padding: 11px;
+  background: #f4f6f0;
+  border: 1px solid #e0e7db;
+  border-radius: 7px;
+}
+.material-current > span {
+  display: block;
+  color: #819080;
+  font-size: 9px;
+  margin-bottom: 4px;
+}
+.material-current > strong {
+  color: #3f5d48;
+  font-size: 11px;
+  font-weight: 600;
+}
+.inspector-materials #dock-materials {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.inspector-materials .swatch {
+  align-items: stretch;
+  text-align: left;
+  gap: 0;
+  padding: 5px;
+  background: #fff;
+  border: 1px solid #e0e5dc;
+  border-radius: 7px;
+}
+.inspector-materials .swatch:hover {
+  background: #f8faf4;
+  border-color: #a5b89b;
+}
+.inspector-materials .swatch.active {
+  border-color: #608269;
+  background: #f1f6ec;
+  box-shadow: 0 0 0 1px #608269;
+}
+.inspector-materials .swatch .chip {
+  width: 100%;
+  height: 49px;
+  outline: none;
+  border-radius: 4px;
+}
+.inspector-materials .swatch .label {
+  margin: 7px 2px 3px;
+  font-size: 10px;
+  color: #3d5544;
+  white-space: normal;
+}
+.inspector-materials .swatch small {
+  margin: 0 2px 4px;
+  font-size: 9px;
+  color: #819080;
+  line-height: 1.4;
+}

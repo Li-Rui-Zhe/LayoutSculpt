@@ -20,6 +20,8 @@ function load(storageKey) {
       return {
         ...initialStudio,
         ...s,
+        category: s.category === "fabric" ? "walls" : s.category,
+        selected: { ...s.selected, fabric: null },
         preset: s.preset === "night" ? "night" : "midday",
       };
   } catch {}

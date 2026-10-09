@@ -170,9 +170,9 @@ export default function AssetLibrary({
         <div>
           <span>三维资源管理</span>
           <h1>
-            素材库 <small>{assetType === "models" ? `${items.length} 个模型` : "材质与配色"}</small>
+            素材库 <small>{assetType === "models" ? `${items.length} 个模型` : "装修材质"}</small>
           </h1>
-          <p>家具、户型模型与材质配色，在这里统一选择。</p>
+          <p>家具、户型模型与装修材质，在这里统一选择。</p>
         </div>
         <div className="library-actions">
           {onClose && (
@@ -195,7 +195,7 @@ export default function AssetLibrary({
       </header>
       <div className="library-tabs library-type-tabs" aria-label="素材类型">
         <button aria-pressed={assetType === "models"} onClick={() => setAssetType("models")}>三维模型</button>
-        <button aria-pressed={assetType === "materials"} onClick={() => setAssetType("materials")}>材质与配色</button>
+        <button aria-pressed={assetType === "materials"} onClick={() => setAssetType("materials")}>装修材质</button>
       </div>
       {assetType === "materials" ? <MaterialLibrary rooms={materialRooms} onApply={onApplyMaterial} targetName={materialTargetName || targetName || "当前方案"} floorOnly={floorOnly} initialRoomId={materialRoomId} /> : <>
       <div className="library-filters">

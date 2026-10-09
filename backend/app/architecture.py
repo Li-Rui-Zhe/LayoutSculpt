@@ -25,6 +25,10 @@ def opening_footprint(wall, opening):
     )
 
 
+def wall_finish_key(wall):
+    return f"material:{wall['wall_material']}" if wall.get("wall_material") else wall.get("finish", "default")
+
+
 def wall_sections(document, cut_height=1.2):
     """Continuous, nonoverlapping wall solids at every opening elevation.
 
@@ -46,10 +50,10 @@ def wall_sections(document, cut_height=1.2):
             if o["bottom"] <= middle < o["bottom"] + o["height"]
         ])
         claimed = Polygon()
-        finishes = sorted({w.get("finish", "default") for w in walls},
+        finishes = sorted({wall_finish_key(w) for w in walls},
                           key=lambda finish: (finish == "default", finish))
         for finish in finishes:
-            group = [w for w in walls if w.get("finish", "default") == finish
+            group = [w for w in walls if wall_finish_key(w) == finish
                      and w["height"] > middle]
             shape = unary_union([footprints[w["id"]] for w in group]).difference(voids)
             shape = shape.difference(claimed)
