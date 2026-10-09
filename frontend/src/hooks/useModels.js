@@ -15,7 +15,11 @@ const effortLabels = {
 export const effortLabel = (value) =>
   effortLabels[value] || value || "本地默认";
 
-export function useModels({ initialModel, initialEffort } = {}) {
+export function useModels({
+  initialModel,
+  initialEffort,
+  requiresImage = true,
+} = {}) {
   const [catalog, setCatalog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -43,23 +47,26 @@ export function useModels({ initialModel, initialEffort } = {}) {
     }
   });
   const sequence = useRef(0);
-  const refresh = useCallback(async (force = false) => {
-    const token = ++sequence.current;
-    setLoading(true);
-    setError("");
-    try {
-      const next = await api(`/models${force ? "?refresh=true" : ""}`);
-      if (token !== sequence.current) return;
-      setCatalog(next);
-      setModel((current) => chooseModel(next, current));
-    } catch (e) {
-      if (token !== sequence.current) return;
-      setError(e.message);
-      setCatalog(null);
-    } finally {
-      if (token === sequence.current) setLoading(false);
-    }
-  }, []);
+  const refresh = useCallback(
+    async (force = false) => {
+      const token = ++sequence.current;
+      setLoading(true);
+      setError("");
+      try {
+        const next = await api(`/models${force ? "?refresh=true" : ""}`);
+        if (token !== sequence.current) return;
+        setCatalog(next);
+        setModel((current) => chooseModel(next, current, requiresImage));
+      } catch (e) {
+        if (token !== sequence.current) return;
+        setError(e.message);
+        setCatalog(null);
+      } finally {
+        if (token === sequence.current) setLoading(false);
+      }
+    },
+    [requiresImage],
+  );
   useEffect(() => {
     refresh();
     return () => {
@@ -102,6 +109,7 @@ export function useModels({ initialModel, initialEffort } = {}) {
     efforts,
     effort,
     selectEffort,
-    ready: !loading && !error && selectableModel(selected),
+    requiresImage,
+    ready: !loading && !error && selectableModel(selected, requiresImage),
   };
 }

@@ -474,13 +474,19 @@ button:hover:not(:disabled) {
   color: #929c92;
   text-align: center;
 }
+.overview-count-note {
+  margin: 0 0 18px;
+  color: #788572;
+  font-size: 11px;
+  line-height: 1.8;
+}
 .sample-overview {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
-  padding: 26px 20px;
-  margin-top: 22px;
+  gap: 10px;
+  padding: 22px 18px;
+  margin-top: 18px;
   background: linear-gradient(145deg, #f3f1e8, #eaf0e5);
   border: 1px solid #e4e6d9;
   border-radius: 12px;

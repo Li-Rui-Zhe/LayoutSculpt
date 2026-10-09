@@ -1,13 +1,17 @@
-export const selectableModel = (item) =>
-  Boolean(item) && item.available !== false && item.supports_image !== false;
+export const selectableModel = (item, requiresImage = true) =>
+  Boolean(item) &&
+  item.available !== false &&
+  (!requiresImage || item.supports_image !== false);
 
-export function chooseModel(catalog, current) {
+export function chooseModel(catalog, current, requiresImage = true) {
   const items = catalog?.items || [];
   return (
     [current, catalog?.default_model].find((id) =>
-      items.some((item) => item.id === id && selectableModel(item)),
+      items.some(
+        (item) => item.id === id && selectableModel(item, requiresImage),
+      ),
     ) ||
-    items.find(selectableModel)?.id ||
+    items.find((item) => selectableModel(item, requiresImage))?.id ||
     ""
   );
 }

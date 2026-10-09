@@ -4,6 +4,8 @@ import { showcase } from "../catalog.js";
 export const initialStudio = {
   category: "walls",
   selected: { walls: null, floor: null, fabric: null },
+  floorTarget: "all",
+  roomFloors: {},
   preset: "midday",
   mood: "cozy",
   daylight: 74,

@@ -34,6 +34,8 @@ from .architecture import validate_generated_structure
 from .consistency import structure_hash, source_hash
 from .store import now
 from .recovery import recoverable_recognition, REVIEW_TIMEOUT_WARNING
+from .diy import DiyService, install_diy_routes
+from .library import LibraryService, install_library_routes
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 ALLOWED_ORIGINS = {
@@ -87,11 +89,14 @@ def create_app(settings=None, *, client=None, model_builder=None):
     store = Store(settings.db_path)
     codex = client or CodexClient(settings)
     registry = SkillRegistry(settings.skills_dir)
+    diy = DiyService(settings, store, codex, registry)
+    library = LibraryService(settings, store, diy)
     confirmation_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(app):
         await store.initialize()
+        await diy.initialize()
         interrupted_jobs = await store.recover()
         async with AsyncSqliteSaver.from_conn_string(
             str(settings.data_dir / "graph.sqlite3")
@@ -99,7 +104,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             await checkpoints.setup()
             kwargs = {"model_builder": model_builder} if model_builder else {}
             graph = create_graph(
-                settings, store, codex, registry, checkpoints, **kwargs
+                settings, store, codex, registry, checkpoints, library=library, **kwargs
             )
             app.state.runner = JobRunner(graph, store, settings.concurrency, settings)
             for job_id in interrupted_jobs:
@@ -108,11 +113,13 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 yield
             finally:
                 await app.state.runner.close()
+                await diy.close()
                 await codex.stop()
 
     app = FastAPI(title="造个家户型工作台", version="2.0.0", lifespan=lifespan)
     app.state.store = store
     app.state.settings = settings
+    app.state.diy = diy
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"] + (["testserver"] if client is not None else []))
     app.add_middleware(
         CORSMiddleware,
@@ -222,7 +229,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         except Exception as exc:
             raise HTTPException(503, f"无法读取本地 Codex 模型：{exc}") from exc
 
-    async def resolve_model(options):
+    async def resolve_model(options, require_image=True):
         catalog = await models()
         selected = options.model or catalog["default_model"]
         item = next((m for m in catalog["items"] if m["id"] == selected), None)
@@ -230,7 +237,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             raise HTTPException(422, "所选模型已不可用，请刷新模型列表后重新选择")
         if item.get("available") is False:
             raise HTTPException(422, item.get("unavailable_reason") or "所选模型当前不可用，请选择其他模型")
-        if item["supports_image"] is False:
+        if require_image and item["supports_image"] is False:
             raise HTTPException(422, "所选模型不支持图片，请选择支持户型图识别的模型")
         options.model = selected
         if options.reasoning_effort and options.reasoning_effort not in item["efforts"]:
@@ -242,6 +249,9 @@ def create_app(settings=None, *, client=None, model_builder=None):
             effort if effort in item["efforts"] else item["default_effort"]
         )
         return options
+
+    install_diy_routes(app, diy, resolve_model)
+    install_library_routes(app, library)
 
     @app.get("/api/jobs")
     async def jobs():
@@ -467,6 +477,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         previous = await require_job(job_id.hex)
         if previous["status"] != "succeeded":
             raise HTTPException(409, "请等待户型生成成功后再进行人工设计")
+        document.furniture = await library.resolve_furnishing(document.furniture)
         source = settings.workspace(job_id.hex) / "source.png"
         if not source.is_file():
             raise HTTPException(409, "原始户型图缺失，无法创建设计版本")

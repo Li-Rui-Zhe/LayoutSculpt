@@ -35,6 +35,7 @@ async def build_model(
         "--layout", str(path),
         "--output", str(workspace),
         "--asset-catalog", str(settings.furniture_catalog),
+        "--library-dir", str(settings.data_dir / "library"),
     ]
     with (workspace / "modeling.log").open("wb") as log:
         process = await asyncio.create_subprocess_exec(

@@ -1434,7 +1434,11 @@ input[type="checkbox"] {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  scrollbar-width: none;
   padding-bottom: 25px;
+}
+.creation-shell::-webkit-scrollbar {
+  display: none;
 }
 .new-task-page {
   max-width: 1180px;

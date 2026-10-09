@@ -584,6 +584,7 @@ def test_manual_edit_isolated_materials_passage_and_retry_without_codex(tmp_path
             "furniture": furniture_data(),
         }
         payload["layout"]["rooms"][0]["floor_finish"] = "walnut"
+        payload["layout"]["rooms"][0]["floor_material"] = "honey"
         payload["layout"]["walls"][0]["finish"] = "sage"
         payload["layout"]["openings"][0]["kind"] = "passage"
         payload["furniture"]["items"][0]["x"] = 3
@@ -603,6 +604,7 @@ def test_manual_edit_isolated_materials_passage_and_retry_without_codex(tmp_path
         assert result["result"]["edited_of"] == source["id"]
         data = client.get(f"/api/jobs/{result['id']}/artifacts/layout.json").json()
         assert data["rooms"][0]["floor_finish"] == "walnut"
+        assert data["rooms"][0]["floor_material"] == "honey"
         assert data["walls"][0]["finish"] == "sage"
         assert data["openings"][0]["kind"] == "passage"
         assert data["furniture"][0]["x"] == 3

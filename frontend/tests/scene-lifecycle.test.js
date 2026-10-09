@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { StudioScene } from "../src/viewer/StudioScene.js";
 import { initialStudio } from "../src/hooks/useStudio.js";
+import { showcase } from "../src/catalog.js";
 
 function fixture() {
   const loads = [],
@@ -114,6 +115,11 @@ test("加载示例时灯罩不遮挡自身光源，墙体仍可投射阴影", ()
   const house = new THREE.Group();
   const wall = model("wall");
   house.add(wall);
+  const glass = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 0.02),
+    new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.2 }),
+  );
+  house.add(glass);
   const shades = ["床头灯罩", "床头灯罩001", "落地灯灯罩"].map(
     (name, index) => {
       const shade = new THREE.Mesh(
@@ -126,10 +132,11 @@ test("加载示例时灯罩不遮挡自身光源，墙体仍可投射阴影", ()
       return shade;
     },
   );
-  scene.installModel("/models/forest-home-v2.glb", { model: house });
+  scene.installModel(showcase.model_url, { model: house });
   assert.equal(house.userData.designLights.length, 3);
   assert.ok(shades.every((shade) => !shade.castShadow && shade.visible));
   assert.equal(wall.castShadow, true);
+  assert.equal(glass.castShadow, false);
 });
 
 test("快速切换时迟到模型被释放，不能覆盖当前任务", async () => {

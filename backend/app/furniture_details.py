@@ -41,20 +41,18 @@ def construct(builder, item):
             for z in [-d * 0.32, d * 0.32]:
                 cylinder("茶几桌脚", [x, (h - 0.05) / 2, z], 0.018, h - 0.05, "wood")
         return True
-    if kind == "shower":
-        box("淋浴底盘", [0, 0.045, 0], [w, 0.09, d], "white")
-        box("淋浴地面", [0, 0.096, 0], [w - 0.08, 0.012, d - 0.08], "stone")
-        box("淋浴排水", [0, 0.104, -d * 0.32], [w * 0.55, 0.006, 0.035], "metal")
-        # Side and front screens leave a real walk-in entrance on the right.
-        box("淋浴侧玻璃", [-w / 2 + 0.018, h / 2, 0], [0.012, h - 0.16, d], "glass")
-        box(
-            "淋浴前玻璃",
-            [-w * 0.22, h / 2, d / 2 - 0.018],
-            [w * 0.5, h - 0.16, 0.012],
-            "glass",
-        )
-        for x, z in [(-w / 2, -d / 2), (-w / 2, d / 2), (w * 0.03, d / 2)]:
-            cylinder("淋浴框", [x, h / 2, z], 0.014, h, "metal")
+    if kind in {"shower", "shower_walk_in", "shower_open"}:
+        base = .05 if kind == "shower" else .012
+        box("淋浴地面", [0, base / 2, 0], [w, base, d], "stone")
+        box("淋浴排水", [0, base + .004, -d * 0.32], [w * .55, .006, .035], "metal")
+        if kind == "shower":
+            box("淋浴背板", [0, h / 2, -d / 2 + .015], [w, h, .03], "stone")
+            box("淋浴右侧板", [w / 2 - .015, h / 2, 0], [.03, h, d], "stone")
+            box("淋浴玻璃门", [0, h / 2, d / 2 - .018], [w, h - .08, .012], "glass")
+        if kind != "shower_open":
+            box("淋浴侧玻璃", [-w / 2 + .018, h / 2, 0], [.012, h - .06, d], "glass")
+            for z in [-d / 2, d / 2]:
+                cylinder("淋浴框", [-w / 2 + .018, h / 2, z], .009, h, "metal")
         cylinder(
             "花洒立杆", [w * 0.15, h * 0.55, -d / 2 + 0.08], 0.013, h * 0.72, "metal"
         )

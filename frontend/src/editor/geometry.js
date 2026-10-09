@@ -1,4 +1,5 @@
 import polygonClipping from "polygon-clipping";
+import { designIssues } from "../diy/design.js";
 
 export function segmentInside(a, b, polygon) {
   if (!contains(a, polygon) || !contains(b, polygon)) return false;
@@ -225,6 +226,8 @@ export const lightColors = {
   6500: "#e3f0ff",
 };
 export const furnitureNames = {
+  custom: "DIY 素材",
+  model: "GLB 素材",
   sofa: "沙发",
   bed: "床",
   table: "餐桌",
@@ -237,8 +240,23 @@ export const furnitureNames = {
   plant: "绿植",
   rug: "地毯",
   desk: "书桌",
-  shower: "淋浴间",
+  shower: "独立淋浴房",
+  shower_walk_in: "步入式淋浴区",
+  shower_open: "开放式花洒",
   refrigerator: "冰箱",
+  television: "电视机",
+  wall_television: "壁挂电视",
+  tv_console: "电视柜",
+  coffee_table: "茶几",
+  side_table: "边几",
+  nightstand: "床头柜",
+  bookshelf: "书柜",
+  shoe_cabinet: "鞋柜",
+  washing_machine: "洗烘一体机",
+  dishwasher: "洗碗机",
+  oven: "烤箱",
+  armchair: "休闲单椅",
+  bench: "换鞋凳",
 };
 export const openingNames = {
   door: "门",
@@ -603,6 +621,17 @@ export function problems(document) {
       });
   });
   furniture.items.forEach((item, index) => {
+    if (
+      !Number.isFinite(item.elevation ?? 0) ||
+      (item.elevation ?? 0) < 0 ||
+      (item.elevation ?? 0) > 3 ||
+      (item.elevation ?? 0) + item.height > 4.5
+    )
+      issues.push({
+        type: "furniture",
+        index,
+        text: "家具离地高度应为 0～3 米，顶部不能超过 4.5 米。",
+      });
     if (!validPoint(item))
       issues.push({
         type: "furniture",
@@ -752,9 +781,18 @@ export function restorableDraft(doc) {
       (i) =>
         i &&
         furnitureNames[i.kind] &&
-        [i.x, i.y, i.width, i.depth, i.height, i.rotation].every(
-          Number.isFinite,
-        ),
+        (i.kind !== "custom" || designIssues(i.diy).length === 0) &&
+        (i.kind !== "model" ||
+          /^snapshot:[a-f0-9]{64}$/.test(i.asset_id || "")) &&
+        [
+          i.x,
+          i.y,
+          i.width,
+          i.depth,
+          i.height,
+          i.rotation,
+          i.elevation ?? 0,
+        ].every(Number.isFinite),
     )
   );
 }

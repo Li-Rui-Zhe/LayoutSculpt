@@ -51,7 +51,7 @@ class State(TypedDict, total=False):
 
 
 def create_graph(
-    settings, store, client, registry, checkpointer, model_builder=build_model
+    settings, store, client, registry, checkpointer, model_builder=build_model, library=None
 ):
     cache = StageCache(settings.data_dir / "ai-cache")
 
@@ -352,6 +352,15 @@ def create_graph(
                 {key: item[key] for key in ["kind", "name", "dimensions"]}
                 for item in catalog["items"]
             ]
+            if library:
+                asset_items = await library.catalog()
+        allowed_assets = {item["asset_id"]: item for item in asset_items if "asset_id" in item}
+
+        def validate_plan(plan):
+            validate_furnishing(plan, layout)
+            for item in plan.items:
+                if item.asset_id and (item.asset_id not in allowed_assets or item.kind != allowed_assets[item.asset_id]["kind"]):
+                    raise ValueError("家具素材 ID 或类型不在本次目录中，请使用目录提供的 asset_id 和 kind")
         try:
             furniture, trace = await run_agent(
                 state,
@@ -363,7 +372,7 @@ def create_graph(
                     "style": state["options"]["style"],
                     "furniture_assets": asset_items,
                 },
-                lambda plan: validate_furnishing(plan, layout),
+                validate_plan,
                 transform=lambda plan: prepare_generated_furnishing(plan, layout),
             )
         except (TimeoutError, ValueError, CodexError, ConnectionError) as exc:
@@ -373,6 +382,9 @@ def create_graph(
             warning = f"家具规划{reason}，已先生成确认的房屋结构；家具尚未完成，可手动布置或重新规划家具。"
             await store.update(state["job_id"], agent="家具规划", message=warning)
             return {"furniture": {"items": [], "notes": [warning]}, "furnishing_status": "incomplete"}
+        if library:
+            furniture = (await library.resolve_furnishing(furniture)).model_dump()
+            validate_furnishing(Furnishing.model_validate(furniture), layout)
         if not furniture["items"]:
             furniture["notes"] = ["本次方案未包含可放置的家具，已保留完整房屋结构，可手动补充或重新规划家具。", *furniture["notes"]][:20]
         return {"furniture": furniture, "agents": [trace],

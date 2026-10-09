@@ -1,41 +1,55 @@
 """Small Blender primitives used only by the offline furniture authoring tool."""
 
 import bpy
+import bmesh
+
+
+def mesh_object(name, location, geometry, mat):
+    mesh = bpy.data.meshes.new(name)
+    geometry.to_mesh(mesh)
+    geometry.free()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.location = location
+    obj.data.materials.append(mat)
+    return obj
 
 
 def box(name, location, size, mat, bevel=0.025, rotation=0):
-    bpy.ops.mesh.primitive_cube_add(size=1, location=location)
-    obj = bpy.context.object
-    obj.name = name
-    obj.dimensions = size
+    geometry = bmesh.new()
+    bmesh.ops.create_cube(geometry, size=1)
+    for vertex in geometry.verts:
+        for axis in range(3):
+            vertex.co[axis] *= size[axis]
+    obj = mesh_object(name, location, geometry, mat)
     obj.rotation_euler[2] = rotation
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    obj.data.materials.append(mat)
     if bevel:
         modifier = obj.modifiers.new("圆角", "BEVEL")
         modifier.width = min(bevel, min(size) / 3)
         modifier.segments = 3
+        for face in obj.data.polygons:
+            face.use_smooth = True
         obj.modifiers.new("加权法线", "WEIGHTED_NORMAL")
     return obj
 
 
-def sphere(name, location, scale, mat):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, location=location)
-    obj = bpy.context.object
-    obj.name = name
+def sphere(name, location, scale, mat, segments=24, rings=12):
+    geometry = bmesh.new()
+    bmesh.ops.create_uvsphere(geometry, u_segments=segments, v_segments=rings, radius=1)
+    obj = mesh_object(name, location, geometry, mat)
     obj.scale = scale
-    obj.data.materials.append(mat)
-    bpy.ops.object.shade_smooth()
+    for face in obj.data.polygons:
+        face.use_smooth = True
     return obj
 
 
 def cylinder(name, location, radius, depth, mat):
-    bpy.ops.mesh.primitive_cylinder_add(
-        vertices=24, radius=radius, depth=depth, location=location
-    )
-    obj = bpy.context.object
-    obj.name = name
-    obj.data.materials.append(mat)
+    geometry = bmesh.new()
+    bmesh.ops.create_cone(geometry, cap_ends=True, cap_tris=False, segments=32,
+                          radius1=radius, radius2=radius, depth=depth)
+    obj = mesh_object(name, location, geometry, mat)
+    for face in obj.data.polygons:
+        face.use_smooth = True
     mod = obj.modifiers.new("圆角", "BEVEL")
     mod.width = 0.01
     mod.segments = 2

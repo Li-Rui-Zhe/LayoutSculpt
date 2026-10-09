@@ -11,6 +11,8 @@ import { installCutaway, updateCutaway } from "./cutaway.js";
 import { installFixtureLights, updateFixtureLights } from "./fixtureLights.js";
 import { materials, presets, showcase } from "../catalog.js";
 import { frameBounds, visualCenter, perspectiveCenter } from "./viewFraming.js";
+import { isolateRoomFloors } from "./roomMaterials.js";
+import { selectedFloor } from "../materials/assignments.js";
 
 function disposeModel(root) {
   const geometries = new Set(),
@@ -320,6 +322,8 @@ export class StudioScene {
     this.model = entry.model;
     this.modelUrl = url;
     this.originals = entry.originals || new Map();
+    const roomCatalog = isolateRoomFloors(this.model);
+    this.callbacks.onRooms?.(roomCatalog);
     if (!entry.originals) {
       installCutaway(this.model);
       installFixtureLights(this.model, {
@@ -333,6 +337,10 @@ export class StudioScene {
       this.model.traverse((obj) => {
         if (!obj.isMesh) return;
         obj.castShadow = !obj.userData.fixture_id && !lightSurfaces.has(obj);
+        // Clear glazing transmits the sample's daylight; an opaque shadow here
+        // would black out the rooms despite the visible transparent windows.
+        if (url === showcase.model_url && [obj.material].flat().some((m) => m.transparent && m.opacity < 0.6))
+          obj.castShadow = false;
         obj.receiveShadow = true;
         [obj.material].flat().forEach((m) => {
           for (const texture of [m.map, m.normalMap]) {
@@ -469,13 +477,13 @@ export class StudioScene {
     this.scene.background.set(id === "night" ? "#45555e" : "#d8dcd7");
     this.ground.material.color.set(id === "night" ? "#394852" : "#dce2dd");
     if (this.modelUrl === showcase.model_url) {
-      this.scene.background.set(id === "night" ? "#253a35" : "#eee5d5");
-      this.ground.material.color.set(id === "night" ? "#253a35" : "#eee5d5");
-      this.sun.position.set(-8, 10, 6);
-      this.sun.intensity *= id === "night" ? 1 : 1.05;
-      this.hemi.intensity *= id === "night" ? 1 : 0.5;
-      this.fill.intensity = id === "night" ? 0.12 : 0.35;
-      this.scene.environmentIntensity = id === "night" ? 0.22 : 0.38;
+      this.scene.background.set(id === "night" ? "#283638" : "#ede8df");
+      this.ground.material.color.set(id === "night" ? "#283638" : "#ede8df");
+      this.sun.position.set(-6, 12, 8);
+      this.sun.intensity *= id === "night" ? 1 : 0.9;
+      this.hemi.intensity *= id === "night" ? 1.15 : 0.66;
+      this.fill.intensity = id === "night" ? 0.16 : 0.5;
+      this.scene.environmentIntensity = id === "night" ? 0.25 : 0.5;
     }
     updateFixtureLights(this.model, id === "night");
     this.renderer.domElement.dataset.lightingPreset =
@@ -502,8 +510,9 @@ export class StudioScene {
             : material.name.startsWith("软装")
               ? "fabric"
               : null);
-      const chosen =
-        category && materials.find((m) => m.id === state.selected[category]);
+      const selection = category === "floor" && material.userData.floor_room_id
+        ? selectedFloor(state, material.userData.floor_room_id) : state.selected[category];
+      const chosen = category && materials.find((m) => m.id === selection);
       if (chosen) {
         material.color.set(chosen.color);
         const surface =
@@ -630,7 +639,7 @@ export class StudioScene {
       ...(top
         ? [0, 1, 0.00001]
         : this.modelUrl === showcase.model_url
-          ? [1.1, 2.4, 2.6]
+          ? [1.35, 2.75, 2.65]
           : showZAcross
             ? [1.85, 3.1, 0.55]
             : [0.55, 3.1, 1.85]),

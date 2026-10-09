@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from uuid import uuid4
+from weakref import WeakValueDictionary
 
 from .store import now
 
@@ -19,9 +20,9 @@ def compact_json(value):
 class StageCache:
     def __init__(self, root):
         self.root = Path(root)
-        # Fixed buckets bound lock memory; same-key calls within this process
-        # share a successful result rather than issuing duplicate inference.
-        self.locks = [asyncio.Lock() for _ in range(32)]
+        # 同一输入共享推理；不同输入不能因散列桶碰撞而互相阻塞。
+        # 等待者和持有者释放后自动回收锁，避免按任务数量累积。
+        self.locks = WeakValueDictionary()
 
     def key(
         self,
@@ -49,7 +50,11 @@ class StageCache:
         return hashlib.sha256(compact_json(material).encode()).hexdigest()
 
     def lock(self, key):
-        return self.locks[int(key[:2], 16) % len(self.locks)]
+        lock = self.locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self.locks[key] = lock
+        return lock
 
     def path(self, key):
         if len(key) != 64 or any(c not in "0123456789abcdef" for c in key):

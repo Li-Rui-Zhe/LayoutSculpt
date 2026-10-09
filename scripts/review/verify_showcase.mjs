@@ -1,5 +1,7 @@
 import { chromium, expect } from "@playwright/test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
+
+const showcase = JSON.parse(await readFile(new URL("../../frontend/src/showcase.json", import.meta.url), "utf8"));
 
 const base = process.env.STUDIO_BASE_URL || "http://127.0.0.1:5173";
 const output = "data/visual-review/showcase";
@@ -17,7 +19,7 @@ try {
   const canvas = page.locator("#viewport canvas");
   await expect(canvas).toHaveAttribute(
     "data-model-url",
-    "/models/forest-home-v2.glb",
+    showcase.model_url,
     { timeout: 30000 },
   );
   await expect(
@@ -89,7 +91,7 @@ try {
   await page.reload();
   await expect(canvas).toHaveAttribute(
     "data-model-url",
-    "/models/forest-home-v2.glb",
+    showcase.model_url,
     { timeout: 30000 },
   );
   expect(

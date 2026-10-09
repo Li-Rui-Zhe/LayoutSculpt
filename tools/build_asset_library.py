@@ -13,23 +13,36 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from asset_materials import PALETTES, SURFACES, TEXTURES, palette_materials
 from asset_geometry import box, cylinder, sphere
+from asset_bathroom import toilet
+from chair_mesh import chair_parts
+from asset_expansion import SPECS as EXTRA_SPECS, construct as construct_extra, materials as extra_materials
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBRARY = ROOT / "assets" / "furniture"
-VERSION = "1.0.0"
+VERSION = "2.2.0"
 SPECS = {
     "sofa": ("云屿三人沙发", (2.3, 0.95, 0.88)),
     "bed": ("栖木软包双人床", (1.8, 2.1, 1.1)),
     "cabinet": ("木格双门衣柜", (1.6, 0.6, 2.15)),
     "table": ("圆角实木餐桌", (1.5, 0.85, 0.76)),
-    "chair": ("弧背布艺餐椅", (0.5, 0.54, 0.84)),
+    "chair": ("弧面软包实木餐椅", (0.5, 0.54, 0.84)),
     "desk": ("抽屉工作书桌", (1.3, 0.62, 0.76)),
     "counter": ("石面厨房地柜", (1.8, 0.6, 0.9)),
     "rug": ("编织流苏地毯", (2.0, 1.5, 0.035)),
     "plant": ("陶盆橄榄树", (0.7, 0.7, 1.3)),
     "sink": ("台盆浴室柜", (0.8, 0.5, 0.95)),
-    "toilet": ("圆润一体坐便器", (0.4, 0.68, 0.76)),
+    "toilet": ("一体裙包缓降坐便器", (0.4, 0.68, 0.76)),
     "bathtub": ("独立椭圆浴缸", (0.78, 1.65, 0.6)),
+    **EXTRA_SPECS,
+}
+CATEGORIES = {
+    "客厅": ["sofa", "armchair", "television", "wall_television", "tv_console", "coffee_table", "side_table"],
+    "卧室": ["bed", "nightstand", "cabinet"],
+    "餐厅与书房": ["table", "chair", "desk", "bookshelf"],
+    "玄关": ["shoe_cabinet", "bench"],
+    "厨房与家电": ["counter", "refrigerator", "washing_machine", "dishwasher", "oven"],
+    "卫浴": ["sink", "toilet", "bathtub", "shower", "shower_walk_in", "shower_open"],
+    "软装": ["rug", "plant"],
 }
 
 
@@ -76,7 +89,7 @@ def textures():
     for style, palette in PALETTES.items():
         for role, surface in SURFACES.items():
             # 输入为线性色值，PNG 储存用于 glTF 的 sRGB 颜色。
-            color = np.array(palette.get(role, (0.76, 0.75, 0.70))) ** (1 / 2.2)
+            color = np.array([float(v) ** (1 / 2.2) for v in palette.get(role, (0.76, 0.75, 0.70))])
             save_texture(
                 f"{style}_{role}_color.png", heights[surface][:, :, None] * color
             )
@@ -136,6 +149,8 @@ def vessel(name, profile, mat, sx=1, sy=1):
 
 
 def construct(kind, m):
+    if construct_extra(kind, m, pipe, seam):
+        return
     wood, fabric, accent, metal = m["wood"], m["fabric"], m["accent"], m["metal"]
     if kind == "sofa":
         box("悬浮木底座", (0, 0, 0.22), (2.26, 0.9, 0.15), wood, 0.045)
@@ -222,19 +237,15 @@ def construct(kind, m):
             box("抽屉面", (0.23, -0.27, 0.61), (0.6, 0.027, 0.17), wood, 0.008)
             pipe("抽屉拉手", [(0.11, -0.297, 0.61), (0.35, -0.297, 0.61)], 0.008, metal)
     elif kind == "chair":
-        box("软包座椅", (0, -0.015, 0.46), (0.49, 0.47, 0.095), fabric, 0.045)
-        seam("椅垫滚边", 0, -0.015, 0.485, 0.44, 0.42, fabric)
-        for x in [-0.18, 0.18]:
-            for y in [-0.18, 0.18]:
-                pipe(
-                    "实木椅腿", [(x * 1.17, y * 1.15, 0.02), (x, y, 0.44)], 0.022, wood
-                )
-            pipe("椅背支架", [(x, 0.18, 0.43), (x, 0.23, 0.79)], 0.022, wood)
-        points = [
-            (0.235 * math.cos(t), 0.1 + 0.15 * math.sin(t), 0.78)
-            for t in np.linspace(0, math.pi, 24)
-        ]
-        pipe("弧形木靠背", points, 0.055, wood)
+        for part in chair_parts():
+            mesh = bpy.data.meshes.new(part["name"])
+            mesh.from_pydata([(x, -z, y) for x, y, z in part["vertices"]], [], part["faces"])
+            mesh.update()
+            obj = bpy.data.objects.new(part["name"], mesh)
+            bpy.context.collection.objects.link(obj)
+            mesh.materials.append(m[part["role"]])
+            for face in mesh.polygons:
+                face.use_smooth = True
     elif kind == "rug":
         box("织物毯身", (0, 0, 0.014), (1.93, 1.44, 0.025), accent, 0.012)
         seam("地毯包边", 0, 0, 0.028, 1.87, 1.38, fabric)
@@ -279,6 +290,7 @@ def construct(kind, m):
                     ),
                     (0.045, 0.10, 0.012),
                     m["leaf"],
+                    segments=12, rings=6,
                 )
                 leaf.rotation_euler = (0.3, 0.45, a + j * 0.5)
     elif kind == "sink":
@@ -340,33 +352,51 @@ def construct(kind, m):
         )
         cylinder("浴缸排水口", (0, -0.15, 0.148), 0.022, 0.005, metal)
     elif kind == "toilet":
-        sphere("陶瓷底座", (0, 0, 0.22), (0.16, 0.24, 0.22), m["white"])
-        box("圆角水箱", (0, 0.23, 0.54), (0.36, 0.19, 0.43), m["white"], 0.065)
-        bowl = vessel(
-            "坐便器盆体",
-            [
-                (0, 0),
-                (0.13, 0),
-                (0.22, 0.2),
-                (0.215, 0.23),
-                (0.18, 0.235),
-                (0.14, 0.12),
-                (0, 0.09),
-            ],
-            m["white"],
-            0.90,
-            1.25,
-        )
-        bowl.location = (0, -0.05, 0.2)
-        sphere("闭合坐便盖", (0, -0.065, 0.452), (0.198, 0.275, 0.025), m["white"])
-        box("双档冲水键", (0, 0.23, 0.761), (0.095, 0.042, 0.008), metal, 0.005)
+        toilet(m, pipe)
+
+
+def refine(kind, m):
+    """已有素材的五金、缝线和结构细节，保持原来的标准尺寸。"""
+    if kind == "sofa":
+        for x in [-0.69, 0, 0.69]:
+            for xx in [x - 0.25, x + 0.25]:
+                pipe("靠背压线", [(xx, 0.185, 0.56), (xx, 0.16, 0.78)], 0.0025, m["fabric"])
+    elif kind == "bed":
+        for y in [-0.48, -0.42, -0.36]:
+            pipe("床尾织毯织线", [(-0.84, y, 0.706), (0.84, y, 0.706)], 0.0025, m["fabric"])
+    elif kind in {"cabinet", "counter"}:
+        w, d, h = SPECS[kind][1]
+        for x in [-w / 2 + 0.025, w / 2 - 0.025]:
+            box("收口侧边", (x, -d / 2 - 0.025, (h + 0.1) / 2), (0.016, 0.015, h - 0.13), m["wood"], 0.003)
+        box("顶板阴缝", (0, -d / 2 - 0.02, h - 0.012), (w - 0.04, 0.003, 0.009), m["dark"], 0.001)
+    elif kind in {"table", "desk"}:
+        w, d, h = SPECS[kind][1]
+        for x in [-w * 0.39, w * 0.39]:
+            box("桌腿榫接块", (x, 0, h - 0.15), (0.055, d - 0.16, 0.04), m["wood"], 0.008)
+        if kind == "desk":
+            cylinder("理线孔饰圈", (0.38, 0.21, h + 0.002), 0.025, 0.004, m["steel"])
+            cylinder("理线孔", (0.38, 0.21, h + 0.005), 0.018, 0.004, m["dark"])
+    elif kind == "rug":
+        for x in [-0.83, -0.79, 0.79, 0.83]:
+            pipe("织毯边框纹", [(x, -0.64, 0.028), (x, 0.64, 0.028)], 0.003, m["fabric"])
+    elif kind == "plant":
+        cylinder("陶盆底托", (0, 0, 0.012), 0.154, 0.018, m["white"])
+    elif kind == "sink":
+        cylinder("台盆排水口", (0, 0, 0.785), 0.019, 0.006, m["steel"])
+        pipe("龙头控制柄", [(0.015, 0.19, 0.86), (0.065, 0.19, 0.91)], 0.006, m["steel"])
+        box("底部悬空踢脚", (0, -0.22, 0.035), (0.72, 0.02, 0.04), m["dark"], 0.003)
+    elif kind == "bathtub":
+        for x in [-0.10, 0.10]:
+            cylinder("缸沿龙头底座", (x, 0.57, 0.53), 0.022, 0.04, m["steel"])
+        pipe("缸沿出水嘴", [(0, 0.60, 0.53), (0, 0.60, 0.65), (0, 0.43, 0.65), (0, 0.43, 0.61)], 0.012, m["steel"])
 
 
 def bake_asset(kind, mats):
     bpy.ops.object.select_all(action="DESELECT")
     before = set(bpy.data.objects)
     construct(kind, mats)
-    parts = list(set(bpy.data.objects) - before)
+    refine(kind, mats)
+    parts = sorted(set(bpy.data.objects) - before, key=lambda obj: obj.name)
     for obj in parts:
         obj.select_set(True)
     bpy.context.view_layer.objects.active = parts[0]
@@ -404,13 +434,27 @@ def bake_asset(kind, mats):
 
 
 def main():
+    global LIBRARY, SPECS
+    bpy.context.preferences.edit.use_global_undo = False
+    for arg in sys.argv:
+        if arg.startswith("--asset="):
+            kind = arg.split("=", 1)[1]
+            SPECS = {kind: SPECS[kind]}
+        elif arg.startswith("--output="):
+            LIBRARY = Path(arg.split("=", 1)[1])
+    print("ASSET_BUILD_START", flush=True)
     LIBRARY.mkdir(parents=True, exist_ok=True)
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
-    textures()
-    mats = palette_materials("natural")
+    required = [TEXTURES / f"{style}_{role}_color.png" for style in PALETTES for role in SURFACES]
+    required += [TEXTURES / f"{surface}_{suffix}.png" for surface in {"wood", "planks", "linen", "stone"} for suffix in ["color", "normal"]]
+    if "--rebuild-textures" in sys.argv or not all(path.is_file() for path in required):
+        textures()
+    print("ASSET_TEXTURES_READY", flush=True)
+    mats = extra_materials(palette_materials("natural"))
     entries = []
     for i, kind in enumerate(SPECS):
+        print("BUILDING", kind, flush=True)
         obj = bake_asset(kind, mats)
         obj.location = ((i % 4) * 3.2, (i // 4) * 3.2, 0)
         obj.data.calc_loop_triangles()
@@ -422,6 +466,8 @@ def main():
                 "collection": "asset_" + kind,
                 "dimensions": SPECS[kind][1],
                 "triangles": len(obj.data.loop_triangles),
+                "category": next(label for label, kinds in CATEGORIES.items() if kind in kinds),
+                "revision": "2.2.1" if kind == "chair" else VERSION,
             }
         )
     bpy.context.scene.unit_settings.system = "METRIC"

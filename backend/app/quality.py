@@ -7,6 +7,7 @@ from shapely.ops import unary_union
 
 from .schemas import LightFixture, validate_furnishing
 from .architecture import structure_issues
+from .shower_layout import SHOWER_KINDS, entrance, placement_issues as shower_issues
 
 
 def footprint(item):
@@ -72,6 +73,15 @@ def furnishing_issues(plan, layout):
     footprints = [footprint(item) for item in plan.items]
     for i, (item, shape) in enumerate(zip(plan.items, footprints)):
         label = item.name or f"{item.room_id}/{item.kind}"
+        issues.extend(shower_issues(item, layout))
+        if item.kind in SHOWER_KINDS:
+            access = entrance(item)
+            if access.intersection(solids).area > .012 or any(
+                j != i and other.kind != "rug" and other.elevation < 1.8
+                and access.intersection(other_shape).area > .025
+                for j, (other, other_shape) in enumerate(zip(plan.items, footprints))
+            ):
+                issues.append(f"{label} 入口受阻，请在正面留出至少 0.55 米通行空间")
         if item.kind != "rug" and shape.intersection(solids).area > 0.012:
             issues.append(f"{label} 与实体墙体相交，请移动到室内净空区域")
         if item.kind != "rug":
@@ -81,6 +91,8 @@ def furnishing_issues(plan, layout):
                         f"{label} 阻挡 {wall_id} 门口，请留出至少 0.45 米通行区"
                     )
         for other, other_shape in zip(plan.items[:i], footprints[:i]):
+            if min(item.elevation + item.height, other.elevation + other.height) <= max(item.elevation, other.elevation) + 1e-6:
+                continue
             if "rug" in {item.kind, other.kind}:
                 continue
             # Chairs may tuck partially under a table, but not disappear into it.
@@ -131,6 +143,10 @@ def prepare_generated_furnishing(plan, layout):
 
     def usable(item):
         shape = footprint(item)
+        if shower_issues(item, layout):
+            return False
+        if item.kind in SHOWER_KINDS and entrance(item).intersection(solids).area > .012:
+            return False
         if item.room_id not in shapes or not shapes[item.room_id].covers(shape):
             return False
         if not (-60 <= item.x <= 60 and -60 <= item.y <= 60):
@@ -141,6 +157,12 @@ def prepare_generated_furnishing(plan, layout):
             if any(shape.intersection(door).area > 0.035 for _, door in doors):
                 return False
         for other, other_shape in accepted:
+            if item.kind in SHOWER_KINDS and other.kind != "rug" and other.elevation < 1.8 and entrance(item).intersection(other_shape).area > .025:
+                return False
+            if other.kind in SHOWER_KINDS and item.kind != "rug" and item.elevation < 1.8 and entrance(other).intersection(shape).area > .025:
+                return False
+            if min(item.elevation + item.height, other.elevation + other.height) <= max(item.elevation, other.elevation) + 1e-6:
+                continue
             if "rug" in {item.kind, other.kind}:
                 continue
             allowed = (0.35 if {item.kind, other.kind} <= {"chair", "table", "desk"}
@@ -151,7 +173,7 @@ def prepare_generated_furnishing(plan, layout):
 
     # Preserve major furniture before trying to place chairs and decorations.
     priority = {kind: index for index, kind in enumerate([
-        "counter", "bed", "sofa", "cabinet", "shower", "bathtub", "toilet",
+        "counter", "bed", "sofa", "cabinet", "shower", "shower_walk_in", "shower_open", "bathtub", "toilet",
         "sink", "refrigerator", "table", "desk", "chair", "plant", "rug",
     ])}
     offsets = [(0, 0)]
@@ -160,7 +182,7 @@ def prepare_generated_furnishing(plan, layout):
                        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
         offsets.extend((dx * distance / math.sqrt(2), dy * distance / math.sqrt(2))
                        for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)))
-    for index, original in sorted(enumerate(result.items), key=lambda pair: priority[pair[1].kind]):
+    for index, original in sorted(enumerate(result.items), key=lambda pair: priority.get(pair[1].kind, 14)):
         item = original.model_copy(deep=True)
         label = item.name or item.kind
         if item.room_id not in rooms or not shapes[item.room_id].covers(Point(item.x, item.y)):
@@ -172,11 +194,13 @@ def prepare_generated_furnishing(plan, layout):
         for scale in (1, 0.95, 0.9):
             if min(item.width * scale, item.depth * scale) < 0.1:
                 continue
-            for dx, dy in offsets:
+            candidates = ((dx, dy, angle) for angle in ([0, 90, -90, 180] if item.kind in SHOWER_KINDS else [0]) for dx, dy in offsets)
+            for dx, dy, angle in candidates:
                 candidate = item.model_copy(update={
                     "x": round(item.x + dx, 6) if dx else item.x,
                     "y": round(item.y + dy, 6) if dy else item.y,
                     "width": item.width * scale, "depth": item.depth * scale,
+                    "rotation": (item.rotation + angle + 180) % 360 - 180 if angle else item.rotation,
                 })
                 if usable(candidate):
                     placed = candidate
@@ -187,9 +211,10 @@ def prepare_generated_furnishing(plan, layout):
             fitted[index] = placed
             accepted.append((placed, footprint(placed)))
             if placed.model_dump() != item.model_dump():
-                notes.append(f"已微调{label}的位置或尺寸，避让墙体、门口及相邻家具（平移不超过 0.25 米，缩小不超过 10%）")
+                notes.append(f"已微调{label}的位置、尺寸或朝向，避让墙体、门窗及相邻家具（平移不超过 0.25 米，缩小不超过 10%）")
         else:
-            notes.append(f"暂未放置{label}：局部空间不足，已保留完整户型，可在手动调整中补充")
+            reason = "局部空间不足或缺少合适的安装墙面 / 入口" if item.kind in SHOWER_KINDS else "局部空间不足"
+            notes.append(f"暂未放置{label}：{reason}，已保留完整户型，可在人工设计中补充")
     result.items = [fitted[index] for index in sorted(fitted)]
     validate_furnishing(result, layout)
     # Unusual furniture dimensions are advice, not a reason to discard a house.

@@ -34,13 +34,14 @@ export default function ModelFields({ models, idPrefix = "project" }) {
             <option
               key={item.id}
               value={item.id}
-              disabled={!selectableModel(item)}
+              disabled={!selectableModel(item, models.requiresImage)}
             >
               {item.name}
               {item.id === models.catalog.default_model ? " · 推荐默认" : ""}
               {item.available === false
                 ? " · 当前不可选"
-                : item.supports_image === false
+                : models.requiresImage !== false &&
+                    item.supports_image === false
                   ? " · 不支持图片"
                   : ""}
               {item.source === "local_config" && item.available !== false
@@ -74,7 +75,9 @@ export default function ModelFields({ models, idPrefix = "project" }) {
         </select>
         <small className="field-note">
           {models.efforts.length
-            ? "应用于识别、复核和规划；强度越高，通常耗时越长。"
+            ? models.requiresImage === false
+              ? "应用于当前素材设计；强度越高，通常耗时越长。"
+              : "应用于识别、复核和规划；强度越高，通常耗时越长。"
             : "当前服务未返回该模型的推理档位，沿用本地设置。"}
         </small>
       </div>

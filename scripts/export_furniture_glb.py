@@ -5,6 +5,7 @@ The generated GLBs are the runtime furniture library; Blender is not needed for 
 """
 
 import json
+import sys
 from pathlib import Path
 
 import bpy
@@ -16,8 +17,13 @@ source = assets / catalog["library"]
 output = assets / "glb"
 output.mkdir(exist_ok=True)
 bpy.ops.wm.open_mainfile(filepath=str(source))
+print("EXPORT_LIBRARY_LOADED", flush=True)
 
 for entry in catalog["items"]:
+    selected = next((arg.split("=", 1)[1] for arg in sys.argv if arg.startswith("--asset=")), None)
+    if selected and entry["kind"] != selected:
+        continue
+    print("EXPORTING", entry["kind"], flush=True)
     if entry.get("generator") == "python":
         continue
     collection = bpy.data.collections.get(entry["collection"])

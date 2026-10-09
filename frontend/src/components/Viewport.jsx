@@ -18,6 +18,7 @@ export default forwardRef(function Viewport(
     onZoom,
     onThumbnails,
     onView,
+    onRooms,
   },
   ref,
 ) {
@@ -25,7 +26,7 @@ export default forwardRef(function Viewport(
     engine = useRef(null),
     callbacks = useRef({});
   const runtime = useViewportRuntime();
-  callbacks.current = { onLoading, onError, onZoom, onThumbnails, onView };
+  callbacks.current = { onLoading, onError, onZoom, onThumbnails, onView, onRooms };
   useLayoutEffect(() => {
     try {
       const handlers = Object.fromEntries(

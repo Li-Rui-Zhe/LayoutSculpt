@@ -43,6 +43,7 @@ import ManualEditor from "../editor/ManualEditor.jsx";
 import StructureReview from "./StructureReview.jsx";
 import RetryDialog from "./RetryDialog.jsx";
 import { generationError } from "../hooks/modelSelection.js";
+import { materialSelection } from "../materials/assignments.js";
 
 const lightIcons = {
   midday: Sun,
@@ -300,14 +301,45 @@ export default function TaskWorkspace({
   onCreate,
   active = true,
   headingHost,
+  placementRequest,
+  onPlacementConsumed,
+  materialRequest,
+  onMaterialConsumed,
+  onMaterialContext,
 }) {
   const id = job?.id || "sample";
   const { state, update, undo, redo, canUndo, canRedo, storageError } =
     useStudio(id);
+  const [rooms, setRooms] = useState([]);
+  const [floorRequest, setFloorRequest] = useState(null);
+  useEffect(() => {
+    onMaterialContext?.({ id, rooms });
+  }, [id, rooms, onMaterialContext]);
+  const lastMaterialRequest = useRef(null);
   const hasModel = !job || job.status === "succeeded";
   const reviewing = job?.status === "awaiting_review";
   const [tab, setTab] = useState(hasModel ? "design" : "activity");
+  useEffect(() => {
+    if (placementRequest && job?.status === "succeeded") setTab("edit");
+  }, [placementRequest, job?.status]);
   const [panel, setPanel] = useState(hasModel ? "overview" : "task");
+  useEffect(() => {
+    if (!materialRequest || lastMaterialRequest.current === materialRequest.id)
+      return;
+    lastMaterialRequest.current = materialRequest.id;
+    update((s) =>
+      materialSelection(
+        s,
+        materialRequest.materialId,
+        materialRequest.category,
+        materialRequest.roomId,
+      ),
+    );
+    setPanel("design");
+    setTab("design");
+    setInspectorOpen(true);
+    onMaterialConsumed?.();
+  }, [materialRequest, update, onMaterialConsumed]);
   const [inspectorOpen, setInspectorOpen] = useState(
     () => !matchMedia("(max-width: 1000px)").matches,
   );
@@ -385,18 +417,24 @@ export default function TaskWorkspace({
       .replace(/\.(png|jpe?g|webp)$/i, "") ||
     imported?.name ||
     showcase.title;
-  const url = job?.result?.model_url || imported?.url || showcase.model_url;
+  const url =
+    job?.result?.model_url ||
+    imported?.url ||
+    `${showcase.model_url}?v=${showcase.revision || showcase.id}`;
   const currentResult = job?.result;
   const reset = (top = false) => {
     setView(top ? "top" : "perspective");
     viewer.current?.reset(top);
   };
   const selectMaterial = (material, category) =>
-    update((s) => ({
-      ...s,
-      category,
-      selected: { ...s.selected, [category]: material.id },
-    }));
+    update((s) =>
+      materialSelection(
+        s,
+        material.id,
+        category,
+        rooms.some((r) => r.id === s.floorTarget) ? s.floorTarget : "all",
+      ),
+    );
   const action = async (verb, changes) => {
     if (actionLock.current) return;
     actionLock.current = true;
@@ -492,6 +530,10 @@ export default function TaskWorkspace({
           job={job}
           active={active}
           projects={projects}
+          placementRequest={placementRequest}
+          onPlacementConsumed={onPlacementConsumed}
+          floorRequest={floorRequest}
+          onFloorConsumed={() => setFloorRequest(null)}
           onClose={() =>
             setTab(reviewing ? "review" : hasModel ? "design" : "activity")
           }
@@ -620,6 +662,7 @@ export default function TaskWorkspace({
                     onError={setModelError}
                     onZoom={setZoom}
                     onThumbnails={setThumbs}
+                    onRooms={setRooms}
                   />
                   <div className="canvas-label">
                     <span className="live-dot" />
@@ -914,9 +957,9 @@ export default function TaskWorkspace({
                   </button>
                 ) : (
                   <div className="sample-overview">
-                    <span className="sample-eyebrow">THE FOREST HOME</span>
+                    <span className="sample-eyebrow">原创样板间 / 03</span>
                     <h3>林间暖居</h3>
-                    <p>阳光、木色，以及慢下来的生活。</p>
+                    <p>把自然光留给生活，把温柔留给夜晚。</p>
                     <div
                       className="sample-palette"
                       aria-label="奶油白、胡桃木、鼠尾草绿配色"
@@ -927,10 +970,10 @@ export default function TaskWorkspace({
                       <span>自然 · 温润 · 松弛</span>
                     </div>
                     <div className="sample-features">
-                      <span>开放客餐厅</span>
-                      <span>岛台厨房</span>
-                      <span>独立书房</span>
-                      <span>绿植露台</span>
+                      <span>洞石岛台</span>
+                      <span>胡桃木客厅</span>
+                      <span>静谧书房</span>
+                      <span>花园露台</span>
                     </div>
                   </div>
                 )}
@@ -948,9 +991,14 @@ export default function TaskWorkspace({
                       {currentResult?.room_count ??
                         (!job && !imported ? showcase.room_count : "—")}
                     </strong>
-                    <span>空间数量</span>
+                    <span>{!job && !imported ? "功能分区" : "空间数量"}</span>
                   </div>
                 </div>
+                {!job && !imported && (
+                  <p className="overview-count-note">
+                    客厅、餐厅、厨房为连通的开放区域，分别计为功能分区；另含主卧、书房、浴室和露台。
+                  </p>
+                )}
                 {currentResult && (
                   <div className="overview-verification">
                     <h3>结构核对</h3>
@@ -1023,6 +1071,19 @@ export default function TaskWorkspace({
                       state={state}
                       onSelect={selectMaterial}
                       onCategory={(category) => update({ category })}
+                      rooms={rooms}
+                      onRoom={(floorTarget) => update({ floorTarget })}
+                      onSaveFloors={
+                        job?.status === "succeeded"
+                          ? () => {
+                              setFloorRequest({
+                                id: crypto.randomUUID(),
+                                state: structuredClone(state),
+                              });
+                              setTab("edit");
+                            }
+                          : null
+                      }
                     />
                   </div>
                 )}
@@ -1045,7 +1106,7 @@ export default function TaskWorkspace({
                         {currentResult?.room_count ??
                           (!job && !imported ? showcase.room_count : "—")}
                       </strong>
-                      <span>识别空间</span>
+                      <span>{!job && !imported ? "功能分区" : "识别空间"}</span>
                     </div>
                   </div>
                 </div>

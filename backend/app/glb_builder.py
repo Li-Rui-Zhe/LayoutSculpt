@@ -9,12 +9,16 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from backend.app.surface_materials import floor_material
 from PIL import Image
 from shapely.geometry import Point, Polygon
 
 from .config import ROOT
 from .architecture import wall_sections
 from .furniture_details import construct, construct_basic, kitchen_details
+from .diy_schema import DiyDesign
+from .diy_geometry import design_meshes
+from .library_models import snapshot_file
 
 CUT_HEIGHT = 1.2
 
@@ -163,7 +167,8 @@ def _material(role, style, finish=None):
 
 
 class Builder:
-    def __init__(self, document, catalog_path):
+    def __init__(self, document, catalog_path, library_dir=None):
+        self.library_dir = library_dir
         self.document = document
         self.scene = trimesh.Scene()
         self.style = document.get("style", "natural")
@@ -268,6 +273,34 @@ class Builder:
         mesh.apply_translation([0, top - depth, 0])
         self.add(name, mesh, role, material=material, metadata=metadata)
 
+    def library_furniture(self, item, number, placement):
+        if self.library_dir is None:
+            raise ValueError("未配置家具副本目录")
+        identifier = item["asset_id"]
+        if identifier not in self.asset_cache:
+            path = snapshot_file(self.library_dir, identifier)
+            scene = trimesh.load(path, force="scene")
+            parts = []
+            for index, node in enumerate(scene.graph.nodes_geometry):
+                transform, geometry = scene.graph[node]
+                name = f"library_{identifier.split(':')[1]}_{index}"
+                self.scene.geometry[name] = scene.geometry[geometry].copy()
+                parts.append((name, transform))
+            self.asset_cache[identifier] = (scene.extents, parts)
+        extents, parts = self.asset_cache[identifier]
+        scale = np.diag([item["width"] / extents[0], item["height"] / extents[1],
+                         item["depth"] / extents[2], 1])
+        for index, (geometry, transform) in enumerate(parts):
+            name = f"素材家具_{number}_{index}"
+            self.scene.graph.update(
+                frame_to=name, geometry=geometry, matrix=placement @ scale @ transform,
+                metadata={"room_id": item["room_id"], "furniture_index": number - 1,
+                          "furniture_name": item.get("name", ""), "asset_id": identifier})
+        self.asset_hashes[identifier] = identifier.split(":")[1]
+        self.instances.append({"asset_id": identifier, "kind": item["kind"],
+                               "room_id": item["room_id"],
+                               "dimensions": [item["width"], item["depth"], item["height"]]})
+
     def furniture(self, item, number):
         entry = self.entries.get(item["kind"])
         rotation = trimesh.transformations.rotation_matrix(
@@ -275,10 +308,13 @@ class Builder:
         )
         placement = (
             trimesh.transformations.translation_matrix(
-                [item["x"] - self.cx, 0.035, item["y"] - self.cz]
+                [item["x"] - self.cx, 0.035 + item.get("elevation", 0), item["y"] - self.cz]
             )
             @ rotation
         )
+        if item.get("asset_id"):
+            self.library_furniture(item, number, placement)
+            return
         self.part_transform = placement
         self.part_metadata = {
             "room_id": item["room_id"],
@@ -286,7 +322,18 @@ class Builder:
             "furniture_name": item.get("name", ""),
         }
         try:
-            detailed = construct(self, item)
+            if item["kind"] == "custom":
+                design = DiyDesign.model_validate(item.get("diy"))
+                for part, mesh, material in design_meshes(design, [item["width"], item["depth"], item["height"]]):
+                    self.add(f"DIY_{part.name}", mesh, "wood", material=material, metadata={"diy_part_id": part.id})
+                detailed = True
+            else:
+                use_updated_asset = (
+                    self.document.get("furniture_mode", "library") == "library"
+                    and entry
+                    and item["kind"] in {"shower", "shower_walk_in", "shower_open", "refrigerator"}
+                )
+                detailed = False if use_updated_asset else construct(self, item)
             if not detailed and self.document.get("furniture_mode") == "basic":
                 detailed = construct_basic(self, item)
         finally:
@@ -356,7 +403,7 @@ class Builder:
             self.fallback.append(item["kind"])
         self.box(
             f"基础家具_{number}",
-            [item["x"] - self.cx, item["height"] / 2 + 0.035, item["y"] - self.cz],
+            [item["x"] - self.cx, item["height"] / 2 + 0.035 + item.get("elevation", 0), item["y"] - self.cz],
             [item["width"], item["height"], item["depth"]],
             "wood",
             -math.radians(item["rotation"]),
@@ -477,8 +524,10 @@ class Builder:
             material = (
                 _material("floor", self.style, finish) if finish != "default" else None
             )
+            if room.get("floor_material"):
+                material = floor_material(room["floor_material"])
             self.slab(room["name"], room["polygon"], 0.028, 0.015, "floor", material,
-                      metadata={"structure_kind": "room", "room_id": room["id"]})
+                      metadata={"structure_kind": "room", "room_id": room["id"], "room_name": room["name"]})
         self.wall_network()
         for wall in doc["walls"]:
             a, b = wall["start"], wall["end"]
@@ -646,9 +695,10 @@ def main():
     parser.add_argument("--layout", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--asset-catalog", type=Path, required=True)
+    parser.add_argument("--library-dir", type=Path)
     args = parser.parse_args()
     Builder(
-        json.loads(args.layout.read_text(encoding="utf-8")), args.asset_catalog
+        json.loads(args.layout.read_text(encoding="utf-8")), args.asset_catalog, args.library_dir
     ).build(args.output)
 
 

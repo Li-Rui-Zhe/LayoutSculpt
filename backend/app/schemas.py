@@ -5,6 +5,8 @@ import math
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from shapely.geometry import Polygon, LineString
+from .diy_schema import DiyDesign
+from .surface_materials import FLOOR_MATERIALS
 
 Number = Annotated[float, Field(ge=-60, le=60, allow_inf_nan=False)]
 Positive = Annotated[float, Field(gt=0, le=60, allow_inf_nan=False)]
@@ -36,6 +38,7 @@ class Room(StrictModel):
     polygon: list[Point] = Field(min_length=3, max_length=24)
     floor_finish: Literal["default", "oak", "walnut", "tile", "stone"] = "default"
     floor_enabled: bool = True
+    floor_material: Literal[FLOOR_MATERIALS] | None = None
 
 
 class Wall(StrictModel):
@@ -224,19 +227,64 @@ class Furniture(StrictModel):
         "rug",
         "desk",
         "shower",
+        "shower_walk_in",
+        "shower_open",
         "refrigerator",
+        "television",
+        "wall_television",
+        "tv_console",
+        "coffee_table",
+        "side_table",
+        "nightstand",
+        "bookshelf",
+        "shoe_cabinet",
+        "washing_machine",
+        "dishwasher",
+        "oven",
+        "armchair",
+        "bench",
+        "custom",
+        "model",
     ]
     x: Number
     y: Number
     width: float = Field(ge=0.1, le=6)
     depth: float = Field(ge=0.1, le=6)
     height: float = Field(ge=0.02, le=3)
+    elevation: float = Field(default=0, ge=0, le=3)
     rotation: float = Field(ge=-360, le=360)
+    diy: DiyDesign | None = None
+    asset_id: str | None = Field(default=None, pattern=r"^(file:[a-f0-9]{24}|diy:[a-f0-9]{32}|snapshot:[a-f0-9]{64})$")
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_mount_height(cls, data):
+        if isinstance(data, dict) and data.get("kind") == "wall_television" and "elevation" not in data:
+            return {**data, "elevation": 1.05}
+        return data
+
+    @model_validator(mode="after")
+    def custom_design_required(self):
+        if self.elevation + self.height > 4.5:
+            raise ValueError("家具顶部高度不能超过 4.5 米")
+        if self.kind == "model" and not self.asset_id:
+            raise ValueError("GLB 家具必须选择具体素材")
+        if self.kind == "custom" and self.asset_id:
+            raise ValueError("DIY 家具使用独立部件数据，不能同时引用 GLB")
+        if (self.kind == "custom") != (self.diy is not None):
+            raise ValueError("DIY 家具必须包含完整部件设计，普通家具不能携带 DIY 设计")
+        return self
 
 
 class Furnishing(StrictModel):
     items: list[Furniture] = Field(max_length=90)
     notes: list[str] = Field(max_length=20)
+
+    @model_validator(mode="after")
+    def limit_custom_parts(self):
+        if sum(len(i.diy.parts) for i in self.items if i.diy) > 512:
+            raise ValueError("单个户型最多容纳 512 个 DIY 部件，请简化素材或减少数量")
+        return self
 
 
 class JobOptions(StrictModel):

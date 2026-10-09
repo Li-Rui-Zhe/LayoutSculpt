@@ -5,6 +5,7 @@ or downloaded models are required. Re-run to reproduce its model and metadata.
 """
 
 import json
+import hashlib
 import math
 import sys
 from pathlib import Path
@@ -16,11 +17,15 @@ from shapely.geometry import box as rectangle
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+SHOWCASE_ID = "forest-home-v3"
 
 from backend.app.architecture import validate_generated_structure
 from backend.app.consistency import verify_export
 from backend.app.glb_builder import Builder
 from backend.app.schemas import Layout
+from backend.app.schemas import Furnishing
+from backend.app.quality import validate_generated_furnishing
+from scripts.showcase_textiles import draped_throw, sofa_triangles
 
 
 def points(x0, z0, x1, z1):
@@ -69,13 +74,13 @@ def document():
     opening("east", "window", 4.55, 1.4, 0.75, 1.85)
     opening("east", "window", 7.0, 1.0, 1.3, 1.3)
     opening("south", "window", 0.4, 5.2, 0.4, 2.2)
-    opening("spine", "door", 3.0, 0.95)
-    opening("spine", "door", 5.2, 1.0)
+    opening("spine", "door", 2.98, 0.85)
+    opening("spine", "door", 5.6, 0.78)
     opening("spine", "door", 6.8, 0.85)
     opening("terrace", "passage", 0.65, 4.7)
     furniture = []
 
-    def item(kind, name, room, x, z, w, d, h, rotation=0):
+    def item(kind, name, room, x, z, w, d, h, rotation=0, elevation=0):
         furniture.append(
             {
                 "kind": kind,
@@ -87,29 +92,39 @@ def document():
                 "depth": d,
                 "height": h,
                 "rotation": rotation,
+                "elevation": elevation,
             }
         )
 
-    item("counter", "嵌入水槽操作台", "kitchen", 1.45, 0.51, 2.5, 0.65, 0.9)
-    item("refrigerator", "嵌入式冰箱", "kitchen", 0.52, 1.65, 0.7, 0.72, 1.95, 90)
+    item("counter", "嵌入水槽操作台", "kitchen", 1.15, 0.51, 1.95, 0.65, 0.9)
+    item("refrigerator", "嵌入式冰箱", "kitchen", 2.58, 0.53, 0.62, 0.72, 1.95)
     item("bed", "亚麻软包大床", "bedroom", 7.82, 1.55, 1.85, 2.2, 1.08)
     item("cabinet", "床尾胡桃木矮柜", "bedroom", 8.0, 3.72, 2.3, 0.35, 0.58, 180)
-    item("desk", "临窗工作台", "study", 9.08, 5.28, 1.65, 0.62, 0.76, 270)
+    item("desk", "临窗工作台", "study", 9.08, 5.28, 1.65, 0.62, 0.76, 90)
     item("chair", "工作椅", "study", 8.3, 5.28, 0.52, 0.56, 0.85, 270)
-    item("cabinet", "书房边柜", "study", 6.85, 4.55, 1.15, 0.36, 0.8)
-    item("bathtub", "独立浴缸", "bath", 8.55, 7.65, 1.5, 0.8, 0.58, 90)
+    item("bookshelf", "胡桃木开放书架", "study", 7.02, 4.53, 1.45, 0.38, 1.65)
+    # 借用北侧实墙安装花洒，左侧玻璃分隔干区；东侧窗前无实体板。
+    # 正面朝南，距南墙净空 0.64 m，入口与窗户均可使用。
+    item("shower_walk_in", "临窗步入式淋浴区", "bath", 8.86, 7.26, 1.16, 1.16, 2.1)
     item("sink", "悬浮洗手台", "bath", 6.8, 8.16, 1.0, 0.5, 0.82, 180)
-    item("toilet", "壁挂坐便", "bath", 6.72, 7.1, 0.46, 0.65, 0.72)
+    item("toilet", "一体裙包坐便器", "bath", 7.62, 7.11, 0.4, 0.68, 0.76)
+    item("sofa", "亚麻模块沙发", "living", 1.25, 4.6, 3.0, 1.02, 0.86, 270)
+    item("armchair", "胡桃木阅读椅", "living", 4.57, 3.62, 0.78, 0.8, 0.86, 35)
+    item("tv_console", "格栅电视低柜", "living", 5.61, 4.68, 1.46, 0.4, 0.48, 90)
+    item("wall_television", "超薄壁挂电视", "living", 5.8, 4.68, 1.24, 0.1, 0.71, 90, 0.93)
+    for x in [4.15, 5.0]:
+        item("chair", "弧面软包餐椅", "dining", x, 0.59, 0.46, 0.5, 0.8)
+        item("chair", "弧面软包餐椅", "dining", x, 2.13, 0.46, 0.5, 0.8, 180)
     for name, room, x, z, h in [
         ("客厅琴叶榕", "living", 0.65, 6.5, 1.75),
         ("餐边绿植", "dining", 5.48, 0.6, 1.35),
-        ("卧室绿植", "bedroom", 9.08, 3.5, 1.15),
+        ("卧室绿植", "bedroom", 9.1, 3.12, 1.15),
         ("露台橄榄树", "terrace", 5.25, 7.9, 1.65),
         ("露台绿植", "terrace", 0.65, 7.95, 1.3),
     ]:
         item("plant", name, room, x, z, 0.55, 0.55, h)
     return {
-        "title": "林间暖居 · 设计示例",
+        "title": "林间暖居 · 典藏样板间",
         "confidence": 1,
         "scale_note": "原创设计示例，尺寸单位为米；非上传图片识别结果。",
         "warnings": [],
@@ -162,14 +177,14 @@ def parquet_texture():
     horizontal = (a - b) % 8 < 4
     along, across = np.where(horizontal, u, v), np.where(horizontal, v, u)
     board = np.where(horizontal, b * 19 + (a - b) // 8, a * 23 + (b - a + 7) // 8)
-    variation = np.sin(board * 78.233) * 0.06
+    variation = np.sin(board * 78.233) * 0.035
     grain = np.sin(across * 95 + 0.4 * np.sin(along * 1.5)) * 0.012
     grain += np.sin(across * 238 + along * 3) * 0.005
     seams = (across % 1 < 0.014) | (
         np.where(horizontal, (a - b) % 8, (b - a + 7) % 8) == 0
     ) & (along % 1 < 0.014)
     factor = np.where(seams, 0.74, 1 + variation + grain)
-    base = np.array([178, 149, 108])
+    base = np.array([191, 165, 129])
     return Image.fromarray(np.clip(base * factor[..., None], 0, 255).astype(np.uint8))
 
 
@@ -185,6 +200,12 @@ class Showcase(Builder):
         self.terracotta = material("软装_陶土", [173, 102, 70], 0.95)
         self.charcoal = material("细节_炭黑", [38, 43, 39], 0.45)
         self.paper = material("装饰_暖白纸", [242, 237, 222])
+        self.materials["glass"] = trimesh.visual.material.PBRMaterial(
+            name="玻璃_清透暖灰", baseColorFactor=[163, 191, 182, 52],
+            alphaMode="BLEND", doubleSided=True, roughnessFactor=0.16,
+        )
+        self.rug = material("软装_细织羊毛", [224, 215, 196], 1)
+        self.rug.normalTexture = Image.open(ROOT / "public/materials/linen_normal.png").copy()
         self.materials["fabric"].normalTexture = Image.open(
             ROOT / "public/materials/linen_normal.png"
         ).copy()
@@ -195,6 +216,33 @@ class Showcase(Builder):
             baseColorTexture=parquet_texture(),
             roughnessFactor=0.72,
         )
+
+    def furniture(self, item, number):
+        """Use the authored Blender assets, with their actual bounds and materials."""
+        kind = item["kind"]
+        if kind not in self.asset_cache:
+            asset = trimesh.load(self.catalog_path.parent / "glb" / f"{kind}.glb", force="scene")
+            parts = []
+            for index, node in enumerate(asset.graph.nodes_geometry):
+                transform, geometry = asset.graph[node]
+                key = f"showcase_{kind}_{index}"
+                self.scene.geometry[key] = asset.geometry[geometry].copy()
+                parts.append((key, transform))
+            self.asset_cache[kind] = (asset.bounds, parts)
+        bounds, parts = self.asset_cache[kind]
+        extents = bounds[1] - bounds[0]
+        origin = [(bounds[0, 0] + bounds[1, 0]) / 2, bounds[0, 1], (bounds[0, 2] + bounds[1, 2]) / 2]
+        scale = np.diag([item["width"] / extents[0], item["height"] / extents[1], item["depth"] / extents[2], 1])
+        placement = trimesh.transformations.translation_matrix(self.pos(item["x"], 0.035 + item.get("elevation", 0), item["y"]))
+        rotation = trimesh.transformations.rotation_matrix(-math.radians(item["rotation"]), [0, 1, 0])
+        normalize = trimesh.transformations.translation_matrix(-np.array(origin))
+        for index, (key, transform) in enumerate(parts):
+            self.scene.graph.update(
+                frame_to=f"陈设_{number}_{index}", geometry=key,
+                matrix=placement @ rotation @ scale @ normalize @ transform,
+                metadata={"room_id": item["room_id"], "furniture_index": number - 1, "furniture_name": item["name"], "builtin_kind": kind},
+            )
+        self.instances.append({"kind": kind, "room_id": item["room_id"], "asset_id": f"builtin_{kind}", "dimensions": [item["width"], item["depth"], item["height"]]})
 
     def add(self, name, mesh, role, transform=None, metadata=None, material=None):
         if role == "floor" and (material is None or material.name.endswith("_oak")):
@@ -302,24 +350,21 @@ class Showcase(Builder):
         )
 
     def decorate(self):
+        self.architectural_details()
         # Soft, rounded lounge anchors the entire apartment composition.
         self.block(
-            "羊毛圆角地毯", 2.9, 4.55, 4.4, 3.55, 0.018, 0.05, "fabric", self.paper, 0.3
+            "羊毛圆角地毯", 2.9, 4.55, 4.4, 3.55, 0.018, 0.05, "fabric", self.rug, 0.3
         )
-        self.furniture(
-            {
-                "kind": "sofa",
-                "name": "亚麻模块沙发",
-                "room_id": "living",
-                "x": 1.3,
-                "y": 4.5,
-                "width": 3.2,
-                "depth": 1.05,
-                "height": 0.9,
-                "rotation": 270,
-            },
-            5000,
-        )
+        for z in [2.9, 6.2]:
+            self.block("地毯细织镶边", 2.9, z, 3.82, 0.025, 0.003, 0.07, "fabric", self.cream, 0.008)
+        # Preserve shared vertices and continuous UVs: architectural add() splits
+        # every face and would turn soft cloth into a faceted sheet.
+        cloth, uv = draped_throw(sofa_triangles(self.scene), self.cx, self.cz)
+        throw = material("软装_鼠尾草针织毯", [139, 153, 132], 1)
+        throw.normalTexture = self.rug.normalTexture
+        cloth.visual = trimesh.visual.TextureVisuals(uv=uv, material=throw)
+        self.scene.add_geometry(cloth, node_name="沙发垂落针织毯", geom_name="沙发垂落针织毯",
+                                metadata={"decoration_kind": "sofa_throw"})
         self.block(
             "沙发贵妃躺位", 1.95, 5.6, 1.35, 0.89, 0.21, 0.28, "fabric", self.cream, 0.2
         )
@@ -331,31 +376,12 @@ class Showcase(Builder):
         )
         self.disc("胡桃边几底座", 3.9, 5.4, 0.21, 0.26, 0.06, "wood")
         self.disc("胡桃边几桌面", 3.9, 5.4, 0.36, 0.055, 0.32, "wood")
-        self.block(
-            "阅读椅座垫",
-            4.78,
-            3.78,
-            0.86,
-            0.86,
-            0.28,
-            0.25,
-            "accent",
-            self.terracotta,
-            radius=0.24,
-        )
-        self.orb(
-            "阅读椅弧背", 5.06, 3.78, 0.7, [0.19, 0.4, 0.45], "accent", self.terracotta
-        )
-        self.disc("阅读椅底座", 4.78, 3.78, 0.27, 0.18, 0.05, "wood")
-        # Floating low media cabinet and quiet fluted walnut panel.
-        self.block("悬浮电视柜", 5.55, 4.9, 0.42, 1.9, 0.34, 0.18, "wood", radius=0.035)
-        for z in np.linspace(4.04, 5.76, 20):
+        # The media panel fits between the two doors, leaving their routes open.
+        self.block("电视墙洞石背板", 5.88, 4.68, 0.04, 1.54, 1.74, 0.06, "stone", radius=0.015)
+        for z in np.linspace(3.94, 4.02, 3):
             self.block(
-                "胡桃木格栅", 5.83, z, 0.04, 0.045, 1.5, 0.08, "wood", radius=0.008
+                "胡桃木格栅", 5.85, z, 0.035, 0.023, 1.7, 0.08, "wood", radius=0.008
             )
-        self.block(
-            "电视屏幕", 5.75, 4.9, 0.035, 1.3, 0.7, 0.69, "dark", self.charcoal, 0.01
-        )
         # An island, ribbed base and stone countertop create a second focal point.
         self.block("岛台胡桃底座", 1.72, 1.95, 2.25, 0.7, 0.82, 0.06, radius=0.07)
         self.block(
@@ -366,29 +392,14 @@ class Showcase(Builder):
                 "岛台竖向细槽", x, 2.306, 0.023, 0.022, 0.73, 0.12, "wood", radius=0.008
             )
         # Oval dining table and four chairs, all with space to pull out.
-        self.block("椭圆餐桌", 4.7, 1.42, 1.6, 0.95, 0.075, 0.74, "wood", radius=0.45)
-        for x in [4.3, 5.1]:
-            self.disc("餐桌柱脚", x, 1.42, 0.17, 0.69, 0.05, "wood")
-        for x, z, rotation in [
-            (4.3, 0.55, 180),
-            (5.1, 0.55, 180),
-            (4.3, 2.28, 0),
-            (5.1, 2.28, 0),
-        ]:
-            self.furniture(
-                {
-                    "kind": "chair",
-                    "name": "弧背餐椅",
-                    "room_id": "dining",
-                    "x": x,
-                    "y": z,
-                    "width": 0.46,
-                    "depth": 0.5,
-                    "height": 0.8,
-                    "rotation": rotation,
-                },
-                100 + self.node_index,
-            )
+        self.block("椭圆餐桌", 4.58, 1.36, 1.85, 0.9, 0.075, 0.74, "wood", radius=0.44)
+        for x in [4.15, 5.0]:
+            self.disc("餐桌柱脚", x, 1.36, 0.17, 0.69, 0.05, "wood")
+            for z in [1.09, 1.63]:
+                self.disc("亚麻餐垫", x, z, 0.17, 0.005, 0.816, "fabric")
+                self.disc("手作陶瓷餐盘", x, z, 0.12, 0.012, 0.822, "white")
+                self.disc("餐盘内沿", x, z, 0.095, 0.004, 0.835, "stone")
+                self.disc("早餐咖啡杯", x + 0.22, z, 0.037, 0.06, 0.82, "white")
         # Restrained bedding, bedside objects, rugs and layered drapery.
         self.box("餐厅画框", self.pos(4.8, 1.72, 0.15), [1.1, 1.35, 0.05], "wood")
         self.box(
@@ -435,7 +446,7 @@ class Showcase(Builder):
             (3.2, 4.65, 0.51),
             (4.7, 1.4, 0.85),
             (1.8, 1.95, 1.0),
-            (6.9, 4.55, 0.86),
+            (8.85, 5.62, 0.82),
         ]:
             self.disc("陶瓷花器", x, z, 0.075, 0.18, h, "white")
             for dx, dz in [(-0.07, 0.02), (0.04, 0.02), (0, -0.06)]:
@@ -500,9 +511,53 @@ class Showcase(Builder):
         self.lamp("书房台灯", 9.1, 4.75, 1.08, 0.12, 240)
         self.lamp("浴室壁灯", 6.8, 8.36, 1.4, 0.12, 240)
 
+    def architectural_details(self):
+        # Individual planks, seams and folds give the model detail at every zoom.
+        for x in np.arange(0.22, 5.82, 0.145):
+            self.block("露台防腐木地板", float(x), 7.88, 0.137, 1.17, 0.022, 0.045, "wood", radius=0.009,
+                       metadata={"floor_room_id": "terrace"})
+        for x in [0.75, 4.75]:
+            self.block("露台陶土花箱", x, 8.24, 0.85, 0.38, 0.28, 0.07, "accent", self.terracotta, 0.05)
+            self.block("花箱种植土", x, 8.24, 0.76, 0.29, 0.025, 0.345, "dark", self.charcoal, 0.03)
+            for dx in [-0.28, 0, 0.28]:
+                self.orb("露台香草", x + dx, 8.24, 0.48, [0.15, 0.17, 0.13], "leaf")
+        # Curtains frame the living-room window without covering the view.
+        for z in [2.69, 5.9]:
+            for dz in np.linspace(-0.16, 0.16, 7):
+                self.block("客厅落地亚麻帘", 0.22, z + dz, 0.14, 0.065, 2.48, 0.07, "fabric", self.cream, 0.025)
+        # Low headboard panelling stays readable in both cutaway and full views.
+        self.block("主卧整幅软包背景", 7.8, 0.2, 3.08, 0.06, 0.95, 0.12, "accent", radius=0.02)
+        for x in np.linspace(6.35, 9.25, 20):
+            self.block("床头细木格栅", float(x), 0.24, 0.018, 0.026, 0.89, 0.15, "wood", radius=0.006)
+        # Kitchen backsplash and a visible appliance complete the cooking zone.
+        self.block("厨房洞石挡水", 1.16, 0.14, 1.98, 0.035, 0.17, 0.93, "stone", radius=0.008)
+        self.block("咖啡机机身", 1.92, 0.49, 0.25, 0.24, 0.28, 0.95, "dark", self.charcoal, 0.025)
+        self.block("咖啡机金属前面板", 1.92, 0.617, 0.2, 0.016, 0.18, 1.02, "metal", radius=0.006)
+        self.disc("咖啡机杯子", 1.92, 0.65, 0.035, 0.065, 0.95, "white")
+        # Two slim picture ledges add depth to the wall above the sofa.
+        for z in [6.13, 6.6]:
+            self.block("客厅艺术画框", 0.16, z, 0.055, 0.37, 0.55, 1.35, "wood", radius=0.008)
+            self.block("客厅艺术画底纸", 0.191, z, 0.012, 0.32, 0.50, 1.375, "fabric", self.paper, 0.004)
+            self.orb("客厅艺术画色块", 0.202, z, 1.65, [0.008, 0.17, 0.1], "accent")
+        # Bathroom mat and vanity objects, placed clear of the entrance.
+        self.block("浴室棉麻脚垫", 8.05, 8.04, 0.7, 0.46, 0.014, 0.052, "fabric", self.cream, 0.06)
+        for x in [6.46, 6.57]:
+            self.disc("洗手台洗护瓶", x, 8.17, 0.025, 0.1, 0.86, "white")
+        # Concealed warm strips are actual fixtures, not isolated floating bulbs.
+        for name, x, z, width, depth, height, lumens in [
+            ("床头氛围灯带", 7.8, 0.245, 2.9, 0.016, 1.08, 160),
+            ("电视柜氛围灯带", 5.6, 4.68, 0.016, 1.25, 0.15, 90),
+        ]:
+            glow = material(name, [255, 224, 175])
+            glow.emissiveFactor = [1, 0.66, 0.32]
+            self.block(name, x, z, width, depth, 0.012, height, "white", glow, 0.003,
+                       metadata={"fixture_id": name, "fixture_kind": "floor_lamp", "fixture_lumens": lumens,
+                                 "fixture_temperature": 2700, "fixture_enabled": True,
+                                 "fixture_visual_placeholder": False, "fixture_cast_shadow": False})
+
     def export(self, output):
         def extras(tree):
-            tree.setdefault("extras", {})["showcase"] = "forest-home-v2"
+            tree.setdefault("extras", {})["showcase"] = SHOWCASE_ID
             for mat in tree.get("materials", []):
                 name = mat.get("name", "")
                 category = (
@@ -532,26 +587,28 @@ if __name__ == "__main__":
         {k: v for k, v in doc.items() if k in Layout.model_fields}
     )
     validate_generated_structure(layout)
+    validate_generated_furnishing(Furnishing(items=doc["furniture"], notes=[]), layout)
     scene = Showcase(doc)
     scene.build(output)
     scene.open_rear_walls()
     scene.decorate()
-    path = ROOT / "public/models/forest-home-v2.glb"
+    path = ROOT / f"public/models/{SHOWCASE_ID}.glb"
     candidate = output / "showcase.glb"
     scene.export(candidate)
     proof = verify_export(doc, candidate)
     path.write_bytes(candidate.read_bytes())
     metadata = {
-        "id": "forest-home-v2",
+        "id": SHOWCASE_ID,
         "title": doc["title"],
         "area": round(9.84 * 8.84, 1),
         "room_count": len(doc["rooms"]),
         "source": "authored_sample",
-        "model_url": "/models/forest-home-v2.glb",
+        "model_url": f"/models/{SHOWCASE_ID}.glb",
+        "revision": hashlib.sha256(candidate.read_bytes()).hexdigest()[:12],
         "description": "开放客餐厅 · 岛台厨房 · 独立书房 · 绿植露台",
         "geometry_verified": proof["geometry_verified"],
     }
-    (ROOT / "public/models/forest-home-v2.json").write_text(
+    (ROOT / f"public/models/{SHOWCASE_ID}.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     (ROOT / "frontend/src/showcase.json").write_text(

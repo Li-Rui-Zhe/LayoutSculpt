@@ -112,7 +112,7 @@ def palette_materials(style):
                     image.colorspace_settings.name = "Non-Color"
                     normal = nodes.new("ShaderNodeNormalMap")
                     normal.inputs["Strength"].default_value = (
-                        0.3 if role in {"fabric", "accent"} else 0.22
+                        0.12 if role in {"fabric", "accent"} else 0.16
                     )
                     links.new(tex.outputs["Color"], normal.inputs["Color"])
                     links.new(normal.outputs["Normal"], bsdf.inputs[socket])

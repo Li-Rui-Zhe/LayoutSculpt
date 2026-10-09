@@ -18,6 +18,9 @@ def main():
         ("shower", "步入式玻璃淋浴间", [1, 1, 2.1]),
         ("refrigerator", "双门独立冰箱", [0.65, 0.65, 1.8]),
     ]:
+        existing = next((item for item in catalog["items"] if item["kind"] == kind), None)
+        if existing and existing.get("collection"):
+            continue  # 2.0 起由 Blender 统一制作，保留新版模型。
         builder = Builder(
             {"outline": [{"x": 0, "y": 0}, {"x": 1, "y": 1}]}, catalog_path
         )
@@ -39,7 +42,8 @@ def main():
                 "triangles": sum(len(g.faces) for g in builder.scene.geometry.values()),
             }
         )
-    catalog["version"] = "1.1.0"
+    if catalog["version"] == "1.0.0":
+        catalog["version"] = "1.1.0"
     catalog_path.write_text(
         json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

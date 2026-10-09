@@ -24,13 +24,21 @@ import {
   LoaderCircle,
   Copy,
   Hand,
+  Sparkles,
 } from "lucide-react";
 import NumberField from "./NumberField.jsx";
+import DiyStudio from "../diy/DiyStudio.jsx";
+import AssetLibrary from "../library/AssetLibrary.jsx";
+import { placeLibraryFurniture } from "../library/placement.js";
+import { updatePlacedDesign, placedDesign } from "../diy/design.js";
 import OpeningComposer from "./OpeningComposer.jsx";
 import { validateOpening } from "./openingPlacement.js";
 import RotationControl from "./RotationControl.jsx";
+import { showerKinds, showerProblems } from "./showerPlacement.js";
 import PolygonFields from "./PolygonFields.jsx";
 import { useEditDraft } from "./useEditDraft.js";
+import { materials, materialCategories } from "../catalog.js";
+import { applyFloorDraft, floorColor } from "../materials/assignments.js";
 import { usePlanNavigation } from "./usePlanNavigation.js";
 import { deriveOutline, fitOutline, sameArchitecture } from "./autoOutline.js";
 import {
@@ -112,9 +120,40 @@ export default function ManualEditor({
   active: isActive,
   projects,
   onClose,
+  placementRequest,
+  onPlacementConsumed,
+  floorRequest,
+  onFloorConsumed,
 }) {
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const consumedPlacement = useRef(null);
+  const [diyOpen, setDiyOpen] = useState(null);
   const reviewing = job.status === "awaiting_review";
   const draft = useEditDraft(job.id, reviewing);
+  const consumedFloor = useRef(null);
+  useEffect(() => {
+    if (
+      !floorRequest ||
+      !draft.document ||
+      consumedFloor.current === floorRequest.id
+    )
+      return;
+    consumedFloor.current = floorRequest.id;
+    draft.commit(
+      applyFloorDraft(
+        draft.document,
+        floorRequest.state,
+        draft.base?.layout.rooms,
+      ),
+      false,
+    );
+    setTool("rooms");
+    const index = draft.document.layout.rooms.findIndex(
+      (r) => r.id === floorRequest.state.floorTarget,
+    );
+    setSelected({ type: "rooms", index: Math.max(0, index) });
+    onFloorConsumed?.();
+  }, [floorRequest, draft.document, onFloorConsumed]);
   const [tool, setTool] = useState(reviewing ? "walls" : "furniture"),
     [selected, setSelected] = useState({
       type: reviewing ? "walls" : "furniture",
@@ -195,7 +234,11 @@ export default function ManualEditor({
     return deriveOutline(document.layout).issue;
   }, [document, draft.base]);
   const issues = document
-    ? [...(outlineIssue ? [outlineIssue] : []), ...problems(document)]
+    ? [
+        ...(outlineIssue ? [outlineIssue] : []),
+        ...problems(document),
+        ...showerProblems(document),
+      ]
     : [];
   const openingTool = ["openings", "passages"].includes(tool);
   const targetWallId = document?.layout.walls.some((wall) => wall.id === wallId)
@@ -271,6 +314,7 @@ export default function ManualEditor({
     const keyboard = (event) => {
       if (
         !isActive ||
+        !!diyOpen ||
         busy ||
         !draft.document ||
         ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)
@@ -288,7 +332,7 @@ export default function ManualEditor({
     };
     window.addEventListener("keydown", keyboard);
     return () => window.removeEventListener("keydown", keyboard);
-  }, [isActive, busy, draft]);
+  }, [isActive, busy, draft, diyOpen]);
   const pointAt = (event) => {
     const matrix = svg.current.getScreenCTM();
     if (!matrix) return { x: 0, y: 0 };
@@ -352,6 +396,68 @@ export default function ManualEditor({
     if (!cancel && current?.latest) draft.commit(current.latest);
     setPreview(null);
   };
+  const useLibrary = (template) => {
+    const next = placeLibraryFurniture(
+      draft.document,
+      template,
+      item?.room_id || item?.id,
+    );
+    draft.commit(next);
+    select(
+      "furniture",
+      next.furniture.items.length - 1,
+      next.furniture.items.at(-1),
+    );
+    setLibraryOpen(false);
+    setError("");
+  };
+  useEffect(() => {
+    if (
+      !placementRequest ||
+      !draft.document ||
+      consumedPlacement.current === placementRequest.id
+    )
+      return;
+    consumedPlacement.current = placementRequest.id;
+    try {
+      useLibrary(placementRequest.template);
+    } catch (e) {
+      setError(e.message);
+    }
+    onPlacementConsumed?.();
+  }, [placementRequest, draft.document]);
+  const useDiy = (design, { preserveSize = true } = {}) => {
+    const next = clone(draft.document);
+    if (diyOpen.mode === "edit") {
+      const target = next.furniture.items[diyOpen.index];
+      if (!target || target.kind !== "custom")
+        throw Error("选中家具已变化，请重新打开编辑。");
+      Object.assign(target, updatePlacedDesign(target, design, preserveSize));
+      reconcileFurnitureRoom(next, target);
+    } else {
+      if (next.furniture.items.length >= 90)
+        throw Error("最多可放置 90 件家具。");
+      const room =
+        next.layout.rooms.find((r) => r.id === item?.room_id) ||
+        next.layout.rooms[0];
+      if (!room) throw Error("请先创建一个空间，再放置 DIY 素材。");
+      const point = center(room.polygon);
+      next.furniture.items.push(
+        placedDesign(design, { x: round(point.x), y: round(point.y) }, room.id),
+      );
+      const index = next.furniture.items.length - 1;
+      select("furniture", index, next.furniture.items[index]);
+    }
+    if (
+      next.furniture.items.reduce(
+        (sum, f) => sum + (f.diy?.parts.length || 0),
+        0,
+      ) > 512
+    )
+      throw Error("单个户型最多容纳 512 个 DIY 部件，请简化素材或减少数量。");
+    draft.commit(next);
+    setError("");
+  };
   const addFurniture = () => {
     const next = clone(draft.document);
     if (next.furniture.items.length >= 90) {
@@ -380,8 +486,48 @@ export default function ManualEditor({
       rug: [1.5, 1, 0.03],
       desk: [1.2, 0.6, 0.75],
       shower: [0.9, 0.9, 2.1],
+      shower_walk_in: [1, 1, 2.1],
+      shower_open: [0.9, 0.9, 2.1],
       refrigerator: [0.65, 0.65, 1.8],
+      television: [1.24, 0.42, 1.36],
+      wall_television: [1.24, 0.1, 0.71],
+      tv_console: [1.8, 0.4, 0.52],
+      coffee_table: [1.1, 0.62, 0.42],
+      side_table: [0.45, 0.45, 0.55],
+      nightstand: [0.48, 0.4, 0.52],
+      bookshelf: [0.9, 0.32, 1.85],
+      shoe_cabinet: [1, 0.35, 1.05],
+      washing_machine: [0.6, 0.62, 0.85],
+      dishwasher: [0.6, 0.6, 0.85],
+      oven: [0.6, 0.6, 0.85],
+      armchair: [0.78, 0.8, 0.86],
+      bench: [0.9, 0.36, 0.46],
     }[furnitureKind];
+    if (
+      furnitureKind === "wall_television" ||
+      showerKinds.includes(furnitureKind)
+    ) {
+      try {
+        const placed = placeLibraryFurniture(
+          next,
+          {
+            kind: furnitureKind,
+            name: furnitureNames[furnitureKind],
+            width: sizes[0],
+            depth: sizes[1],
+            height: sizes[2],
+            elevation: furnitureKind === "wall_television" ? 1.05 : 0,
+          },
+          room.id,
+        );
+        draft.commit(placed);
+        select("furniture", placed.furniture.items.length - 1);
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+      return;
+    }
     next.furniture.items.push({
       kind: furnitureKind,
       room_id: room.id,
@@ -390,6 +536,7 @@ export default function ManualEditor({
       width: sizes[0],
       depth: sizes[1],
       height: sizes[2],
+      elevation: furnitureKind === "wall_television" ? 1.05 : 0,
       rotation: 0,
     });
     draft.commit(next);
@@ -623,7 +770,7 @@ export default function ManualEditor({
     <NumberField
       key={key}
       label={label}
-      value={item[key]}
+      value={item[key] ?? (key === "elevation" ? 0 : undefined)}
       min={min}
       max={max}
       unit={unit}
@@ -639,6 +786,73 @@ export default function ManualEditor({
       }
     />
   );
+  if (libraryOpen)
+    return (
+      <AssetLibrary
+        materialRooms={document.layout.rooms.filter(
+          (r) => r.floor_enabled !== false,
+        )}
+        materialRoomId={
+          selected?.type === "rooms"
+            ? document.layout.rooms[selected.index]?.id
+            : "all"
+        }
+        floorOnly
+        initialAssetType={libraryOpen === "materials" ? "materials" : "models"}
+        onApplyMaterial={({ materialId, roomId }) => {
+          draft.commit((next) => {
+            for (const room of next.layout.rooms) {
+              if (
+                (roomId === "all" || room.id === roomId) &&
+                room.floor_enabled !== false
+              )
+                room.floor_material = materialId;
+            }
+            return next;
+          }, false);
+          setTool("rooms");
+          setSelected({
+            type: "rooms",
+            index: Math.max(
+              0,
+              document.layout.rooms.findIndex((r) => r.id === roomId),
+            ),
+          });
+          setLibraryOpen(false);
+        }}
+        active={isActive}
+        targetName={job.name}
+        onClose={() => setLibraryOpen(false)}
+        onPlace={useLibrary}
+        onCreate={() => {
+          setLibraryOpen(false);
+          setDiyOpen({ mode: "add" });
+        }}
+      />
+    );
+  if (diyOpen)
+    return (
+      <DiyStudio
+        onClose={() => setDiyOpen(null)}
+        onUse={useDiy}
+        active={isActive}
+        placementSize={
+          diyOpen.mode === "edit"
+            ? [
+                document.furniture.items[diyOpen.index].width,
+                document.furniture.items[diyOpen.index].depth,
+                document.furniture.items[diyOpen.index].height,
+              ]
+            : null
+        }
+        initialDesign={
+          diyOpen.mode === "edit"
+            ? document.furniture.items[diyOpen.index]?.diy
+            : null
+        }
+        useLabel={diyOpen.mode === "edit" ? "应用到选中家具" : "放入当前户型"}
+      />
+    );
   return (
     <div className="manual-editor" ref={root}>
       <div className="edit-toolbar">
@@ -906,17 +1120,36 @@ export default function ManualEditor({
                 </>
               )}
               {tool === "furniture" && (
+                <button
+                  className="diy-library-trigger"
+                  onClick={() => setLibraryOpen(true)}
+                >
+                  <Armchair size={14} />从 GLB 素材库添加
+                </button>
+              )}
+              {tool === "furniture" && (
+                <button
+                  className="diy-library-trigger"
+                  onClick={() => setDiyOpen({ mode: "add" })}
+                >
+                  <Sparkles size={14} />
+                  DIY 素材库
+                </button>
+              )}
+              {tool === "furniture" && (
                 <div className="add-furniture">
                   <select
                     aria-label="新增家具类型"
                     value={furnitureKind}
                     onChange={(e) => setFurnitureKind(e.target.value)}
                   >
-                    {Object.entries(furnitureNames).map(([id, name]) => (
-                      <option key={id} value={id}>
-                        {name}
-                      </option>
-                    ))}
+                    {Object.entries(furnitureNames)
+                      .filter(([id]) => !["custom", "model"].includes(id))
+                      .map(([id, name]) => (
+                        <option key={id} value={id}>
+                          {name}
+                        </option>
+                      ))}
                   </select>
                   <button className="secondary-button" onClick={addFurniture}>
                     <Plus size={13} />
@@ -1129,7 +1362,10 @@ export default function ManualEditor({
                       if (e.key === "Enter") select("rooms", index);
                     }}
                     points={room.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
-                    fill={floorColors[room.floor_finish || "default"]}
+                    fill={floorColor(
+                      room,
+                      floorColors[room.floor_finish || "default"],
+                    )}
                     fillOpacity={room.floor_enabled === false ? 0.12 : 0.78}
                     stroke={active("rooms", index) ? "#367e64" : "#b7c4b2"}
                     strokeWidth={active("rooms", index) ? 0.05 : 0.015}
@@ -1793,6 +2029,49 @@ export default function ManualEditor({
                 )}
                 {selected.type === "furniture" && (
                   <>
+                    {showerKinds.includes(item.kind) && (
+                      <label className="edit-label">
+                        淋浴形式
+                        <select
+                          aria-label="淋浴形式"
+                          value={item.kind}
+                          onChange={(e) =>
+                            patch((_, target) => {
+                              target.kind = e.target.value;
+                              target.name = furnitureNames[e.target.value];
+                              target.asset_id = null;
+                            })
+                          }
+                        >
+                          <option value="shower">
+                            独立淋浴房 · 带实体背板
+                          </option>
+                          <option value="shower_walk_in">
+                            步入式 · 单片玻璃隔断
+                          </option>
+                          <option value="shower_open">
+                            开放式 · 花洒与地漏
+                          </option>
+                        </select>
+                        <span className="field-note">
+                          步入式和开放式借用房间原有墙面，不新增房间。0°
+                          时花洒朝上方墙面、入口朝下方；旋转可调整方向。请避开窗户并预留至少
+                          0.55 米入口空间。
+                          开放式需结合实际防水、排水和挡水设计。切换形式保留位置与尺寸，保存后更新三维。
+                        </span>
+                      </label>
+                    )}
+                    {item.kind === "custom" && (
+                      <button
+                        className="diy-library-trigger"
+                        onClick={() =>
+                          setDiyOpen({ mode: "edit", index: selected.index })
+                        }
+                      >
+                        <Sparkles size={14} />
+                        编辑 DIY 部件
+                      </button>
+                    )}
                     <RotationControl value={item.rotation} onChange={rotate} />
                     <h3 className="property-group-title">位置与尺寸</h3>
                     <div className="edit-number-grid">
@@ -1801,9 +2080,17 @@ export default function ManualEditor({
                       {number("家具宽度", "width", 0.1, 6)}
                       {number("家具进深", "depth", 0.1, 6)}
                       {number("家具高度", "height", 0.02, 3)}
+                      {number(
+                        "底部离地高度",
+                        "elevation",
+                        0,
+                        Math.min(3, 4.5 - item.height),
+                      )}
                     </div>
                     <p className="field-note">
                       坐标为家具中心，尺寸为旋转前的本体尺寸。跨空间移动后自动匹配能完整容纳家具的空间。
+                      壁挂电视建议底部离地 1.05
+                      米，可放在低电视柜上方；安装高度保存后反映在三维模型中。
                     </p>
                     <details className="edit-vertices">
                       <summary>名称、类型与所属空间</summary>
@@ -1825,6 +2112,7 @@ export default function ManualEditor({
                         家具类型
                         <select
                           aria-label="家具类型"
+                          disabled={item.kind === "custom" || !!item.asset_id}
                           value={item.kind}
                           onChange={(e) =>
                             patch((_, target) => {
@@ -1832,11 +2120,19 @@ export default function ManualEditor({
                             })
                           }
                         >
-                          {Object.entries(furnitureNames).map(([id, name]) => (
-                            <option key={id} value={id}>
-                              {name}
-                            </option>
-                          ))}
+                          {item.kind === "custom" && (
+                            <option value="custom">DIY 自定义素材</option>
+                          )}
+                          {item.kind === "model" && (
+                            <option value="model">GLB 素材</option>
+                          )}
+                          {Object.entries(furnitureNames)
+                            .filter(([id]) => !["custom", "model"].includes(id))
+                            .map(([id, name]) => (
+                              <option key={id} value={id}>
+                                {name}
+                              </option>
+                            ))}
                         </select>
                       </label>
                       <label className="edit-label">
@@ -1984,10 +2280,20 @@ export default function ManualEditor({
                       地板材质
                       <select
                         aria-label="地板材质"
-                        value={item.floor_finish || "default"}
+                        value={
+                          item.floor_material
+                            ? `material:${item.floor_material}`
+                            : item.floor_finish || "default"
+                        }
+                        disabled={item.floor_enabled === false}
                         onChange={(e) =>
                           patch((_, target) => {
-                            target.floor_finish = e.target.value;
+                            if (e.target.value.startsWith("material:"))
+                              target.floor_material = e.target.value.slice(9);
+                            else {
+                              target.floor_finish = e.target.value;
+                              target.floor_material = null;
+                            }
                           })
                         }
                       >
@@ -1996,8 +2302,22 @@ export default function ManualEditor({
                             {name}
                           </option>
                         ))}
+                        <optgroup label="素材库 · 地板配色">
+                          {materialCategories.floor.map((id) => (
+                            <option key={id} value={`material:${id}`}>
+                              {materials.find((m) => m.id === id).name}
+                            </option>
+                          ))}
+                        </optgroup>
                       </select>
                     </label>
+                    <button
+                      className="secondary-button"
+                      disabled={item.floor_enabled === false}
+                      onClick={() => setLibraryOpen("materials")}
+                    >
+                      从素材库选择地板
+                    </button>
                     <p className="field-note">
                       当前地板面积 {polygonArea(item.polygon).toFixed(2)}{" "}
                       ㎡。拖动圆点调整范围；地板单独调整不会移动墙体。

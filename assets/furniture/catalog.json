@@ -1,141 +1,23 @@
 {
-  "version": "1.1.0",
+  "version": "2.2.0",
   "blender_version": "4.5.9 LTS",
   "library": "habitat-furniture.blend",
-  "sha256": "76c12c929571a4757ce43c651f542f904eb570c54f15545ccd5a133e8d78ecfa",
+  "sha256": "18e4d9a512ab37cf0ce26c9636377fe4ab823c87e3b293ecc26a4e790943ce09",
   "license": "本项目原创几何与程序纹理，可随项目使用和修改；无第三方模型依赖。",
   "items": [
     {
-      "id": "habitat_sofa",
-      "kind": "sofa",
-      "name": "云屿三人沙发",
-      "collection": "asset_sofa",
+      "id": "habitat_armchair",
+      "kind": "armchair",
+      "name": "木扶手休闲单椅",
+      "collection": "asset_armchair",
       "dimensions": [
-        2.3,
-        0.95,
-        0.88
-      ],
-      "triangles": 4548
-    },
-    {
-      "id": "habitat_bed",
-      "kind": "bed",
-      "name": "栖木软包双人床",
-      "collection": "asset_bed",
-      "dimensions": [
-        1.8,
-        2.1,
-        1.1
-      ],
-      "triangles": 4100
-    },
-    {
-      "id": "habitat_cabinet",
-      "kind": "cabinet",
-      "name": "木格双门衣柜",
-      "collection": "asset_cabinet",
-      "dimensions": [
-        1.6,
-        0.6,
-        2.15
-      ],
-      "triangles": 1348
-    },
-    {
-      "id": "habitat_table",
-      "kind": "table",
-      "name": "圆角实木餐桌",
-      "collection": "asset_table",
-      "dimensions": [
-        1.5,
-        0.85,
-        0.76
-      ],
-      "triangles": 440
-    },
-    {
-      "id": "habitat_chair",
-      "kind": "chair",
-      "name": "弧背布艺餐椅",
-      "collection": "asset_chair",
-      "dimensions": [
-        0.5,
-        0.54,
-        0.84
-      ],
-      "triangles": 1100
-    },
-    {
-      "id": "habitat_desk",
-      "kind": "desk",
-      "name": "抽屉工作书桌",
-      "collection": "asset_desk",
-      "dimensions": [
-        1.3,
-        0.62,
-        0.76
-      ],
-      "triangles": 832
-    },
-    {
-      "id": "habitat_counter",
-      "kind": "counter",
-      "name": "石面厨房地柜",
-      "collection": "asset_counter",
-      "dimensions": [
-        1.8,
-        0.6,
-        0.9
-      ],
-      "triangles": 1740
-    },
-    {
-      "id": "habitat_rug",
-      "kind": "rug",
-      "name": "编织流苏地毯",
-      "collection": "asset_rug",
-      "dimensions": [
-        2.0,
-        1.5,
-        0.035
-      ],
-      "triangles": 2684
-    },
-    {
-      "id": "habitat_plant",
-      "kind": "plant",
-      "name": "陶盆橄榄树",
-      "collection": "asset_plant",
-      "dimensions": [
-        0.7,
-        0.7,
-        1.3
-      ],
-      "triangles": 17596
-    },
-    {
-      "id": "habitat_sink",
-      "kind": "sink",
-      "name": "台盆浴室柜",
-      "collection": "asset_sink",
-      "dimensions": [
+        0.78,
         0.8,
-        0.5,
-        0.95
+        0.86
       ],
-      "triangles": 1616
-    },
-    {
-      "id": "habitat_toilet",
-      "kind": "toilet",
-      "name": "圆润一体坐便器",
-      "collection": "asset_toilet",
-      "dimensions": [
-        0.4,
-        0.68,
-        0.76
-      ],
-      "triangles": 1592
+      "triangles": 3004,
+      "category": "客厅",
+      "revision": "2.1.0"
     },
     {
       "id": "habitat_bathtub",
@@ -147,33 +29,390 @@
         1.65,
         0.6
       ],
-      "triangles": 1308
+      "triangles": 2212,
+      "category": "卫浴",
+      "revision": "2.1.0"
     },
     {
-      "id": "habitat_shower",
-      "kind": "shower",
-      "name": "步入式玻璃淋浴间",
+      "id": "habitat_bed",
+      "kind": "bed",
+      "name": "栖木软包双人床",
+      "collection": "asset_bed",
       "dimensions": [
-        1,
-        1,
-        2.1
+        1.8,
+        2.1,
+        1.1
       ],
-      "format": "glb",
-      "generator": "python",
-      "triangles": 564
+      "triangles": 4532,
+      "category": "卧室",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_bench",
+      "kind": "bench",
+      "name": "软包储物换鞋凳",
+      "collection": "asset_bench",
+      "dimensions": [
+        0.9,
+        0.36,
+        0.46
+      ],
+      "triangles": 2532,
+      "category": "玄关",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_bookshelf",
+      "kind": "bookshelf",
+      "name": "开放分格书柜",
+      "collection": "asset_bookshelf",
+      "dimensions": [
+        0.9,
+        0.32,
+        1.85
+      ],
+      "triangles": 5644,
+      "category": "餐厅与书房",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_cabinet",
+      "kind": "cabinet",
+      "name": "木格双门衣柜",
+      "collection": "asset_cabinet",
+      "dimensions": [
+        1.6,
+        0.6,
+        2.15
+      ],
+      "triangles": 1912,
+      "category": "卧室",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_chair",
+      "kind": "chair",
+      "name": "弧面软包实木餐椅",
+      "collection": "asset_chair",
+      "dimensions": [
+        0.5,
+        0.54,
+        0.84
+      ],
+      "triangles": 14136,
+      "category": "餐厅与书房",
+      "revision": "2.2.1",
+      "generator": "python"
+    },
+    {
+      "id": "habitat_coffee_table",
+      "kind": "coffee_table",
+      "name": "双层圆角茶几",
+      "collection": "asset_coffee_table",
+      "dimensions": [
+        1.1,
+        0.62,
+        0.42
+      ],
+      "triangles": 1896,
+      "category": "客厅",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_counter",
+      "kind": "counter",
+      "name": "石面厨房地柜",
+      "collection": "asset_counter",
+      "dimensions": [
+        1.8,
+        0.6,
+        0.9
+      ],
+      "triangles": 2304,
+      "category": "厨房与家电",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_desk",
+      "kind": "desk",
+      "name": "抽屉工作书桌",
+      "collection": "asset_desk",
+      "dimensions": [
+        1.3,
+        0.62,
+        0.76
+      ],
+      "triangles": 1968,
+      "category": "餐厅与书房",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_dishwasher",
+      "kind": "dishwasher",
+      "name": "独立式洗碗机",
+      "collection": "asset_dishwasher",
+      "dimensions": [
+        0.6,
+        0.6,
+        0.85
+      ],
+      "triangles": 3212,
+      "category": "厨房与家电",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_nightstand",
+      "kind": "nightstand",
+      "name": "双抽床头柜",
+      "collection": "asset_nightstand",
+      "dimensions": [
+        0.48,
+        0.4,
+        0.52
+      ],
+      "triangles": 2304,
+      "category": "卧室",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_oven",
+      "kind": "oven",
+      "name": "台柜式嵌入烤箱",
+      "collection": "asset_oven",
+      "dimensions": [
+        0.6,
+        0.6,
+        0.85
+      ],
+      "triangles": 3436,
+      "category": "厨房与家电",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_plant",
+      "kind": "plant",
+      "name": "陶盆橄榄树",
+      "collection": "asset_plant",
+      "dimensions": [
+        0.7,
+        0.7,
+        1.3
+      ],
+      "triangles": 10584,
+      "category": "软装",
+      "revision": "2.1.0"
     },
     {
       "id": "habitat_refrigerator",
       "kind": "refrigerator",
-      "name": "双门独立冰箱",
+      "name": "银灰双门冰箱",
+      "collection": "asset_refrigerator",
       "dimensions": [
         0.65,
         0.65,
         1.8
       ],
-      "format": "glb",
-      "generator": "python",
-      "triangles": 72
+      "triangles": 2824,
+      "category": "厨房与家电",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_rug",
+      "kind": "rug",
+      "name": "编织流苏地毯",
+      "collection": "asset_rug",
+      "dimensions": [
+        2.0,
+        1.5,
+        0.035
+      ],
+      "triangles": 2748,
+      "category": "软装",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_shoe_cabinet",
+      "kind": "shoe_cabinet",
+      "name": "玄关百叶鞋柜",
+      "collection": "asset_shoe_cabinet",
+      "dimensions": [
+        1.0,
+        0.35,
+        1.05
+      ],
+      "triangles": 6816,
+      "category": "玄关",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_shower",
+      "kind": "shower",
+      "name": "极简黑框玻璃淋浴房",
+      "collection": "asset_shower",
+      "dimensions": [
+        1.0,
+        1.0,
+        2.1
+      ],
+      "triangles": 7740,
+      "category": "卫浴",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_side_table",
+      "kind": "side_table",
+      "name": "圆盘实木边几",
+      "collection": "asset_side_table",
+      "dimensions": [
+        0.45,
+        0.45,
+        0.55
+      ],
+      "triangles": 808,
+      "category": "客厅",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_sink",
+      "kind": "sink",
+      "name": "台盆浴室柜",
+      "collection": "asset_sink",
+      "dimensions": [
+        0.8,
+        0.5,
+        0.95
+      ],
+      "triangles": 2200,
+      "category": "卫浴",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_sofa",
+      "kind": "sofa",
+      "name": "云屿三人沙发",
+      "collection": "asset_sofa",
+      "dimensions": [
+        2.3,
+        0.95,
+        0.88
+      ],
+      "triangles": 5028,
+      "category": "客厅",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_table",
+      "kind": "table",
+      "name": "圆角实木餐桌",
+      "collection": "asset_table",
+      "dimensions": [
+        1.5,
+        0.85,
+        0.76
+      ],
+      "triangles": 816,
+      "category": "餐厅与书房",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_television",
+      "kind": "television",
+      "name": "55 英寸落地支架电视",
+      "collection": "asset_television",
+      "dimensions": [
+        1.24,
+        0.42,
+        1.36
+      ],
+      "triangles": 1728,
+      "category": "客厅",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_toilet",
+      "kind": "toilet",
+      "name": "一体裙包缓降坐便器",
+      "collection": "asset_toilet",
+      "dimensions": [
+        0.4,
+        0.68,
+        0.76
+      ],
+      "triangles": 9276,
+      "category": "卫浴",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_tv_console",
+      "kind": "tv_console",
+      "name": "悬浮感格栅电视柜",
+      "collection": "asset_tv_console",
+      "dimensions": [
+        1.8,
+        0.4,
+        0.52
+      ],
+      "triangles": 10404,
+      "category": "客厅",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_wall_television",
+      "kind": "wall_television",
+      "name": "55 英寸超薄壁挂电视",
+      "collection": "asset_wall_television",
+      "dimensions": [
+        1.24,
+        0.1,
+        0.71
+      ],
+      "triangles": 1280,
+      "category": "客厅",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_washing_machine",
+      "kind": "washing_machine",
+      "name": "滚筒洗烘一体机",
+      "collection": "asset_washing_machine",
+      "dimensions": [
+        0.6,
+        0.62,
+        0.85
+      ],
+      "triangles": 6248,
+      "category": "厨房与家电",
+      "revision": "2.1.0"
+    },
+    {
+      "id": "habitat_shower_open",
+      "kind": "shower_open",
+      "name": "开放式淋浴花洒",
+      "collection": "asset_shower_open",
+      "dimensions": [
+        1,
+        1,
+        2.1
+      ],
+      "triangles": 5340,
+      "category": "卫浴",
+      "revision": "2.2.0",
+      "generator": "python"
+    },
+    {
+      "id": "habitat_shower_walk_in",
+      "kind": "shower_walk_in",
+      "name": "单屏步入式淋浴区",
+      "collection": "asset_shower_walk_in",
+      "dimensions": [
+        1,
+        1,
+        2.1
+      ],
+      "triangles": 5916,
+      "category": "卫浴",
+      "revision": "2.2.0",
+      "generator": "python"
     }
   ]
 }

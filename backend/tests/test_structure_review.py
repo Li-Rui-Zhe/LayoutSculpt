@@ -174,7 +174,9 @@ class ReviewFailureCodex(FakeCodex):
 @pytest.mark.parametrize("slow", [False, True])
 def test_optional_review_timeout_preserves_structure_and_requires_confirmation(tmp_path, slow):
     codex = ReviewFailureCodex(slow=slow)
-    settings = replace(Settings(), data_dir=tmp_path, review_timeout=0.03)
+    # 需先进入等待 60 秒的模型替身再触发取消；30ms 会在 Windows
+    # 技能读取/提示词准备阶段就超时，无法验证模型调用的取消行为。
+    settings = replace(Settings(), data_dir=tmp_path, review_timeout=0.5)
     with TestClient(create_app(settings, client=codex, model_builder=fake_builder)) as client:
         job = pending(client, create_job(client)["id"])
         assert job["error"] is None

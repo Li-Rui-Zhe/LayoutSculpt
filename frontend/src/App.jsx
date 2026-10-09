@@ -1,12 +1,50 @@
 import { useEffect, useRef, useState } from "react";
-import { Boxes, Plus, PanelLeftClose, PanelLeftOpen, Home } from "lucide-react";
+import {
+  Boxes,
+  Plus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Home,
+  Sparkles,
+} from "lucide-react";
 import { useProjects } from "./hooks/useProjects.js";
 import TaskRail from "./components/TaskRail.jsx";
 import TaskWorkspace from "./components/TaskWorkspace.jsx";
 import GenerationForm from "./components/GenerationForm.jsx";
+import DiyStudio from "./diy/DiyStudio.jsx";
+import AssetLibrary from "./library/AssetLibrary.jsx";
 
 export default function App() {
   const projects = useProjects();
+  const [surface, setSurface] = useState(() =>
+    ["diy", "library"].includes(location.hash.slice(1))
+      ? location.hash.slice(1)
+      : "workspace",
+  );
+  const [diyVisited, setDiyVisited] = useState(() => location.hash === "#diy");
+  const [diyAssetId, setDiyAssetId] = useState(null);
+  const [placementRequest, setPlacementRequest] = useState(null);
+  const [materialRequest, setMaterialRequest] = useState(null);
+  const [materialContext, setMaterialContext] = useState({ id: "", rooms: [] });
+  const navigate = (next) => {
+    setSurface(next);
+    setCreating(false);
+    setRailOpen(false);
+    if (next === "diy") setDiyVisited(true);
+    location.hash = next;
+  };
+  useEffect(() => {
+    const change = () => {
+      const next = ["diy", "library"].includes(location.hash.slice(1))
+        ? location.hash.slice(1)
+        : "workspace";
+      setSurface(next);
+      if (next !== "workspace") setCreating(false);
+      if (next === "diy") setDiyVisited(true);
+    };
+    window.addEventListener("hashchange", change);
+    return () => window.removeEventListener("hashchange", change);
+  }, []);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState(0);
   const [railOpen, setRailOpen] = useState(false);
@@ -34,6 +72,7 @@ export default function App() {
     (job) => job.status === "awaiting_review",
   ).length;
   const select = (job) => {
+    navigate("workspace");
     projects.select(job);
     setCreating(false);
     setRailOpen(false);
@@ -56,7 +95,13 @@ export default function App() {
             造个家<span>户型设计工厂</span>
           </strong>
         </a>
-        <div className="project-heading-host" ref={setHeadingHost} />
+        <div className="project-heading-host" ref={setHeadingHost}>
+          {surface !== "workspace" && (
+            <strong>
+              {surface === "diy" ? "家具 DIY · 创作工作台" : "素材库 · 模型与材质"}
+            </strong>
+          )}
+        </div>
         <div className="header-meta">
           <span className={`connection ${projects.health ? "online" : ""}`}>
             <i />
@@ -97,6 +142,7 @@ export default function App() {
             title="新建户型"
             className={creating ? "active" : ""}
             onClick={() => {
+              navigate("workspace");
               setCreating(true);
               setRailOpen(false);
             }}
@@ -108,12 +154,36 @@ export default function App() {
             aria-label="探索示例空间"
             title="示例空间"
             className={
-              !creating && projects.selectedId === "sample" ? "active" : ""
+              surface === "workspace" &&
+              !creating &&
+              projects.selectedId === "sample"
+                ? "active"
+                : ""
             }
             onClick={() => select(null)}
           >
             <Home size={20} />
             <span>示例</span>
+          </button>
+          <button
+            aria-label="打开家具 DIY"
+            title="家具 DIY"
+            className={surface === "diy" ? "active" : ""}
+            aria-current={surface === "diy" ? "page" : undefined}
+            onClick={() => navigate("diy")}
+          >
+            <Sparkles size={20} />
+            <span>DIY</span>
+          </button>
+          <button
+            aria-label="打开素材库"
+            title="素材库 · 模型与材质"
+            className={surface === "library" ? "active" : ""}
+            aria-current={surface === "library" ? "page" : undefined}
+            onClick={() => navigate("library")}
+          >
+            <Boxes size={20} />
+            <span>素材库</span>
           </button>
         </nav>
         {railOpen && (
@@ -130,6 +200,50 @@ export default function App() {
           onSelect={select}
         />
         <section className="factory-workspace">
+          {diyVisited && (
+            <div className="studio-page-host" hidden={surface !== "diy"}>
+              <DiyStudio
+                active={surface === "diy"}
+                openAssetRequest={diyAssetId}
+                onClose={() => navigate("workspace")}
+              />
+            </div>
+          )}
+          {surface === "library" && (
+            <AssetLibrary
+              materialRooms={materialContext.id === (projects.job?.id || "sample") ? materialContext.rooms : []}
+              materialTargetName={projects.job?.name || "林间暖居 · 示例空间"}
+              onApplyMaterial={!projects.job || projects.job.status === "succeeded" ? (request) => {
+                setMaterialRequest({ ...request, id: crypto.randomUUID(), jobId: projects.job?.id || "sample" });
+                navigate("workspace");
+              } : null}
+              jobs={projects.jobs}
+              currentJobId={
+                projects.job?.status === "succeeded" ? projects.job.id : ""
+              }
+              onPlace={(template, jobId) => {
+                const job = projects.jobs.find(
+                  (j) => j.id === jobId && j.status === "succeeded",
+                );
+                if (!job) throw Error("请先选择已完成的目标方案。");
+                setPlacementRequest({
+                  id: crypto.randomUUID(),
+                  jobId,
+                  template,
+                });
+                select(job);
+              }}
+              onEditDiy={(id) => {
+                setDiyAssetId({ id });
+                navigate("diy");
+              }}
+              onOpenJob={(id) => {
+                const job = projects.jobs.find((j) => j.id === id);
+                if (job) select(job);
+              }}
+              onCreate={() => navigate("diy")}
+            />
+          )}
           {projects.error && (
             <div className="connection-alert" role="alert">
               {projects.error}
@@ -169,14 +283,26 @@ export default function App() {
           {projects.selectedId === "sample" || projects.job ? (
             <TaskWorkspace
               key={projects.job?.id || "sample"}
-              active={!creating}
+              active={!creating && surface === "workspace"}
               job={projects.job}
               headingHost={headingHost}
               projects={projects}
+              placementRequest={
+                placementRequest?.jobId === projects.job?.id
+                  ? placementRequest
+                  : null
+              }
+              onPlacementConsumed={() => setPlacementRequest(null)}
+              materialRequest={materialRequest?.jobId === (projects.job?.id || "sample") ? materialRequest : null}
+              onMaterialConsumed={() => setMaterialRequest(null)}
+              onMaterialContext={setMaterialContext}
               onCreate={() => setCreating(true)}
             />
           ) : (
-            <div className="empty-state" hidden={creating}>
+            <div
+              className="empty-state"
+              hidden={creating || surface !== "workspace"}
+            >
               <Boxes size={38} />
               <h2>{projects.loading ? "正在恢复任务" : "任务暂不可用"}</h2>
               <p>可以从左侧选择任务，或新建一个设计。</p>

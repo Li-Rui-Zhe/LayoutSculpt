@@ -1,5 +1,7 @@
 import { chromium, expect } from "@playwright/test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
+
+const showcase = JSON.parse(await readFile(new URL("../../frontend/src/showcase.json", import.meta.url), "utf8"));
 
 const id = process.argv[2];
 if (!/^[a-f0-9]{32}$/.test(id || "")) throw Error("请提供已有成功任务 ID。");
@@ -100,7 +102,7 @@ try {
   await page.getByRole("button", { name: "探索示例空间", exact: true }).click();
   await expect(canvas).toHaveAttribute(
     "data-model-url",
-    "/models/forest-home-v2.glb",
+    showcase.model_url,
     { timeout: 30000 },
   );
   await expect(canvas).toHaveAttribute("data-design-light-count", "3");

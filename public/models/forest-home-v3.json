@@ -1,0 +1,11 @@
+{
+  "id": "forest-home-v3",
+  "title": "林间暖居 · 典藏样板间",
+  "area": 87.0,
+  "room_count": 7,
+  "source": "authored_sample",
+  "model_url": "/models/forest-home-v3.glb",
+  "revision": "3a194053386b",
+  "description": "开放客餐厅 · 岛台厨房 · 独立书房 · 绿植露台",
+  "geometry_verified": true
+}
