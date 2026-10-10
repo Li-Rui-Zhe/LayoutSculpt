@@ -218,6 +218,9 @@ export const lightNames = {
   bulb: "灯泡",
   pendant: "吊灯",
   floor_lamp: "落地灯",
+  ceiling: "吸顶灯",
+  downlight: "筒灯",
+  table_lamp: "台灯",
 };
 export const lightColors = {
   2700: "#ffba70",
@@ -557,6 +560,32 @@ export function problems(document) {
       text: "轮廓坐标必须在 -60～60 米之间。",
     });
   layout.walls.forEach((wall, index) => {
+    const regions = wall.finish_regions || [];
+    regions.forEach((r, i) => {
+      const outside =
+        r.offset < 0 ||
+        r.width < 0.05 ||
+        r.bottom < 0 ||
+        r.height < 0.05 ||
+        r.offset + r.width > wallLength(wall) + 1e-6 ||
+        r.bottom + r.height > wall.height + 1e-6;
+      const overlap = regions
+        .slice(0, i)
+        .some(
+          (o) =>
+            o.side === r.side &&
+            Math.min(r.offset + r.width, o.offset + o.width) >
+              Math.max(r.offset, o.offset) + 1e-6 &&
+            Math.min(r.bottom + r.height, o.bottom + o.height) >
+              Math.max(r.bottom, o.bottom) + 1e-6,
+        );
+      if (outside || overlap)
+        issues.push({
+          type: "walls",
+          index,
+          text: `墙体 ${index + 1} 的局部饰面${outside ? "超出边界" : "发生重叠"}，请调整区域尺寸。`,
+        });
+    });
     if (
       !validPoint(wall.start) ||
       !validPoint(wall.end) ||

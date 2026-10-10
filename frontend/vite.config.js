@@ -9,7 +9,13 @@ export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
   publicDir: "../public",
   plugins: [react()],
-  server: { host: "127.0.0.1", port: 5173, strictPort: true, proxy },
+  server: {
+    host: "127.0.0.1",
+    port: 5173,
+    strictPort: true,
+    proxy,
+    watch: { awaitWriteFinish: { stabilityThreshold: 250, pollInterval: 50 } },
+  },
   preview: { host: "127.0.0.1", port: 5173, strictPort: true, proxy },
   build: {
     outDir: "../dist",

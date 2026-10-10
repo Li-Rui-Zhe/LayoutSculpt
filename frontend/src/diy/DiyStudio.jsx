@@ -15,7 +15,12 @@ import NumberField from "../editor/NumberField.jsx";
 import { useModels } from "../hooks/useModels.js";
 import { api } from "../api.js";
 import DiyPreview from "./DiyPreview.jsx";
+import { furnitureTemplate } from "./templates.js";
+import { useDraftSync } from "../hooks/useDraftSync.js";
+import { writeContext, readContext } from "../hooks/urlContext.js";
 import ColorDesigner from "./ColorDesigner.jsx";
+import PartTree from "./PartTree.jsx";
+import GroupTransform from "./GroupTransform.jsx";
 import { commitDesign } from "./colors.js";
 import {
   categories,
@@ -45,6 +50,7 @@ const copy = (value) => structuredClone(value);
 export default function DiyStudio({
   onClose,
   onUse,
+  saveBeforeUse = false,
   initialDesign = null,
   placementSize = null,
   active = true,
@@ -52,10 +58,17 @@ export default function DiyStudio({
   useLabel = "放入当前户型",
 }) {
   const formId = useId();
+  const linkedPart = useRef(readContext("part"));
   const models = useModels({ requiresImage: false });
   const root = useRef(null),
     token = useRef(0),
     operation = useRef(false);
+  const [draftMeta, setDraftMeta] = useState(null);
+  const [recoverable, setRecoverable] = useState(null);
+  const [versions, setVersions] = useState([]),
+    [compareBase, setCompareBase] = useState(false),
+    [archivedItems, setArchivedItems] = useState([]);
+  const [modifyScope, setModifyScope] = useState("all");
   const [items, setItems] = useState([]),
     [asset, setAsset] = useState(null),
     [search, setSearch] = useState("");
@@ -65,7 +78,13 @@ export default function DiyStudio({
     future: [],
   });
   const [baseline, setBaseline] = useState(JSON.stringify(initialDesign));
-  const [partId, setPartId] = useState(initialDesign?.parts[0]?.id || "");
+  const [partId, setPartId] = useState(() =>
+    readContext("part", initialDesign?.parts[0]?.id || ""),
+  );
+  useEffect(() => {
+    if (active && !initialDesign && history.present)
+      writeContext({ diyAsset: asset?.id, part: partId });
+  }, [active, asset?.id, partId, initialDesign, !!history.present]);
   const [prompt, setPrompt] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -76,6 +95,73 @@ export default function DiyStudio({
   const [preserveSize, setPreserveSize] = useState(true);
   const design = history.present,
     part = design?.parts.find((p) => p.id === partId);
+  const draftKey = `diy:${asset?.id || "new"}`;
+  const draftSync = useDraftSync(
+    draftKey,
+    design,
+    !initialDesign && draftMeta?.key === draftKey ? draftMeta.revision : null,
+    (merged) => setHistory({ past: [], present: merged, future: [] }),
+  );
+  useEffect(() => {
+    let alive = true;
+    setRecoverable(null);
+    setDraftMeta(null);
+    if (initialDesign) return;
+    let cached = null;
+    try {
+      cached = JSON.parse(localStorage.getItem(`diy-cache:${draftKey}`));
+    } catch {}
+    api(`/drafts/${draftKey}`)
+      .then((value) => {
+        if (
+          cached?.document &&
+          (!value.updated_at || cached.updated_at > value.updated_at)
+        )
+          value = { ...value, document: cached.document };
+        if (!alive) return;
+        if (
+          value.document &&
+          !designIssues(value.document).length &&
+          JSON.stringify(value.document) !== JSON.stringify(design)
+        )
+          setRecoverable({ ...value, key: draftKey });
+        else setDraftMeta({ key: draftKey, revision: value.revision });
+      })
+      .catch((e) => {
+        if (alive) setError(e.message);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [draftKey]);
+  useEffect(() => {
+    if (initialDesign || !design || draftMeta?.key !== draftKey) return;
+    try {
+      localStorage.setItem(
+        `diy-cache:${draftKey}`,
+        JSON.stringify({
+          document: design,
+          updated_at: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      setError("浏览器草稿缓存空间不足，请及时保存素材");
+    }
+  }, [design, draftKey, draftMeta, initialDesign]);
+  useEffect(() => {
+    setVersions([]);
+    setCompareBase(false);
+    if (asset?.status !== "ready") return;
+    let alive = true;
+    api(`/diy/assets/${asset.id}/history`)
+      .then((v) => {
+        if (alive) setVersions(v.items);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [asset?.id, asset?.revision]);
   const generating = ["queued", "running"].includes(asset?.status);
   const dirty = JSON.stringify(design) !== baseline;
   const issues = design ? designIssues(design) : [];
@@ -86,7 +172,12 @@ export default function DiyStudio({
     const next = value?.design || value?.request?.base || null;
     setHistory({ past: [], present: copy(next), future: [] });
     setBaseline(JSON.stringify(next));
-    setPartId(next?.parts[0]?.id || "");
+    setPartId(
+      next?.parts.some((p) => p.id === linkedPart.current)
+        ? linkedPart.current
+        : next?.parts[0]?.id || "",
+    );
+    linkedPart.current = "";
     setNotice("");
     setError("");
     setPrompt(value?.status === "ready" ? "" : value?.request?.prompt || "");
@@ -173,13 +264,31 @@ export default function DiyStudio({
     };
   }, [asset?.id, generating]);
   const commit = (update, group) => {
+    const next =
+      typeof update === "function" ? update(copy(history.present)) : update;
+    for (const previous of history.present?.parts || []) {
+      if (!previous.edit_locked) continue;
+      const after = next?.parts.find((p) => p.id === previous.id);
+      const stable = (p) =>
+        Object.fromEntries(
+          Object.entries(p).filter(
+            ([k]) => !["edit_locked", "edit_hidden"].includes(k),
+          ),
+        );
+      if (
+        !after ||
+        JSON.stringify(stable(previous)) !== JSON.stringify(stable(after))
+      ) {
+        setError("操作涉及已锁定部件，请先解锁。");
+        return false;
+      }
+    }
     setHistory((h) => {
-      const next =
-        typeof update === "function" ? update(copy(h.present)) : update;
       return commitDesign(h, next, group);
     });
     setError("");
     setNotice("");
+    return true;
   };
   const undo = () =>
     setHistory((h) =>
@@ -203,7 +312,9 @@ export default function DiyStudio({
     );
   const patchPart = (key, value) =>
     commit((d) => {
-      d.parts.find((p) => p.id === partId)[key] = value;
+      const p = d.parts.find((p) => p.id === partId);
+      if (!p.edit_locked || key === "edit_locked" || key === "edit_hidden")
+        p[key] = value;
       return d;
     });
   const inputValid = () => {
@@ -286,10 +397,12 @@ export default function DiyStudio({
       const value = await api(
         "/diy/generate",
         json({
-          prompt: prompt.trim(),
+          prompt: `${prompt.trim()}${modifyScope === "selected" && part ? `\n只修改部件 ${part.id}（${part.name}），其余部件的尺寸、位置与材质必须保持不变。` : ""}${preserveSize && design ? "\n保持家具整体宽深高不变。" : ""}`,
           model: models.model,
           reasoning_effort: models.effort || null,
           base: design,
+          target_part_id: modifyScope === "selected" ? part?.id : null,
+          preserve_dimensions: !!design && preserveSize,
         }),
       );
       loadValue(value);
@@ -383,6 +496,36 @@ export default function DiyStudio({
         <div className="diy-columns">
           <aside className="diy-library">
             <h3>我的素材库</h3>
+            <details>
+              <summary
+                onClick={() =>
+                  api("/diy/assets?archived=true")
+                    .then((v) => setArchivedItems(v.items))
+                    .catch((e) => setError(e.message))
+                }
+              >
+                已移出素材 · 可恢复
+              </summary>
+              {archivedItems.map((i) => (
+                <div key={i.id}>
+                  <span>{i.name}</span>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      act(async () => {
+                        await api(`/diy/assets/${i.id}/restore`, {
+                          method: "POST",
+                        });
+                        setArchivedItems((v) => v.filter((a) => a.id !== i.id));
+                        await refresh();
+                      })
+                    }
+                  >
+                    恢复
+                  </button>
+                </div>
+              ))}
+            </details>
             <p>素材独立保存，可反复放入不同方案。</p>
             <button
               className="primary-button diy-new"
@@ -407,6 +550,29 @@ export default function DiyStudio({
               <Plus size={14} />
               手动新建素材
             </button>
+            <details className="diy-templates">
+              <summary>从模板开始</summary>
+              {[
+                ["table", "餐桌"],
+                ["cabinet", "玄关柜"],
+                ["chair", "餐椅"],
+              ].map(([id, title]) => (
+                <button
+                  key={id}
+                  onClick={() =>
+                    guard(() => {
+                      loadValue(null);
+                      const d = furnitureTemplate(id);
+                      commit(d);
+                      setPartId(d.parts[0].id);
+                      setRequestExpanded(false);
+                    })
+                  }
+                >
+                  {title}
+                </button>
+              ))}
+            </details>
             <div className="diy-assets">
               {items
                 .filter((i) => i.name.includes(search))
@@ -434,6 +600,36 @@ export default function DiyStudio({
             )}
           </aside>
           <section className="diy-workbench">
+            {recoverable && (
+              <div className="workspace-note">
+                找到本机草稿
+                <button
+                  onClick={() => {
+                    commit(recoverable.document);
+                    setPartId(recoverable.document.parts[0].id);
+                    setDraftMeta({
+                      key: draftKey,
+                      revision: recoverable.revision,
+                    });
+                    setRecoverable(null);
+                  }}
+                >
+                  恢复草稿
+                </button>
+                <button
+                  onClick={() => {
+                    setDraftMeta({
+                      key: draftKey,
+                      revision: recoverable.revision,
+                    });
+                    setRecoverable(null);
+                  }}
+                >
+                  沿用已保存素材
+                </button>
+              </div>
+            )}
+            {draftSync.error && <p role="alert">{draftSync.error}</p>}
             <details
               className="diy-request-shell"
               open={requestExpanded}
@@ -532,10 +728,52 @@ export default function DiyStudio({
                 )}
               </div>
             </details>
+            {design && (
+              <label className="diy-modify-scope">
+                <input
+                  type="checkbox"
+                  checked={preserveSize}
+                  onChange={(e) => setPreserveSize(e.target.checked)}
+                />{" "}
+                AI 保持整体尺寸 · 修改范围{" "}
+                <select
+                  value={modifyScope}
+                  onChange={(e) => setModifyScope(e.target.value)}
+                >
+                  <option value="all">整个家具</option>
+                  <option value="selected">仅选中部件</option>
+                </select>
+              </label>
+            )}
+            {asset?.request?.base && (
+              <button
+                aria-pressed={compareBase}
+                onClick={() => setCompareBase(!compareBase)}
+              >
+                {compareBase ? "返回 AI 修改后" : "查看 AI 修改前"}
+              </button>
+            )}
             <DiyPreview
               assetKey={asset?.id || "draft"}
-              design={design}
-              selected={partId}
+              design={compareBase ? asset.request.base : design}
+              selected={compareBase ? null : partId}
+              onTransform={
+                compareBase || busy || generating
+                  ? undefined
+                  : (id, change) => {
+                      const next = copy(design),
+                        p = next.parts.find((p) => p.id === id);
+                      if (!p || p.edit_locked) return false;
+                      Object.assign(p, change);
+                      const errors = designIssues(next);
+                      if (errors.length) {
+                        setError(errors[0]);
+                        return false;
+                      }
+                      commit(next);
+                      return true;
+                    }
+              }
               onSelect={(id) => {
                 if (
                   !root.current?.querySelector(
@@ -552,7 +790,7 @@ export default function DiyStudio({
                   ? `${design.parts.length} 个部件 · ${dimensions.map((n) => n.toFixed(2)).join(" × ")} m`
                   : "等待生成或选择素材"}
               </span>
-              <span>方体、圆柱、椭球组合</span>
+              <span>圆角、面板、圆柱与软包部件</span>
             </div>
           </section>
           <aside className="diy-properties">
@@ -564,6 +802,35 @@ export default function DiyStudio({
               onCommit={commit}
             />
             <h3>微调素材</h3>
+            {!!versions.length && (
+              <label>
+                历史版本
+                <select
+                  aria-label="恢复 DIY 历史版本"
+                  value=""
+                  onChange={(e) => {
+                    const v = versions.find(
+                      (v) => String(v.revision) === e.target.value,
+                    );
+                    if (v)
+                      guard(() => {
+                        commit(v.design);
+                        setNotice(
+                          "已恢复历史造型为当前草稿，保存后生成新修订。",
+                        );
+                      });
+                  }}
+                >
+                  <option value="">选择历史版本恢复</option>
+                  {versions.map((v) => (
+                    <option key={v.revision} value={v.revision}>
+                      修订 {v.revision} ·{" "}
+                      {new Date(v.created_at).toLocaleString("zh-CN")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {!design ? (
               <p>生成后可点选三维部件，调整尺寸、位置和材质。</p>
             ) : (
@@ -630,28 +897,36 @@ export default function DiyStudio({
                   value={partSearch}
                   onChange={(e) => setPartSearch(e.target.value)}
                 />
-                <div className="diy-parts-list" aria-label="部件列表">
-                  {design.parts
-                    .filter((p) => p.name.includes(partSearch))
-                    .map((p) => (
-                      <button
-                        key={p.id}
-                        aria-pressed={partId === p.id}
-                        onClick={() => {
-                          if (inputValid()) setPartId(p.id);
-                        }}
-                      >
-                        <i style={{ background: p.color }} />
-                        <span>{p.name}</span>
-                        <small>{shapes[p.shape].split(" / ")[0]}</small>
-                      </button>
-                    ))}
-                  {!design.parts.some((p) => p.name.includes(partSearch)) && (
-                    <p>没有匹配的部件。</p>
-                  )}
-                </div>
+                <PartTree
+                  parts={design.parts}
+                  query={partSearch}
+                  selected={partId}
+                  onSelect={(id) => {
+                    if (inputValid()) setPartId(id);
+                  }}
+                />
                 {part && (
                   <div key={part.id} className="diy-part-fields">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={!!part.edit_locked}
+                        onChange={(e) =>
+                          patchPart("edit_locked", e.target.checked)
+                        }
+                      />
+                      锁定部件
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={!!part.edit_hidden}
+                        onChange={(e) =>
+                          patchPart("edit_hidden", e.target.checked)
+                        }
+                      />
+                      编辑时隐藏（导出保留）
+                    </label>
                     <label>
                       部件名称
                       <input
@@ -661,6 +936,26 @@ export default function DiyStudio({
                         onChange={(e) => patchPart("name", e.target.value)}
                       />
                     </label>
+                    <label>
+                      分组路径
+                      <input
+                        aria-label="部件分组路径"
+                        maxLength={120}
+                        placeholder="例如：椅子/支撑"
+                        value={part.edit_group || ""}
+                        onChange={(e) =>
+                          patchPart("edit_group", e.target.value)
+                        }
+                      />
+                    </label>
+                    {part.edit_group && (
+                      <GroupTransform
+                        design={design}
+                        group={part.edit_group}
+                        onCommit={commit}
+                        onError={setError}
+                      />
+                    )}
                     <label>
                       部件形状
                       <select
@@ -688,12 +983,46 @@ export default function DiyStudio({
                         />
                       ))}
                     </div>
+                    <div className="diy-materials">
+                      <button
+                        disabled={part.edit_locked}
+                        onClick={() =>
+                          commit((d) => {
+                            const p = d.parts.find((p) => p.id === partId);
+                            p.x = -p.x;
+                            p.rotation = -p.rotation;
+                            return d;
+                          })
+                        }
+                      >
+                        左右镜像
+                      </button>
+                      <button
+                        disabled={part.edit_locked || design.parts.length > 46}
+                        onClick={() =>
+                          commit((d) => {
+                            const p = d.parts.find((p) => p.id === partId);
+                            for (let i = 1; i <= 2; i++)
+                              d.parts.push({
+                                ...p,
+                                id: crypto.randomUUID(),
+                                name: `${p.name} ${i + 1}`,
+                                x: p.x + (p.width + 0.03) * i,
+                              });
+                            return d;
+                          })
+                        }
+                      >
+                        横向阵列 ×3
+                      </button>
+                    </div>
                     <p>材质预设（颜色与质感）</p>
                     <div className="diy-materials" aria-label="部件材质预设">
                       {materialPresets.map(({ name, ...material }) => (
                         <button
                           key={name}
                           title={name}
+                          disabled={part.edit_locked}
                           aria-label={`应用${name}材质`}
                           onClick={() =>
                             commit((d) => {
@@ -730,7 +1059,7 @@ export default function DiyStudio({
                         复制部件
                       </button>
                       <button
-                        disabled={design.parts.length <= 1}
+                        disabled={part.edit_locked || design.parts.length <= 1}
                         onClick={() => {
                           commit((d) => ({
                             ...d,
@@ -830,6 +1159,16 @@ export default function DiyStudio({
               onClick={() => {
                 if (inputValid())
                   act(async () => {
+                    if (saveBeforeUse && (dirty || asset?.status !== "ready")) {
+                      const saved = await api(
+                        asset?.status === "ready"
+                          ? `/diy/assets/${asset.id}/save`
+                          : "/diy/assets",
+                        json({ design, revision: asset?.revision || 0 }),
+                      );
+                      loadValue(saved);
+                      await refresh();
+                    }
                     await onUse(copy(design), { preserveSize });
                     onClose();
                   });

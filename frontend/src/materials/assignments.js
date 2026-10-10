@@ -59,3 +59,18 @@ export function applyFloorDraft(document, state, originalRooms = []) {
 export function floorColor(room, fallback) {
   return resolveMaterial(room.floor_material)?.color || fallback;
 }
+
+export function applySurfaceDraft(document, state, originalRooms = []) {
+  const next = applyFloorDraft(document, state, originalRooms);
+  const material = state.selected?.walls;
+  if (material != null) {
+    if (!materialCategories.walls.includes(material))
+      throw Error("墙面材质无效，请重新选择");
+    next.layout.walls.forEach((wall) => {
+      wall.wall_material = material;
+      wall.material_left = null;
+      wall.material_right = null;
+    });
+  }
+  return next;
+}

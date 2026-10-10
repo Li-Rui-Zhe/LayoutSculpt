@@ -47,6 +47,23 @@ export function recolorParts(design, ids, value) {
   };
 }
 
+export function materialTargets(design, partId, scope) {
+  const parts = design?.parts || [],
+    selected = parts.find((p) => p.id === partId);
+  if (scope !== "matching") return colorTargets(design, partId, scope);
+  if (!selected) return [];
+  return parts
+    .filter((p) =>
+      selected.material_id
+        ? p.material_id === selected.material_id
+        : !p.material_id &&
+          normalizeColor(p.color) === normalizeColor(selected.color) &&
+          (p.roughness ?? 0.7) === (selected.roughness ?? 0.7) &&
+          (p.metallic ?? 0) === (selected.metallic ?? 0),
+    )
+    .map((p) => p.id);
+}
+
 // One continuous picker gesture is one undo step; other edits end the group.
 export function commitDesign(history, next, group) {
   if (JSON.stringify(next) === JSON.stringify(history.present)) return history;

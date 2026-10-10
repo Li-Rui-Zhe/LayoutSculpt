@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { UnitContext } from "./UnitContext.js";
 import { round } from "./geometry.js";
 export default function NumberField({
   label,
@@ -9,12 +10,15 @@ export default function NumberField({
   unit = "m",
   normalize = round,
 }) {
-  const [text, setText] = useState(String(round(value))),
+  const preferred = useContext(UnitContext),
+    displayUnit = unit === "m" ? preferred : unit;
+  const factor = unit === "m" ? { m: 1, cm: 100, mm: 1000 }[preferred] || 1 : 1;
+  const [text, setText] = useState(String(round(value * factor))),
     [invalid, setInvalid] = useState(false);
   useEffect(() => {
-    setText(String(round(value)));
+    setText(String(round(value * factor)));
     setInvalid(false);
-  }, [value]);
+  }, [value, factor]);
   return (
     <label className={`edit-number ${invalid ? "invalid" : ""}`}>
       <span>{label}</span>
@@ -25,8 +29,8 @@ export default function NumberField({
           aria-invalid={invalid}
           aria-label={label}
           value={text}
-          min={min}
-          max={max}
+          min={min * factor}
+          max={max * factor}
           step="any"
           onChange={(e) => {
             setText(e.target.value);
@@ -37,15 +41,15 @@ export default function NumberField({
             if (
               !text.trim() ||
               !Number.isFinite(number) ||
-              number < min ||
-              number > max
+              number < min * factor ||
+              number > max * factor
             ) {
               setInvalid(true);
               return;
             }
-            const canonical = normalize(number);
+            const canonical = normalize(number / factor);
             onCommit(canonical);
-            setText(String(canonical));
+            setText(String(round(canonical * factor)));
             setInvalid(false);
           }}
           onKeyDown={(e) => {
@@ -53,16 +57,16 @@ export default function NumberField({
             if (e.key === "Escape") {
               e.preventDefault();
               e.stopPropagation();
-              setText(String(round(value)));
+              setText(String(round(value * factor)));
               setInvalid(false);
             }
           }}
         />
-        <small>{unit}</small>
+        <small>{displayUnit}</small>
       </div>
       {invalid && (
         <small>
-          请输入 {min}～{max}
+          请输入 {min * factor}～{max * factor}
         </small>
       )}
     </label>

@@ -4,6 +4,7 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
+import { useCustomTextures } from "../materials/customTextures.js";
 import { StudioScene } from "../viewer/StudioScene.js";
 import { useViewportRuntime } from "../viewer/ViewportRuntime.jsx";
 
@@ -22,11 +23,19 @@ export default forwardRef(function Viewport(
   },
   ref,
 ) {
+  const customVersion = useCustomTextures();
   const host = useRef(null),
     engine = useRef(null),
     callbacks = useRef({});
   const runtime = useViewportRuntime();
-  callbacks.current = { onLoading, onError, onZoom, onThumbnails, onView, onRooms };
+  callbacks.current = {
+    onLoading,
+    onError,
+    onZoom,
+    onThumbnails,
+    onView,
+    onRooms,
+  };
   useLayoutEffect(() => {
     try {
       const handlers = Object.fromEntries(
@@ -50,7 +59,7 @@ export default forwardRef(function Viewport(
   }, [runtime]);
   useLayoutEffect(() => {
     engine.current?.apply(state);
-  }, [state]);
+  }, [state, customVersion]);
   useLayoutEffect(() => {
     engine.current?.settings(settings);
   }, [settings]);
@@ -63,6 +72,10 @@ export default forwardRef(function Viewport(
   useImperativeHandle(
     ref,
     () => ({
+      cameraState: () => engine.current?.cameraState(),
+      restoreCamera: (value) => engine.current?.restoreCamera(value),
+      focusRoom: (id, inside) => engine.current?.focusRoom(id, inside),
+      isolateRoom: (id) => engine.current?.isolateRoom(id),
       reset: (top) => engine.current?.reset(top),
       zoom: (factor) => engine.current?.zoom(factor),
       snapshot: () => engine.current?.snapshot(),

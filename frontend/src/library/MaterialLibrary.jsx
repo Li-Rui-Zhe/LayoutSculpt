@@ -1,5 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { materials, materialCategories } from "../catalog.js";
+import {
+  loadCustomTextures,
+  useCustomTextures,
+} from "../materials/customTextures.js";
+import { api } from "../api.js";
+import { useLibraryPreferences } from "../hooks/useLibraryPreferences.js";
 import MaterialSample from "../components/MaterialSample.jsx";
 
 const labels = { walls: "墙面", floor: "地板", fabric: "软装" };
@@ -10,12 +16,19 @@ export default function MaterialLibrary({
   floorOnly = false,
   initialRoomId = "all",
 }) {
+  useCustomTextures();
+  const texturePicker = useRef(null);
+  const [uploading, setUploading] = useState(false),
+    [uploadError, setUploadError] = useState("");
+  const prefs = useLibraryPreferences();
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [category, setCategory] = useState(floorOnly ? "floor" : "walls");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [roomId, setRoomId] = useState(initialRoomId);
   const options = materials.filter(
     (m) =>
+      (!onlyFavorites || prefs.value.favorites?.includes(`material:${m.id}`)) &&
       materialCategories[category].includes(m.id) &&
       `${m.name} ${m.sub} ${m.family} ${m.usage}`.includes(query.trim()),
   );
@@ -23,7 +36,48 @@ export default function MaterialLibrary({
   const target = rooms.some((r) => r.id === roomId) ? roomId : "all";
   return (
     <>
+      <input
+        type="file"
+        ref={texturePicker}
+        hidden
+        accept="image/png,image/jpeg,image/webp"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          setUploading(true);
+          setUploadError("");
+          try {
+            const form = new FormData();
+            form.append("file", f);
+            form.append("name", f.name.replace(/\.[^.]+$/, "").slice(0, 60));
+            const material = await api("/materials/custom", {
+              method: "POST",
+              body: form,
+            });
+            await loadCustomTextures(true);
+            setSelectedId(material.id);
+          } catch (e) {
+            setUploadError(e.message);
+          } finally {
+            setUploading(false);
+          }
+        }}
+      />
+      {uploadError && <p role="alert">{uploadError}</p>}
       <div className="library-filters">
+        <button
+          disabled={uploading}
+          onClick={() => texturePicker.current.click()}
+        >
+          {uploading ? "正在导入贴图…" : "导入墙地面贴图"}
+        </button>
+        <button
+          aria-pressed={onlyFavorites}
+          onClick={() => setOnlyFavorites(!onlyFavorites)}
+        >
+          收藏材质
+        </button>
         <div className="library-tabs" aria-label="材质用途">
           {Object.entries(labels)
             .filter(([id]) => (floorOnly ? id === "floor" : id !== "fabric"))
@@ -40,7 +94,7 @@ export default function MaterialLibrary({
         <input
           className="material-search"
           aria-label="搜索材质"
-          placeholder="搜索木地板、瓷砖、墙布、面料"
+          placeholder="搜索木地板、瓷砖、木饰面、墙布"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -73,8 +127,23 @@ export default function MaterialLibrary({
           {selected && (
             <>
               <div className="library-selection">
-                <span>内置材质 · {labels[category]}</span>
+                <span>
+                  {selected.id.startsWith("texture:")
+                    ? "自定义贴图"
+                    : "内置材质"}{" "}
+                  · {labels[category]}
+                </span>
                 <h2>{selected.name}</h2>
+                <button
+                  disabled={!prefs.ready}
+                  onClick={() =>
+                    prefs.change("favorites", `material:${selected.id}`)
+                  }
+                >
+                  {prefs.value.favorites?.includes(`material:${selected.id}`)
+                    ? "已收藏"
+                    : "收藏此材质"}
+                </button>
                 <p>{selected.sub}</p>
               </div>
               <MaterialSample

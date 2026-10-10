@@ -6,7 +6,12 @@ import math
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from shapely.geometry import Polygon, LineString
 from .diy_schema import DiyDesign
-from .surface_materials import FLOOR_MATERIALS, WALL_MATERIALS, CUSTOM_COLOR_PATTERN
+from .surface_materials import (
+    FLOOR_MATERIALS,
+    WALL_MATERIALS,
+    CUSTOM_COLOR_PATTERN,
+    TextureReference,
+)
 
 Number = Annotated[float, Field(ge=-60, le=60, allow_inf_nan=False)]
 Positive = Annotated[float, Field(gt=0, le=60, allow_inf_nan=False)]
@@ -21,7 +26,14 @@ class Point(StrictModel):
     y: Number
 
 
-class Room(StrictModel):
+class EditableObject(StrictModel):
+    edit_id: str | None = Field(default=None, max_length=100)
+    edit_locked: bool = False
+    edit_hidden: bool = False
+    edit_group: str | None = Field(default=None, max_length=40)
+
+
+class Room(EditableObject):
     id: str = Field(min_length=1, max_length=40)
     name: str = Field(min_length=1, max_length=60)
     kind: Literal[
@@ -38,21 +50,68 @@ class Room(StrictModel):
     polygon: list[Point] = Field(min_length=3, max_length=24)
     floor_finish: Literal["default", "oak", "walnut", "tile", "stone"] = "default"
     floor_enabled: bool = True
-    floor_material: Literal[FLOOR_MATERIALS] | Annotated[str, Field(pattern=CUSTOM_COLOR_PATTERN, min_length=13, max_length=13)] | None = None
+    floor_rotation: float = Field(default=0, ge=-180, le=180)
+    floor_scale: float = Field(default=1, ge=0.1, le=10)
+    floor_pattern: Literal["texture", "tiles"] = "texture"
+    floor_tile_width: float = Field(default=0.6, ge=0.05, le=3)
+    floor_tile_depth: float = Field(default=0.6, ge=0.05, le=3)
+    floor_grout: float = Field(default=0.003, ge=0, le=0.02)
+    floor_grout_color: Literal["#b9b5ad", "#e5e1d9", "#6f706c", "#cbb99d"] = "#b9b5ad"
+    floor_material: (
+        Literal[FLOOR_MATERIALS]
+        | TextureReference
+        | Annotated[
+            str, Field(pattern=CUSTOM_COLOR_PATTERN, min_length=13, max_length=13)
+        ]
+        | None
+    ) = None
 
 
-class Wall(StrictModel):
+class WallFinishRegion(StrictModel):
+    side: Literal["left", "right"]
+    offset: float = Field(ge=0, le=60)
+    width: float = Field(ge=0.05, le=60)
+    bottom: float = Field(ge=0, le=4.5)
+    height: float = Field(ge=0.05, le=4.5)
+    material: Literal[WALL_MATERIALS] | TextureReference
+
+
+class Wall(EditableObject):
     id: str = Field(min_length=1, max_length=40)
     start: Point
     end: Point
     thickness: float = Field(ge=0.06, le=0.6)
     height: float = Field(ge=1.8, le=4.5)
     exterior: bool
+    load_bearing: bool = False
     finish: Literal["default", "white", "cream", "sage", "gray"] = "default"
-    wall_material: Literal[WALL_MATERIALS] | None = None
+    wall_material: Literal[WALL_MATERIALS] | TextureReference | None = None
+    material_left: Literal[WALL_MATERIALS] | TextureReference | None = None
+    material_right: Literal[WALL_MATERIALS] | TextureReference | None = None
+    finish_regions: list[WallFinishRegion] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def valid_regions(self):
+        length = math.hypot(self.end.x - self.start.x, self.end.y - self.start.y)
+        for i, r in enumerate(self.finish_regions):
+            if (
+                r.offset + r.width > length + 1e-6
+                or r.bottom + r.height > self.height + 1e-6
+            ):
+                raise ValueError("局部饰面超出墙体边界")
+            for other in self.finish_regions[:i]:
+                if (
+                    r.side == other.side
+                    and min(r.offset + r.width, other.offset + other.width)
+                    > max(r.offset, other.offset) + 1e-6
+                    and min(r.bottom + r.height, other.bottom + other.height)
+                    > max(r.bottom, other.bottom) + 1e-6
+                ):
+                    raise ValueError("同一墙面局部饰面不能重叠")
+        return self
 
 
-class Opening(StrictModel):
+class Opening(EditableObject):
     wall_id: str = Field(min_length=1, max_length=40)
     kind: Literal["door", "window", "passage"]
     offset: float = Field(ge=0, le=60)
@@ -65,10 +124,10 @@ class Opening(StrictModel):
     angle: float = Field(default=90.0, ge=0, le=110)
 
 
-class LightFixture(StrictModel):
+class LightFixture(EditableObject):
     id: str = Field(min_length=1, max_length=40)
     name: str = Field(min_length=1, max_length=60)
-    kind: Literal["bulb", "pendant", "floor_lamp"]
+    kind: Literal["bulb", "pendant", "floor_lamp", "ceiling", "downlight", "table_lamp"]
     x: Number
     y: Number
     elevation: float = Field(default=2.4, ge=0.3, le=4.5)
@@ -211,7 +270,7 @@ class Layout(StrictModel):
         return self
 
 
-class Furniture(StrictModel):
+class Furniture(EditableObject):
     name: str = Field(default="", max_length=60)
     room_id: str = Field(min_length=1, max_length=40)
     kind: Literal[
@@ -255,12 +314,19 @@ class Furniture(StrictModel):
     elevation: float = Field(default=0, ge=0, le=3)
     rotation: float = Field(ge=-360, le=360)
     diy: DiyDesign | None = None
-    asset_id: str | None = Field(default=None, pattern=r"^(file:[a-f0-9]{24}|diy:[a-f0-9]{32}|snapshot:[a-f0-9]{64})$")
+    asset_id: str | None = Field(
+        default=None,
+        pattern=r"^(file:[a-f0-9]{24}|diy:[a-f0-9]{32}|snapshot:[a-f0-9]{64})$",
+    )
 
     @model_validator(mode="before")
     @classmethod
     def default_mount_height(cls, data):
-        if isinstance(data, dict) and data.get("kind") == "wall_television" and "elevation" not in data:
+        if (
+            isinstance(data, dict)
+            and data.get("kind") == "wall_television"
+            and "elevation" not in data
+        ):
             return {**data, "elevation": 1.05}
         return data
 
@@ -304,7 +370,9 @@ class RetryRequest(StrictModel):
 
     @model_validator(mode="after")
     def recovery_keeps_original_model(self):
-        if self.reuse_structure and ({"model", "reasoning_effort"} & self.model_fields_set):
+        if self.reuse_structure and (
+            {"model", "reasoning_effort"} & self.model_fields_set
+        ):
             raise ValueError("恢复识别结构无需更换模型；如需重新识别，请使用普通重试")
         return self
 

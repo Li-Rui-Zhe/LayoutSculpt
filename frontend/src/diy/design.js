@@ -1,5 +1,7 @@
 export const shapes = {
   box: "方体 / 面板",
+  rounded_box: "圆角 / 软包面板",
+  cone: "圆锥 / 锥形脚",
   cylinder: "圆柱 / 桌腿",
   sphere: "球体 / 软垫",
 };

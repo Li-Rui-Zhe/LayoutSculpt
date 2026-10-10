@@ -1,3 +1,5 @@
+import VersionCompare from "./VersionCompare.jsx";
+import Modal from "./Modal.jsx";
 import { useState } from "react";
 import {
   Search,
@@ -37,19 +39,31 @@ export function StatusBadge({ status }) {
   );
 }
 export default function TaskRail({ projects, creating, open, onSelect }) {
+  const [comparing, setComparing] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [groupId, setGroupId] = useState("all");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const counts = {
-    all: projects.jobs.length,
-    active: projects.jobs.filter((j) => !terminal(j.status)).length,
-    done: projects.jobs.filter((j) => j.status === "succeeded").length,
+    all: projects.jobs.filter((j) => !j.archived).length,
+    active: projects.jobs.filter((j) => !j.archived && !terminal(j.status))
+      .length,
+    done: projects.jobs.filter((j) => !j.archived && j.status === "succeeded")
+      .length,
   };
   const jobs = projects.jobs.filter(
     (j) =>
+      (filter === "archived" ? j.archived : !j.archived) &&
+      (groupId === "all" || j.projectId === groupId) &&
       (filter === "all" ||
+        filter === "archived" ||
+        (filter === "failed" && j.status === "failed") ||
         (filter === "active"
           ? !terminal(j.status)
-          : j.status === "succeeded")) &&
+          : filter === "done" && j.status === "succeeded")) &&
       `${j.name} ${j.result?.title || ""} ${j.id}`
         .toLowerCase()
         .includes(query.toLowerCase()),
@@ -61,6 +75,16 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
       hidden={!open}
       aria-label="生成任务栏"
     >
+      {comparing && (
+        <VersionCompare
+          job={comparing}
+          versions={
+            projects.groups.find((g) => g.id === comparing.projectId)
+              ?.versions || []
+          }
+          onClose={() => setComparing(null)}
+        />
+      )}
       <div className="rail-top">
         <div className="rail-title">
           <LayoutGrid size={17} />
@@ -81,6 +105,8 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
             ["all", "全部"],
             ["active", "进行中"],
             ["done", "已完成"],
+            ["failed", "失败"],
+            ["archived", "已归档"],
           ].map(([id, label]) => (
             <button
               key={id}
@@ -89,61 +115,136 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
               onClick={() => setFilter(id)}
             >
               {label}
-              <span>{counts[id]}</span>
+              <span>
+                {counts[id] ??
+                  projects.jobs.filter((j) =>
+                    id === "archived"
+                      ? j.archived
+                      : !j.archived && j.status === "failed",
+                  ).length}
+              </span>
             </button>
           ))}
         </div>
       </div>
+      <label className="project-group-select">
+        项目分组
+        <select
+          aria-label="项目分组"
+          value={groupId}
+          onChange={(e) => setGroupId(e.target.value)}
+        >
+          <option value="all">全部项目</option>
+          {projects.groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name} · {g.versions.length} 个版本
+            </option>
+          ))}
+        </select>
+      </label>
+      {groupId !== "all" && (
+        <div className="project-version-actions">
+          <button
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await projects.archiveProject(groupId, filter !== "archived");
+              } catch (e) {
+                setError(e.message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {filter === "archived" ? "恢复整个项目" : "归档整个项目"}
+          </button>
+        </div>
+      )}
       <div className="task-list">
         {jobs.map((job) => (
-          <button
-            key={job.id}
-            className={`task-card ${!creating && projects.selectedId === job.id ? "selected" : ""}`}
-            aria-pressed={!creating && projects.selectedId === job.id}
-            onClick={() => onSelect(job)}
-          >
-            <div className="task-card-top">
-              <span className="task-number">
-                #{job.id.slice(0, 6).toUpperCase()}
-              </span>
-              <StatusBadge status={job.status} />
-            </div>
-            <div className="task-card-body">
-              <img src={job.source_url} alt="" loading="lazy" />
-              <div>
-                <h3>{job.name.replace(/\.(png|jpe?g|webp)$/i, "")}</h3>
-                <p>
-                  {job.status === "awaiting_review"
-                    ? "请核对墙体与门窗"
-                    : job.edited_of
-                      ? "人工设计版本"
-                      : job.restructure_of
-                        ? "结构复核版本"
-                        : job.refine_of
-                          ? "家具规划版本"
-                          : job.rebuild_of
-                            ? "三维效果更新"
-                            : job.result?.title || job.stage}
-                </p>
-                <time>
-                  {new Date(job.created_at).toLocaleString("zh-CN", {
-                    month: "2-digit",
-                    day: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </time>
-              </div>
-            </div>
-            {!terminal(job.status) && (
-              <div className="task-card-progress">
-                <span>
-                  <i style={{ width: `${job.progress}%` }} />
+          <div key={job.id} className="project-version-row">
+            <button
+              className={`task-card ${!creating && projects.selectedId === job.id ? "selected" : ""}`}
+              aria-pressed={!creating && projects.selectedId === job.id}
+              onClick={() => onSelect(job)}
+            >
+              <div className="task-card-top">
+                <span className="task-number">
+                  V{job.version} · #{job.id.slice(0, 6).toUpperCase()}
                 </span>
-                <small>{job.progress}%</small>
+                <StatusBadge status={job.status} />
               </div>
-            )}
-          </button>
+              <div className="task-card-body">
+                <img src={job.source_url} alt="" loading="lazy" />
+                <div>
+                  <h3>{job.name.replace(/\.(png|jpe?g|webp)$/i, "")}</h3>
+                  <p>
+                    {job.status === "awaiting_review"
+                      ? "请核对墙体与门窗"
+                      : job.edited_of
+                        ? "人工设计版本"
+                        : job.restructure_of
+                          ? "结构复核版本"
+                          : job.refine_of
+                            ? "家具规划版本"
+                            : job.rebuild_of
+                              ? "三维效果更新"
+                              : job.result?.title || job.stage}
+                  </p>
+                  <time>
+                    {new Date(job.created_at).toLocaleString("zh-CN", {
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                </div>
+              </div>
+              {!terminal(job.status) && (
+                <div className="task-card-progress">
+                  <span>
+                    <i style={{ width: `${job.progress}%` }} />
+                  </span>
+                  <small>{job.progress}%</small>
+                </div>
+              )}
+            </button>
+            <div className="project-version-actions">
+              {job.status === "succeeded" && (
+                <button onClick={() => setComparing(job)}>比较</button>
+              )}
+              <button
+                onClick={() => {
+                  setEditing(job);
+                  setName(job.name);
+                  setError("");
+                }}
+              >
+                重命名
+              </button>
+              <button
+                disabled={busy || !terminal(job.status)}
+                onClick={async () => {
+                  setBusy(true);
+                  setError("");
+                  try {
+                    await projects.changeMetadata(job.id, {
+                      archived: !job.archived,
+                    });
+                  } catch (e) {
+                    setError(e.message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {job.archived ? "恢复" : "归档"}
+              </button>
+            </div>
+          </div>
         ))}
         {!jobs.length && (
           <div className="rail-empty">
@@ -160,6 +261,42 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
           </div>
         )}
       </div>
+      {error && (
+        <p role="alert" className="form-error">
+          {error}
+        </p>
+      )}
+      {editing && (
+        <Modal title="重命名设计版本" onClose={() => !busy && setEditing(null)}>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              try {
+                await projects.changeMetadata(editing.id, { name });
+                setEditing(null);
+              } catch (e) {
+                setError(e.message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label>
+              版本名称
+              <input
+                value={name}
+                maxLength={120}
+                required
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <button className="primary-button" disabled={busy || !name.trim()}>
+              保存名称
+            </button>
+          </form>
+        </Modal>
+      )}
       <div className="rail-bottom">
         <button
           className={

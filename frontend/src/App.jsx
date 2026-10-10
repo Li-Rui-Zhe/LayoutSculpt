@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Boxes,
   Plus,
@@ -11,19 +11,43 @@ import { useProjects } from "./hooks/useProjects.js";
 import TaskRail from "./components/TaskRail.jsx";
 import TaskWorkspace from "./components/TaskWorkspace.jsx";
 import GenerationForm from "./components/GenerationForm.jsx";
-import DiyStudio from "./diy/DiyStudio.jsx";
+const DiyStudio = lazy(() => import("./diy/DiyStudio.jsx"));
+import WorkspaceHelp from "./components/WorkspaceHelp.jsx";
+import { useCustomTextures } from "./materials/customTextures.js";
+import { placedDesign } from "./diy/design.js";
 import AssetLibrary from "./library/AssetLibrary.jsx";
+import { readContext, useUrlContext } from "./hooks/urlContext.js";
 
 export default function App() {
+  useCustomTextures();
   const projects = useProjects();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [linkNotice, setLinkNotice] = useState("");
   const [surface, setSurface] = useState(() =>
     ["diy", "library"].includes(location.hash.slice(1))
       ? location.hash.slice(1)
       : "workspace",
   );
   const [diyVisited, setDiyVisited] = useState(() => location.hash === "#diy");
-  const [diyAssetId, setDiyAssetId] = useState(null);
-  const [diyMode, setDiyMode] = useState("furniture");
+  const [diyAssetId, setDiyAssetId] = useState(() =>
+    readContext("diyAsset") ? { id: readContext("diyAsset") } : null,
+  );
+  const [diyMode, setDiyMode] = useUrlContext(
+    "diyMode",
+    () => {
+      try {
+        return sessionStorage.getItem("diy-mode") || "furniture";
+      } catch {
+        return "furniture";
+      }
+    },
+    surface === "diy",
+  );
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("diy-mode", diyMode);
+    } catch {}
+  }, [diyMode]);
   const surfaceDiy = surface === "diy" && diyMode !== "furniture";
   const [placementRequest, setPlacementRequest] = useState(null);
   const [materialRequest, setMaterialRequest] = useState(null);
@@ -107,9 +131,31 @@ export default function App() {
           )}
         </div>
         <div className="header-meta">
+          <button
+            className="text-button"
+            title="复制当前页面、项目和所选对象的本机链接"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(location.href);
+                setLinkNotice("已复制本机定位链接");
+              } catch {
+                setLinkNotice("请复制浏览器地址栏中的链接");
+              }
+              setTimeout(() => setLinkNotice(""), 3500);
+            }}
+          >
+            {linkNotice || "复制定位链接"}
+          </button>
+          <button className="text-button" onClick={() => setHelpOpen(true)}>
+            使用帮助
+          </button>
           <span className={`connection ${projects.health ? "online" : ""}`}>
             <i />
-            {projects.health ? "本地引擎在线" : "连接中"}
+            {projects.health
+              ? projects.health.codex?.connected
+                ? "服务在线 · AI 已连接"
+                : "服务在线 · AI 待连接"
+              : "正在连接本机服务"}
           </span>
           {!!(activeCount || reviewCount) && (
             <span className="local-tag">
@@ -123,6 +169,7 @@ export default function App() {
           )}
         </div>
       </header>
+      {helpOpen && <WorkspaceHelp onClose={() => setHelpOpen(false)} />}
       <div className="factory-body">
         <nav className="navigation-strip" aria-label="项目导航">
           <button
@@ -222,7 +269,7 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              {surfaceDiy && (
+              {surface === "diy" && (
                 <label>
                   目标户型
                   <select
@@ -241,7 +288,7 @@ export default function App() {
                     {projects.jobs
                       .filter(
                         (job) =>
-                          job.status === "succeeded" ||
+                          (job.status === "succeeded" && !job.archived) ||
                           job.id === projects.job?.id,
                       )
                       .map((job) => (
@@ -291,11 +338,32 @@ export default function App() {
               className="studio-page-host"
               hidden={surface !== "diy" || surfaceDiy}
             >
-              <DiyStudio
-                active={surface === "diy" && !surfaceDiy}
-                openAssetRequest={diyAssetId}
-                onClose={() => navigate("workspace")}
-              />
+              <Suspense fallback={<p role="status">正在打开家具设计…</p>}>
+                <DiyStudio
+                  active={surface === "diy" && !surfaceDiy}
+                  openAssetRequest={diyAssetId}
+                  saveBeforeUse
+                  useLabel="保存并放入目标户型"
+                  onUse={
+                    projects.job?.status === "succeeded"
+                      ? async (design) => {
+                          const job = projects.job;
+                          setPlacementRequest({
+                            id: crypto.randomUUID(),
+                            jobId: job.id,
+                            template: placedDesign(
+                              design,
+                              { x: 0, y: 0 },
+                              "pending",
+                            ),
+                          });
+                          select(job);
+                        }
+                      : undefined
+                  }
+                  onClose={() => navigate("workspace")}
+                />
+              </Suspense>
             </div>
           )}
           {surface === "library" && (

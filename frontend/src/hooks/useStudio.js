@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "../api.js";
+import { useDraftSync } from "./useDraftSync.js";
 import { showcase } from "../catalog.js";
 
 export const initialStudio = {
@@ -19,7 +21,9 @@ function load(storageKey) {
     )
       return {
         ...initialStudio,
-        ...s,
+        ...Object.fromEntries(
+          Object.entries(s).filter(([k]) => k !== "_savedAt"),
+        ),
         category: s.category === "fabric" ? "walls" : s.category,
         selected: { ...s.selected, fabric: null },
         preset: s.preset === "night" ? "night" : "midday",
@@ -34,20 +38,60 @@ export function useStudio(taskId = "sample") {
     present: load(storageKey),
     future: [],
   }));
+  const modified = useRef(false);
   const [storageError, setStorageError] = useState("");
+  const [serverRevision, setServerRevision] = useState(null);
+  const sync = useDraftSync(
+    `studio:${taskId}`,
+    history.present,
+    serverRevision,
+    (merged) => setHistory({ past: [], present: merged, future: [] }),
+  );
+  useEffect(() => {
+    let alive = true;
+    api(`/drafts/studio:${taskId}`)
+      .then((value) => {
+        if (!alive) return;
+        let local = null;
+        try {
+          local = JSON.parse(localStorage.getItem(storageKey));
+        } catch {}
+        if (
+          !modified.current &&
+          value.document &&
+          (!local?._savedAt || local._savedAt <= value.updated_at)
+        )
+          setHistory({ past: [], present: value.document, future: [] });
+        setServerRevision(value.revision);
+      })
+      .catch(() => {
+        if (alive) setStorageError("预览设置暂时保存在浏览器，后端同步未连接");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [taskId, storageKey]);
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(history.present));
+      if (serverRevision !== null || modified.current)
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            ...history.present,
+            _savedAt: new Date().toISOString(),
+          }),
+        );
       setStorageError("");
     } catch {
       setStorageError(
         "浏览器存储不可用，外观调整仅在本次打开时保留；已生成模型不受影响。",
       );
     }
-  }, [storageKey, history.present]);
+  }, [storageKey, history.present, serverRevision]);
   const update = useCallback(
     (change) =>
       setHistory((h) => {
+        modified.current = true;
         const value =
           typeof change === "function"
             ? change(h.present)
@@ -82,7 +126,7 @@ export function useStudio(taskId = "sample") {
   );
   return {
     state: history.present,
-    storageError,
+    storageError: sync.error || storageError,
     update,
     undo: () => step("undo"),
     redo: () => step("redo"),

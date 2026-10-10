@@ -10,14 +10,36 @@ import {
   ImagePlus,
 } from "lucide-react";
 import { useModels } from "../hooks/useModels.js";
+import { api } from "../api.js";
+import ImagePreparation from "./ImagePreparation.jsx";
 import ModelFields from "./ModelFields.jsx";
 
 export default function GenerationForm({ projects, onCancel, onCreated }) {
   const models = useModels();
   const picker = useRef(null);
+  const backupPicker = useRef(null);
   const submitLock = useRef(false);
+  const [preparing, setPreparing] = useState(false);
   const [file, setFile] = useState(null);
   const [image, setImage] = useState("");
+  const [imageInfo, setImageInfo] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setImageInfo(null);
+    if (file)
+      createImageBitmap(file)
+        .then((bitmap) => {
+          if (live)
+            setImageInfo({ width: bitmap.width, height: bitmap.height });
+          bitmap.close();
+        })
+        .catch(() => {
+          if (live) setError("图片无法读取，请选择有效的户型图。");
+        });
+    return () => {
+      live = false;
+    };
+  }, [file]);
   const [name, setName] = useState("");
   const [style, setStyle] = useState("natural");
   const [notes, setNotes] = useState("");
@@ -80,11 +102,57 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
           <span className="eyebrow">开启一个新的空间</span>
           <h1>把户型图，变成你的设计。</h1>
           <p>上传户型图，核对识别结构，再生成可编辑的三维空间。</p>
+          <input
+            type="file"
+            accept=".zip"
+            hidden
+            ref={backupPicker}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f) return;
+              setBusy(true);
+              setError("");
+              try {
+                const form = new FormData();
+                form.append("file", f);
+                const job = await api("/projects/import", {
+                  method: "POST",
+                  body: form,
+                });
+                await projects.refresh();
+                projects.select(job);
+                onCreated();
+              } catch (e) {
+                setError(e.message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => backupPicker.current.click()}
+          >
+            从成果 ZIP 恢复为新项目
+          </button>
         </div>
         <span className="heading-icon">
           <ImagePlus size={30} strokeWidth={1.3} />
         </span>
       </header>
+      {preparing && file && (
+        <ImagePreparation
+          file={file}
+          onClose={() => setPreparing(false)}
+          onApply={(value) => {
+            choose(value);
+            setPreparing(false);
+          }}
+        />
+      )}
       <form onSubmit={submit}>
         <fieldset disabled={busy} className="generation-fields">
           <section className="upload-card">
@@ -120,6 +188,14 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 </>
               )}
             </button>
+            {imageInfo && (
+              <p className="field-note" role="status">
+                原图 {imageInfo.width} × {imageInfo.height} 像素
+                {Math.min(imageInfo.width, imageInfo.height) < 800
+                  ? " · 分辨率偏低，建议上传更清晰的原图，重点核对识别后的门窗和尺寸。"
+                  : " · 请确认尺寸文字可辨认、户型边界完整。"}
+              </p>
+            )}
             <input
               ref={picker}
               type="file"
@@ -153,6 +229,15 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 使用示例户型 ↗
               </button>
             </div>
+            {file && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setPreparing(true)}
+              >
+                裁剪、旋转与纠偏
+              </button>
+            )}
             <div className="field">
               <label htmlFor="task-name">
                 任务名称 <small>便于区分每次设计</small>
@@ -182,7 +267,10 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               </h2>
               <span>生成设置</span>
             </div>
-            <ModelFields models={models} />
+            <details className="model-advanced">
+              <summary>高级设置 · 模型与推理强度</summary>
+              <ModelFields models={models} />
+            </details>
             <div className="field">
               <label>空间风格</label>
               <div className="style-options">

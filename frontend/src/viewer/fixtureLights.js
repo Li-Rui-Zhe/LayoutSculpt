@@ -14,6 +14,71 @@ const sampleFixtures = [
   { name: "落地灯灯罩", id: "sample_floor_lamp", lumens: 650 },
 ];
 
+// Approximate an extended, diffused emitter: its own nearby shade must not
+// magnify a point-source silhouette across the room. Keep the shade's shadows
+// from sunlight and every other lamp, and keep all architectural occlusion.
+function softenOwnShadeShadow(mesh, light) {
+  const before = mesh.onBeforeShadow;
+  const after = mesh.onAfterShadow;
+  let saved;
+  mesh.onBeforeShadow = function (...args) {
+    before.apply(this, args);
+    const [, , , camera, , material] = args;
+    if (camera !== light.shadow.camera) return;
+    saved = {
+      material,
+      depthWrite: material.depthWrite,
+      colorWrite: material.colorWrite,
+    };
+    material.depthWrite = false;
+    material.colorWrite = false;
+  };
+  mesh.onAfterShadow = function (...args) {
+    if (saved) {
+      Object.assign(saved.material, {
+        depthWrite: saved.depthWrite,
+        colorWrite: saved.colorWrite,
+      });
+      saved = undefined;
+    }
+    after.apply(this, args);
+  };
+}
+
+function fixtureShades(model, data, position) {
+  const shades = [];
+  const legacyName =
+    data.fixture_kind === "floor_lamp"
+      ? /^落地灯顶罩(?:_\d+)?$/
+      : data.fixture_kind === "table_lamp"
+        ? /^台灯顶罩(?:_\d+)?$/
+        : null;
+  model.traverse((obj) => {
+    if (!obj.isMesh) return;
+    if (obj.userData.fixture_owner_id) {
+      if (
+        obj.userData.fixture_owner_id === data.fixture_id &&
+        obj.userData.fixture_soft_shadow
+      )
+        shades.push(obj);
+      return;
+    }
+    // Older GLBs have independent shade nodes without owner metadata. Restrict
+    // compatibility to the builder's known cap geometry immediately above a bulb.
+    if (!legacyName?.test(obj.name)) return;
+    const center = model.worldToLocal(
+      new THREE.Box3().setFromObject(obj).getCenter(new THREE.Vector3()),
+    );
+    const offset = data.fixture_kind === "floor_lamp" ? 0.16 : 0.1;
+    if (
+      Math.hypot(center.x - position.x, center.z - position.z) < 0.015 &&
+      Math.abs(center.y - position.y - offset) < 0.015
+    )
+      shades.push(obj);
+  });
+  return shades;
+}
+
 function hidePlaceholderVisuals(model, markers) {
   const legacyKinds = new Set(
     markers
@@ -84,8 +149,9 @@ export function installFixtureLights(model, { sample = false } = {}) {
   }
   model.updateMatrixWorld(true);
   model.userData.designLights = markers.map(({ marker, data }) => {
-    const LightType =
-      data.fixture_kind === "pendant" ? THREE.SpotLight : THREE.PointLight;
+    const LightType = ["pendant", "downlight"].includes(data.fixture_kind)
+      ? THREE.SpotLight
+      : THREE.PointLight;
     const light = new LightType(
       colors[data.fixture_temperature] || colors[3000],
       0,
@@ -97,7 +163,7 @@ export function installFixtureLights(model, { sample = false } = {}) {
       model.worldToLocal(marker.getWorldPosition(new THREE.Vector3())),
     );
     if (light.isSpotLight) {
-      light.angle = Math.PI * 0.38;
+      light.angle = Math.PI * (data.fixture_kind === "downlight" ? 0.18 : 0.38);
       light.penumbra = 1;
       light.decay = 2;
       light.target.position
@@ -112,6 +178,8 @@ export function installFixtureLights(model, { sample = false } = {}) {
     light.shadow.normalBias = 0.035;
     light.shadow.camera.near = 0.1;
     light.shadow.camera.far = 30;
+    for (const shade of fixtureShades(model, data, light.position))
+      softenOwnShadeShadow(shade, light);
     const materials = [],
       surfaces = [];
     marker.traverse((obj) => {

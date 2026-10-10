@@ -4,13 +4,18 @@ import math
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from .surface_materials import MATERIALS
 
 
 class DiyPart(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     id: str = Field(min_length=1, max_length=40, pattern=r"^[a-zA-Z0-9_-]+$")
     name: str = Field(min_length=1, max_length=60)
-    shape: Literal["box", "cylinder", "sphere"]
+    material_id: Literal[tuple(MATERIALS)] | None = None
+    edit_locked: bool = False
+    edit_hidden: bool = False
+    edit_group: str = Field(default="", max_length=120)
+    shape: Literal["box", "rounded_box", "cylinder", "cone", "sphere"]
     x: float = Field(ge=-6, le=6)
     y: float = Field(ge=-6, le=6)
     z: float = Field(ge=0, le=3)
@@ -65,6 +70,17 @@ class DiyGenerate(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=160)
     reasoning_effort: str | None = Field(default=None, min_length=1, max_length=40)
     base: DiyDesign | None = None
+    target_part_id: str | None = Field(default=None, max_length=40)
+    preserve_dimensions: bool = False
+
+    @model_validator(mode="after")
+    def valid_target(self):
+        if self.target_part_id and (
+            not self.base
+            or not any(p.id == self.target_part_id for p in self.base.parts)
+        ):
+            raise ValueError("要修改的部件不存在")
+        return self
 
 
 class DiySave(BaseModel):

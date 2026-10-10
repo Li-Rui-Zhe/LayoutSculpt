@@ -1,22 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { projectGroups } from "../projects.js";
 import { api, terminal } from "../api.js";
+import { readContext, writeContext } from "./urlContext.js";
 
 // 列表是任务状态的唯一来源；异步响应只更新自己的任务，不能改变当前选择。
 export function useProjects() {
   const [jobs, setJobs] = useState([]);
   const [selectedId, setSelectedId] = useState(() => {
     try {
-      return localStorage.getItem("habitat-job") || "sample";
+      return readContext(
+        "project",
+        localStorage.getItem("habitat-job") || "sample",
+      );
     } catch {
       return "sample";
     }
   });
   const [timeline, setTimeline] = useState({ id: null, items: [] });
+  const [metadata, setMetadata] = useState([]);
+  const healthTime = useRef(0);
   const [health, setHealth] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const selection = useRef(selectedId);
+  useEffect(() => writeContext({ project: selectedId }), [selectedId]);
   const listRequest = useRef(0);
+  const changesCursor = useRef("");
+  const changes = async () => {
+    let cursor = changesCursor.current,
+      items = [],
+      page;
+    do {
+      page = await api(`/jobs/changes?cursor=${encodeURIComponent(cursor)}`);
+      items.push(...page.items);
+      cursor = page.cursor;
+    } while (page.more);
+    return { items, cursor };
+  };
   const merge = useCallback((items) => {
     setJobs((previous) => {
       const map = new Map(previous.map((item) => [item.id, item]));
@@ -33,9 +53,20 @@ export function useProjects() {
   const refresh = useCallback(async () => {
     const token = ++listRequest.current;
     try {
-      const [h, j] = await Promise.all([api("/health"), api("/jobs")]);
+      const [h, j, m] = await Promise.all([
+        Date.now() - healthTime.current > 30000
+          ? api("/health")
+          : Promise.resolve(null),
+        changes(),
+        api("/project-metadata"),
+      ]);
       if (token !== listRequest.current) return;
-      setHealth(h);
+      if (h) {
+        setHealth(h);
+        healthTime.current = Date.now();
+      }
+      setMetadata(m.items);
+      changesCursor.current = j.cursor;
       merge(j.items);
       setError("");
     } catch {
@@ -48,7 +79,9 @@ export function useProjects() {
   }, [merge]);
   useEffect(() => {
     refresh();
-    const timer = setInterval(refresh, 4000);
+    const timer = setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 12000);
     return () => {
       clearInterval(timer);
       listRequest.current += 1;
@@ -58,11 +91,21 @@ export function useProjects() {
     const id = item?.id || "sample";
     selection.current = id;
     setSelectedId(id);
+    writeContext({ project: id, object: null, room: null, tab: null });
     try {
       localStorage.setItem("habitat-job", id);
     } catch {
       /* Current selection still works without persistence. */
     }
+  }, []);
+  useEffect(() => {
+    const restore = () => {
+      const id = readContext("project", "sample");
+      selection.current = id;
+      setSelectedId(id);
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
   }, []);
   useEffect(() => {
     if (selectedId === "sample") return;
@@ -121,8 +164,27 @@ export function useProjects() {
       stream.close();
     };
   }, [selectedId, merge, refresh]);
+  const pendingOperations = useRef(new Map());
+  const operationKey = (type, signature) => {
+    const old = pendingOperations.current.get(type);
+    if (old?.signature === signature) return old.key;
+    const key = crypto.randomUUID();
+    pendingOperations.current.set(type, { signature, key });
+    return key;
+  };
   const create = async (form) => {
-    const item = await api("/jobs", { method: "POST", body: form });
+    const signature = JSON.stringify(
+      [...form.entries()].map(([k, v]) => [
+        k,
+        typeof v === "string" ? v : [v.name, v.size, v.lastModified],
+      ]),
+    );
+    const item = await api("/jobs", {
+      method: "POST",
+      body: form,
+      headers: { "Idempotency-Key": operationKey("create", signature) },
+    });
+    pendingOperations.current.delete("create");
     merge([item]);
     select(item);
     return item;
@@ -141,10 +203,38 @@ export function useProjects() {
     if (verb !== "cancel" && selection.current === id) select(item);
     return item;
   };
+  const groups = projectGroups(
+    jobs.map((j) => ({
+      ...j,
+      ...(metadata.find((m) => m.job_id === j.id) || {}),
+    })),
+  );
+  const enriched = groups
+    .flatMap((g) => g.versions)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const changeMetadata = async (id, value) => {
+    await api(`/jobs/${id}/metadata`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+    await refresh();
+  };
   return {
-    jobs,
+    jobs: enriched,
+    groups,
+    changeMetadata,
+    archiveProject: async (id, archived) => {
+      const result = await api(`/projects/${id}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived }),
+      });
+      await refresh();
+      return result;
+    },
     selectedId,
-    job: jobs.find((item) => item.id === selectedId) || null,
+    job: enriched.find((item) => item.id === selectedId) || null,
     events: timeline.id === selectedId ? timeline.items : [],
     health,
     error,
@@ -169,9 +259,16 @@ export function useProjects() {
     edit: async (id, document) => {
       const item = await api(`/jobs/${id}/edit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey(
+            `edit:${id}`,
+            JSON.stringify(document),
+          ),
+        },
         body: JSON.stringify(document),
       });
+      pendingOperations.current.delete(`edit:${id}`);
       merge([item]);
       if (selection.current === id) select(item);
       return item;

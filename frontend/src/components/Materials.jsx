@@ -134,9 +134,9 @@ export function MaterialDock({
               : "点击样板应用，可撤销或还原。")}
         </p>
       </div>
-      {state.category === "floor" && onSaveFloors && (
+      {onSaveFloors && (
         <button className="secondary-button floor-save" onClick={onSaveFloors}>
-          在人工设计中保存地板
+          保存墙面与地板到设计版本
         </button>
       )}
     </section>

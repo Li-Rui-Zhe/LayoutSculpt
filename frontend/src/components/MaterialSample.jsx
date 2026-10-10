@@ -9,7 +9,9 @@ export default function MaterialSample({ material, className = "" }) {
       style={{
         "--swatch": material.color,
         "--surface-image": profile?.surface
-          ? `url(/materials/${profile.surface}_color.png)`
+          ? profile.surface.startsWith("texture:")
+            ? `url(/api/materials/custom/${profile.surface.slice(8)}.png)`
+            : `url(/materials/${profile.surface}_color.png)`
           : "none",
       }}
     >

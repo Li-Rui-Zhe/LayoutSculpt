@@ -5,7 +5,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 
 from .config import ROOT
@@ -20,6 +20,7 @@ class LibraryService:
         self.roots = roots or [
             (ROOT / "assets", "builtin"),
             (ROOT / "public" / "models", "sample"),
+            (settings.data_dir / "imports", "imported"),
         ]
         if not settings.furniture_catalog.resolve().is_relative_to(ROOT / "assets"):
             self.roots = [*self.roots, (settings.furniture_catalog.parent, "builtin")]
@@ -72,12 +73,14 @@ class LibraryService:
                         "name": registered["name"]
                         if registered
                         else (
-                            {"forest-home-v2": "林间暖居 · 旧版示例",
-                             "forest-home-v3": "林间暖居 · 典藏样板间"}.get(path.stem, path.stem)
+                            {
+                                "forest-home-v2": "林间暖居 · 旧版示例",
+                                "forest-home-v3": "林间暖居 · 典藏样板间",
+                            }.get(path.stem, path.stem)
                         ),
                         "filename": path.name,
                         "source": source,
-                        "placeable": source == "builtin",
+                        "placeable": source in {"builtin", "imported"},
                         "kind": path.stem if registered else "model",
                         "category": registered.get("category") if registered else None,
                         "revision": registered.get("revision") if registered else None,
@@ -91,9 +94,30 @@ class LibraryService:
                         "model_url": f"/api/library/files/{identifier}/model.glb?v={stat.st_mtime_ns}",
                     },
                 }
-                thumbnail_root = (self.settings.furniture_catalog.parent / "thumbnails").resolve()
+                if source == "imported":
+                    meta_path = path.with_suffix(".json")
+                    if meta_path.is_file():
+                        try:
+                            files[identifier]["item"].update(
+                                json.loads(meta_path.read_text(encoding="utf-8"))
+                            )
+                        except (OSError, ValueError):
+                            pass
+                    thumb = path.with_suffix(".png")
+                    if thumb.is_file():
+                        files[identifier]["thumbnail"] = thumb
+                        files[identifier]["item"]["thumbnail_url"] = (
+                            f"/api/library/files/{identifier}/thumbnail.png"
+                        )
+                thumbnail_root = (
+                    self.settings.furniture_catalog.parent / "thumbnails"
+                ).resolve()
                 thumbnail = (thumbnail_root / f"{path.stem}.png").resolve()
-                if registered and thumbnail.is_relative_to(thumbnail_root) and thumbnail.is_file():
+                if (
+                    registered
+                    and thumbnail.is_relative_to(thumbnail_root)
+                    and thumbnail.is_file()
+                ):
                     files[identifier]["thumbnail"] = thumbnail
                     files[identifier]["item"]["thumbnail_url"] = (
                         f"/api/library/files/{identifier}/thumbnail.png?v={thumbnail.stat().st_mtime_ns}"
@@ -255,6 +279,65 @@ class LibraryService:
 
 
 def install_library_routes(app, service):
+    @app.post("/api/library/import", status_code=201)
+    async def import_model(
+        file: UploadFile = File(), unit: str = Form("m"), rotation: int = Form(0)
+    ):
+        if rotation not in {0, 90, 180, 270}:
+            raise HTTPException(422, "请选择 0/90/180/270 度朝向")
+        if unit not in {"m", "cm", "mm"}:
+            raise HTTPException(422, "请选择模型长度单位")
+        data = bytearray()
+        try:
+            while chunk := await file.read(1024 * 1024):
+                data.extend(chunk)
+                if len(data) > 100 * 1024 * 1024:
+                    raise HTTPException(413, "GLB 不能超过 100 MB")
+        finally:
+            await file.close()
+        from .library_models import load_glb, normalize_glb
+        from uuid import uuid4
+        import re
+
+        def convert():
+            scene = load_glb(bytes(data))
+            scene.apply_scale({"m": 1, "cm": 0.01, "mm": 0.001}[unit])
+            if rotation:
+                import trimesh, math
+
+                scene.apply_transform(
+                    trimesh.transformations.rotation_matrix(
+                        math.radians(rotation), [0, 1, 0]
+                    )
+                )
+            return normalize_glb(scene.export(file_type="glb"))
+
+        try:
+            normalized, dimensions = await asyncio.to_thread(convert)
+        except (ValueError, OSError, KeyError, IndexError, TypeError) as exc:
+            raise HTTPException(422, f"导入失败：{exc}") from exc
+        folder = service.settings.data_dir / "imports"
+        folder.mkdir(parents=True, exist_ok=True)
+        name = (
+            re.sub(
+                r"[^\w\-\u4e00-\u9fff ]",
+                "",
+                (file.filename or "导入家具").rsplit(".", 1)[0],
+            )[:45]
+            or "导入家具"
+        )
+        path = folder / f"{name}-{uuid4().hex[:8]}.glb"
+        from .model_thumbnail import thumbnail
+
+        await asyncio.to_thread(thumbnail, normalized, path.with_suffix(".png"))
+        await asyncio.to_thread(
+            path.with_suffix(".json").write_text,
+            json.dumps({"name": name, "dimensions": dimensions}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        await asyncio.to_thread(path.write_bytes, normalized)
+        return {"name": name, "dimensions": dimensions}
+
     @app.post("/api/library/placement")
     async def placement(body: dict):
         identifier = body.get("id")

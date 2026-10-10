@@ -9,12 +9,17 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
-from backend.app.surface_materials import floor_material, wall_material, MATERIALS as SURFACE_MATERIALS
+from backend.app.surface_materials import (
+    floor_material,
+    wall_material,
+    MATERIALS as SURFACE_MATERIALS,
+)
 from PIL import Image
 from shapely.geometry import Point, Polygon
 
 from .config import ROOT
 from .architecture import wall_sections, wall_finish_key
+from .wall_surfaces import add_wall_surfaces
 from .furniture_details import construct, construct_basic, kitchen_details
 from .diy_schema import DiyDesign
 from .diy_geometry import design_meshes
@@ -169,6 +174,11 @@ def _material(role, style, finish=None):
 class Builder:
     def __init__(self, document, catalog_path, library_dir=None):
         self.library_dir = library_dir
+        self.texture_root = (
+            Path(library_dir).parent / "materials"
+            if library_dir
+            else ROOT / "data/materials"
+        )
         self.document = document
         self.scene = trimesh.Scene()
         self.style = document.get("style", "natural")
@@ -200,6 +210,24 @@ class Builder:
             uv[face] = (
                 points[:, (0, 2) if axis == 1 else (2, 1) if axis == 0 else (0, 1)] / 2
             )
+        if metadata and metadata.get("structure_kind") == "room":
+            angle = math.radians(metadata.get("floor_rotation", 0))
+            uv = uv @ np.array(
+                [
+                    [math.cos(angle), -math.sin(angle)],
+                    [math.sin(angle), math.cos(angle)],
+                ]
+            )
+            if metadata.get("floor_pattern") == "tiles":
+                uv *= 2
+                uv /= np.array(
+                    [
+                        metadata.get("floor_tile_width", 0.6),
+                        metadata.get("floor_tile_depth", 0.6),
+                    ]
+                )
+            else:
+                uv /= metadata.get("floor_scale", 1)
         mesh.visual = trimesh.visual.TextureVisuals(uv=uv, material=mat)
         if self.part_transform is not None:
             transform = self.part_transform @ (
@@ -250,7 +278,13 @@ class Builder:
         mesh.apply_transform(
             trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0])
         )
-        self.add(name, mesh, role, trimesh.transformations.translation_matrix(center), metadata=metadata)
+        self.add(
+            name,
+            mesh,
+            role,
+            trimesh.transformations.translation_matrix(center),
+            metadata=metadata,
+        )
 
     def sphere(self, name, center, radii, role, metadata=None, material=None):
         mesh = trimesh.creation.icosphere(subdivisions=2)
@@ -288,18 +322,36 @@ class Builder:
                 parts.append((name, transform))
             self.asset_cache[identifier] = (scene.extents, parts)
         extents, parts = self.asset_cache[identifier]
-        scale = np.diag([item["width"] / extents[0], item["height"] / extents[1],
-                         item["depth"] / extents[2], 1])
+        scale = np.diag(
+            [
+                item["width"] / extents[0],
+                item["height"] / extents[1],
+                item["depth"] / extents[2],
+                1,
+            ]
+        )
         for index, (geometry, transform) in enumerate(parts):
             name = f"素材家具_{number}_{index}"
             self.scene.graph.update(
-                frame_to=name, geometry=geometry, matrix=placement @ scale @ transform,
-                metadata={"room_id": item["room_id"], "furniture_index": number - 1,
-                          "furniture_name": item.get("name", ""), "asset_id": identifier})
+                frame_to=name,
+                geometry=geometry,
+                matrix=placement @ scale @ transform,
+                metadata={
+                    "room_id": item["room_id"],
+                    "furniture_index": number - 1,
+                    "furniture_name": item.get("name", ""),
+                    "asset_id": identifier,
+                },
+            )
         self.asset_hashes[identifier] = identifier.split(":")[1]
-        self.instances.append({"asset_id": identifier, "kind": item["kind"],
-                               "room_id": item["room_id"],
-                               "dimensions": [item["width"], item["depth"], item["height"]]})
+        self.instances.append(
+            {
+                "asset_id": identifier,
+                "kind": item["kind"],
+                "room_id": item["room_id"],
+                "dimensions": [item["width"], item["depth"], item["height"]],
+            }
+        )
 
     def furniture(self, item, number):
         entry = self.entries.get(item["kind"])
@@ -308,7 +360,11 @@ class Builder:
         )
         placement = (
             trimesh.transformations.translation_matrix(
-                [item["x"] - self.cx, 0.035 + item.get("elevation", 0), item["y"] - self.cz]
+                [
+                    item["x"] - self.cx,
+                    0.035 + item.get("elevation", 0),
+                    item["y"] - self.cz,
+                ]
             )
             @ rotation
         )
@@ -324,14 +380,23 @@ class Builder:
         try:
             if item["kind"] == "custom":
                 design = DiyDesign.model_validate(item.get("diy"))
-                for part, mesh, material in design_meshes(design, [item["width"], item["depth"], item["height"]]):
-                    self.add(f"DIY_{part.name}", mesh, "wood", material=material, metadata={"diy_part_id": part.id})
+                for part, mesh, material in design_meshes(
+                    design, [item["width"], item["depth"], item["height"]]
+                ):
+                    self.add(
+                        f"DIY_{part.name}",
+                        mesh,
+                        "wood",
+                        material=material,
+                        metadata={"diy_part_id": part.id},
+                    )
                 detailed = True
             else:
                 use_updated_asset = (
                     self.document.get("furniture_mode", "library") == "library"
                     and entry
-                    and item["kind"] in {"shower", "shower_walk_in", "shower_open", "refrigerator"}
+                    and item["kind"]
+                    in {"shower", "shower_walk_in", "shower_open", "refrigerator"}
                 )
                 detailed = False if use_updated_asset else construct(self, item)
             if not detailed and self.document.get("furniture_mode") == "basic":
@@ -403,7 +468,11 @@ class Builder:
             self.fallback.append(item["kind"])
         self.box(
             f"基础家具_{number}",
-            [item["x"] - self.cx, item["height"] / 2 + 0.035 + item.get("elevation", 0), item["y"] - self.cz],
+            [
+                item["x"] - self.cx,
+                item["height"] / 2 + 0.035 + item.get("elevation", 0),
+                item["y"] - self.cz,
+            ],
             [item["width"], item["height"], item["depth"]],
             "wood",
             -math.radians(item["rotation"]),
@@ -426,7 +495,7 @@ class Builder:
         self.sphere(
             f"灯泡_{fixture['id']}",
             [x, y, z],
-            [0.13, 0.12, 0.13],
+            [0.13, 0.04 if fixture["kind"] in {"ceiling", "downlight"} else 0.12, 0.13],
             "white",
             {
                 "fixture_id": fixture["id"],
@@ -434,36 +503,76 @@ class Builder:
                 "fixture_kind": fixture["kind"],
                 "fixture_temperature": fixture["temperature"],
                 "fixture_enabled": fixture["enabled"],
-                "fixture_visual_placeholder": fixture["kind"] != "floor_lamp",
+                "fixture_visual_placeholder": fixture["kind"] in {"bulb", "pendant"},
             },
             material,
         )
-        if fixture["kind"] == "floor_lamp":
+        if fixture["kind"] == "ceiling":
+            self.cylinder("吸顶灯底盘", [x, y + 0.04, z], 0.28, 0.04, "metal")
+            self.cylinder("吸顶灯柔光罩", [x, y, z], 0.26, 0.05, "white")
+        elif fixture["kind"] == "downlight":
+            self.cylinder("筒灯装饰圈", [x, y + 0.04, z], 0.085, 0.035, "metal")
+        elif fixture["kind"] == "table_lamp":
+            base = max(0.02, y - 0.35)
+            self.cylinder("台灯底座", [x, base, z], 0.13, 0.035, "metal")
+            self.cylinder("台灯灯杆", [x, base + 0.16, z], 0.012, 0.30, "metal")
+            self.cylinder(
+                "台灯顶罩", [x, y + 0.1, z], 0.17, 0.04, "wood",
+                metadata={"fixture_owner_id": fixture["id"], "fixture_soft_shadow": True},
+            )
+        elif fixture["kind"] == "floor_lamp":
             self.cylinder("落地灯底座", [x, 0.05, z], 0.22, 0.08, "metal")
             self.cylinder(
                 "落地灯灯杆", [x, y / 2, z], 0.018, max(0.1, y - 0.12), "metal"
             )
-            self.cylinder("落地灯顶罩", [x, y + 0.16, z], 0.24, 0.055, "wood")
+            self.cylinder(
+                "落地灯顶罩", [x, y + 0.16, z], 0.24, 0.055, "wood",
+                metadata={"fixture_owner_id": fixture["id"], "fixture_soft_shadow": True},
+            )
         elif fixture["kind"] == "pendant":
-            visual = {"fixture_visual_placeholder": True, "fixture_visual_id": fixture["id"]}
-            self.cylinder("吊灯灯座", [x, y + 0.13, z], 0.055, 0.035, "metal", metadata=visual)
-            self.cylinder("吊灯吊线", [x, y + 0.28, z], 0.004, 0.25, "metal", metadata=visual)
+            visual = {
+                "fixture_visual_placeholder": True,
+                "fixture_visual_id": fixture["id"],
+            }
+            self.cylinder(
+                "吊灯灯座", [x, y + 0.13, z], 0.055, 0.035, "metal", metadata=visual
+            )
+            self.cylinder(
+                "吊灯吊线", [x, y + 0.28, z], 0.004, 0.25, "metal", metadata=visual
+            )
         else:
-            self.cylinder("灯泡底座", [x, y + 0.13, z], 0.06, 0.08, "metal",
-                          metadata={"fixture_visual_placeholder": True, "fixture_visual_id": fixture["id"]})
+            self.cylinder(
+                "灯泡底座",
+                [x, y + 0.13, z],
+                0.06,
+                0.08,
+                "metal",
+                metadata={
+                    "fixture_visual_placeholder": True,
+                    "fixture_visual_id": fixture["id"],
+                },
+            )
 
     def wall_network(self):
         """Union the wall footprint before extrusion, including L/T corners."""
-        colors = {"white": (0.88, 0.89, 0.85), "cream": (0.84, 0.78, 0.66),
-                  "sage": (0.52, 0.63, 0.49), "gray": (0.51, 0.56, 0.57)}
+        colors = {
+            "white": (0.88, 0.89, 0.85),
+            "cream": (0.84, 0.78, 0.66),
+            "sage": (0.52, 0.63, 0.49),
+            "gray": (0.51, 0.56, 0.57),
+        }
         groups = {}
         for bottom, top, finish, shape in wall_sections(self.document, CUT_HEIGHT):
             color = colors.get(finish)
-            material = (trimesh.visual.material.PBRMaterial(
-                name=f"墙面_微调_{finish}",
-                baseColorFactor=[*(round(c * 255) for c in color), 255],
-                roughnessFactor=0.75,
-            ) if color else None)
+            material = (
+                trimesh.visual.material.PBRMaterial(
+                    name=f"墙面_微调_{finish}",
+                    baseColorFactor=[*(round(c * 255) for c in color), 255],
+                    roughnessFactor=0.75,
+                )
+                if color
+                else None
+            )
             polygons = [shape] if shape.geom_type == "Polygon" else list(shape.geoms)
             for polygon in polygons:
                 if polygon.geom_type != "Polygon" or polygon.area < 1e-8:
@@ -471,9 +580,13 @@ class Builder:
                 # Union leaves redundant collinear vertices. Earcut can omit
                 # them from caps while extrusion retains them on sides.
                 polygon = polygon.simplify(1e-7, preserve_topology=True)
-                mesh = trimesh.creation.extrude_polygon(polygon, top - bottom, engine="earcut")
+                mesh = trimesh.creation.extrude_polygon(
+                    polygon, top - bottom, engine="earcut"
+                )
                 # Plan y is world z; preserve triangle winding with a proper rotation.
-                mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0]))
+                mesh.apply_transform(
+                    trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0])
+                )
                 mesh.apply_translation([-self.cx, top, -self.cz])
                 groups.setdefault((finish, bottom >= CUT_HEIGHT), []).append(mesh)
                 if bottom == 0:
@@ -482,38 +595,73 @@ class Builder:
                     for ring in rings:
                         if ring.geom_type != "Polygon" or ring.area < 1e-8:
                             continue
-                        skirt = trimesh.creation.extrude_polygon(ring, 0.085, engine="earcut")
-                        skirt.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0]))
+                        skirt = trimesh.creation.extrude_polygon(
+                            ring, 0.085, engine="earcut"
+                        )
+                        skirt.apply_transform(
+                            trimesh.transformations.rotation_matrix(
+                                math.pi / 2, [1, 0, 0]
+                            )
+                        )
                         skirt.apply_translation([-self.cx, 0.115, -self.cz])
                         self.add("连续踢脚线", skirt, "white")
         for finish in sorted({finish for finish, _ in groups}):
             color = colors.get(finish)
-            material = (trimesh.visual.material.PBRMaterial(
-                name=f"墙面_微调_{finish}",
-                baseColorFactor=[*(round(c * 255) for c in color), 255],
-                roughnessFactor=0.75,
-            ) if color else None)
+            material = (
+                trimesh.visual.material.PBRMaterial(
+                    name=f"墙面_微调_{finish}",
+                    baseColorFactor=[*(round(c * 255) for c in color), 255],
+                    roughnessFactor=0.75,
+                )
+                if color
+                else None
+            )
             if finish.startswith("material:"):
-                material = wall_material(finish.removeprefix("material:"))
+                material = wall_material(
+                    finish.removeprefix("material:"), self.texture_root
+                )
             # Explicit engine avoids runtime executable discovery. This removes
             # hidden coplanar caps at window-sill/lintel heights as well as seams.
             lower = groups.get((finish, False), [])
             upper = groups.get((finish, True), [])
             mesh = trimesh.boolean.union(lower + upper, engine="manifold")
             preview = trimesh.boolean.union(lower, engine="manifold") if lower else None
-            self.add("墙体_连续结构", mesh, "wall", material=material,
-                     metadata={"cutaway_full": True, "architecture_network": True,
-                               "wall_ids": [w["id"] for w in self.document["walls"] if wall_finish_key(w) == finish],
-                               "wall_material": finish.removeprefix("material:") if finish.startswith("material:") else None,
-                               "cut_height": CUT_HEIGHT,
-                               "cutaway_geometry": {
-                                   "positions": np.round(preview.vertices, 6).reshape(-1).tolist(),
-                                   "indices": preview.faces.reshape(-1).tolist(),
-                               } if preview is not None else None})
+            self.add(
+                "墙体_连续结构",
+                mesh,
+                "wall",
+                material=material,
+                metadata={
+                    "cutaway_full": True,
+                    "architecture_network": True,
+                    "wall_ids": [
+                        w["id"]
+                        for w in self.document["walls"]
+                        if wall_finish_key(w) == finish
+                    ],
+                    "wall_material": finish.removeprefix("material:")
+                    if finish.startswith("material:")
+                    else None,
+                    "cut_height": CUT_HEIGHT,
+                    "cutaway_geometry": {
+                        "positions": np.round(preview.vertices, 6).reshape(-1).tolist(),
+                        "indices": preview.faces.reshape(-1).tolist(),
+                    }
+                    if preview is not None
+                    else None,
+                },
+            )
 
     def build(self, output):
         doc = self.document
-        self.slab("建筑基座", doc["outline"], -0.04, 0.28, "base", metadata={"structure_kind": "outline"})
+        self.slab(
+            "建筑基座",
+            doc["outline"],
+            -0.04,
+            0.28,
+            "base",
+            metadata={"structure_kind": "outline"},
+        )
         self.slab("未铺设地板的基层", doc["outline"], 0.015, 0.065, "stone")
         for room in doc["rooms"]:
             if not room.get("floor_enabled", True):
@@ -529,10 +677,31 @@ class Builder:
                 _material("floor", self.style, finish) if finish != "default" else None
             )
             if room.get("floor_material"):
-                material = floor_material(room["floor_material"])
-            self.slab(room["name"], room["polygon"], 0.028, 0.015, "floor", material,
-                      metadata={"structure_kind": "room", "room_id": room["id"], "room_name": room["name"]})
+                material = floor_material(room["floor_material"], self.texture_root)
+            if room.get("floor_pattern") == "tiles":
+                from .floor_tiling import tiled_material
+
+                material = tiled_material(material or self.materials["floor"], room)
+            self.slab(
+                room["name"],
+                room["polygon"],
+                0.028,
+                0.015,
+                "floor",
+                material,
+                metadata={
+                    "structure_kind": "room",
+                    "room_id": room["id"],
+                    "room_name": room["name"],
+                    "floor_rotation": room.get("floor_rotation", 0),
+                    "floor_scale": room.get("floor_scale", 1),
+                    "floor_pattern": room.get("floor_pattern", "texture"),
+                    "floor_tile_width": room.get("floor_tile_width", 0.6),
+                    "floor_tile_depth": room.get("floor_tile_depth", 0.6),
+                },
+            )
         self.wall_network()
+        add_wall_surfaces(self, CUT_HEIGHT)
         for wall in doc["walls"]:
             a, b = wall["start"], wall["end"]
             dx, dz = b["x"] - a["x"], b["y"] - a["y"]
@@ -657,8 +826,12 @@ class Builder:
             for material in tree.get("materials", []):
                 name = material.get("name", "")
                 if "normalTexture" in material:
-                    finish = SURFACE_MATERIALS.get(name.removeprefix("地板_素材_").removeprefix("墙面_素材_"), {})
-                    material["normalTexture"]["scale"] = finish.get("normalStrength", 0.18)
+                    finish = SURFACE_MATERIALS.get(
+                        name.removeprefix("地板_素材_").removeprefix("墙面_素材_"), {}
+                    )
+                    material["normalTexture"]["scale"] = finish.get(
+                        "normalStrength", 0.18
+                    )
                 role = next(
                     (key for key, value in NAMES.items() if name.startswith(value)),
                     None,
@@ -703,7 +876,9 @@ def main():
     parser.add_argument("--library-dir", type=Path)
     args = parser.parse_args()
     Builder(
-        json.loads(args.layout.read_text(encoding="utf-8")), args.asset_catalog, args.library_dir
+        json.loads(args.layout.read_text(encoding="utf-8")),
+        args.asset_catalog,
+        args.library_dir,
     ).build(args.output)
 
 

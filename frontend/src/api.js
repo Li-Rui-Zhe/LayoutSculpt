@@ -2,7 +2,7 @@ export async function api(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(),
-    options.method === "POST" ? 90000 : 15000,
+    options.timeoutMs ?? (options.method === "POST" ? 90000 : 15000),
   );
   const cancel = () => controller.abort();
   options.signal?.addEventListener("abort", cancel, { once: true });
@@ -14,7 +14,7 @@ export async function api(path, options = {}) {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(
+      const error = new Error(
         typeof body.detail === "string"
           ? body.detail
           : Array.isArray(body.detail)
@@ -23,6 +23,8 @@ export async function api(path, options = {}) {
                 .join("；")
             : `请求失败（${response.status}），请检查本地服务是否启动。`,
       );
+      error.status = response.status;
+      throw error;
     }
     return await response.json();
   } catch (error) {

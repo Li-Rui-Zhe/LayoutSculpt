@@ -33,6 +33,12 @@ from .workflow import JobRunner, create_graph
 from .architecture import validate_generated_structure
 from .consistency import structure_hash, source_hash
 from .store import now
+from .texture_assets import install_texture_routes
+from .idempotency import install_idempotency
+from .project_transfer import install_transfer_routes
+from .deliverables import install_delivery_routes
+from .workspace import initialize_workspace, install_workspace_routes
+from .local_review import install_local_review_routes
 from .recovery import recoverable_recognition, REVIEW_TIMEOUT_WARNING
 from .diy import DiyService, install_diy_routes
 from .library import LibraryService, install_library_routes
@@ -96,6 +102,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
     @asynccontextmanager
     async def lifespan(app):
         await store.initialize()
+        await initialize_workspace(store)
         await diy.initialize()
         interrupted_jobs = await store.recover()
         async with AsyncSqliteSaver.from_conn_string(
@@ -120,12 +127,17 @@ def create_app(settings=None, *, client=None, model_builder=None):
     app.state.store = store
     app.state.settings = settings
     app.state.diy = diy
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"] + (["testserver"] if client is not None else []))
+    install_idempotency(app, store)
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["127.0.0.1", "localhost", "[::1]"]
+        + (["testserver"] if client is not None else []),
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(ALLOWED_ORIGINS),
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type", "Last-Event-ID"],
+        allow_headers=["Content-Type", "Last-Event-ID", "Idempotency-Key"],
     )
 
     @app.middleware("http")
@@ -236,7 +248,10 @@ def create_app(settings=None, *, client=None, model_builder=None):
         if not item:
             raise HTTPException(422, "所选模型已不可用，请刷新模型列表后重新选择")
         if item.get("available") is False:
-            raise HTTPException(422, item.get("unavailable_reason") or "所选模型当前不可用，请选择其他模型")
+            raise HTTPException(
+                422,
+                item.get("unavailable_reason") or "所选模型当前不可用，请选择其他模型",
+            )
         if require_image and item["supports_image"] is False:
             raise HTTPException(422, "所选模型不支持图片，请选择支持户型图识别的模型")
         options.model = selected
@@ -250,8 +265,37 @@ def create_app(settings=None, *, client=None, model_builder=None):
         )
         return options
 
+    install_workspace_routes(app, store, settings, library)
+    install_local_review_routes(app, store, settings, codex, registry, resolve_model)
+    install_texture_routes(app, settings)
+    install_delivery_routes(app, store, settings)
+    install_transfer_routes(app, store, settings, public, normalize_image)
     install_diy_routes(app, diy, resolve_model)
     install_library_routes(app, library)
+
+    @app.get("/api/jobs/changes")
+    async def changed_jobs(cursor: str = ""):
+        parts = cursor.split("|", 1) if cursor else ["", ""]
+        if len(parts) != 2 or len(cursor) > 100:
+            raise HTTPException(422, "任务游标无效")
+        db = await store.connect()
+        try:
+            async with db.execute(
+                "SELECT * FROM jobs WHERE updated_at>? OR (updated_at=? AND id>?) ORDER BY updated_at,id LIMIT 201",
+                (parts[0], parts[0], parts[1]),
+            ) as rows:
+                values = [store.decode(r) for r in await rows.fetchall()]
+            more = len(values) > 200
+            values = values[:200]
+            return {
+                "items": [public(j) for j in values],
+                "cursor": f"{values[-1]['updated_at']}|{values[-1]['id']}"
+                if values
+                else cursor,
+                "more": more,
+            }
+        finally:
+            await db.close()
 
     @app.get("/api/jobs")
     async def jobs():
@@ -323,13 +367,17 @@ def create_app(settings=None, *, client=None, model_builder=None):
         return public(await store.get(job_id.hex))
 
     @app.post("/api/jobs/{job_id}/confirm-structure")
-    async def confirm_structure(job_id: UUID, document: StructureConfirmation, request: Request):
+    async def confirm_structure(
+        job_id: UUID, document: StructureConfirmation, request: Request
+    ):
         async with confirmation_lock:
             job = await require_job(job_id.hex)
             if job["status"] != "awaiting_review":
                 raise HTTPException(409, "该任务不在结构确认阶段，请刷新任务状态")
             workspace = settings.workspace(job_id.hex)
-            original = json.loads((workspace / "structure.json").read_text(encoding="utf-8"))
+            original = json.loads(
+                (workspace / "structure.json").read_text(encoding="utf-8")
+            )
             if document.revision != structure_hash(original):
                 raise HTTPException(409, "结构版本已变化，请重新打开核对页面")
             if not document.layout.rooms or not document.layout.walls:
@@ -338,18 +386,31 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 validate_generated_structure(document.layout)
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from exc
-            seed = json.loads((workspace / "review-seed.json").read_text(encoding="utf-8"))
-            seed.update(layout=document.layout.model_dump(), awaiting_review=False, confirmed_structure=True,
-                        confirmation={"structure_hash": structure_hash(document.layout),
-                                      "source_sha256": source_hash(workspace / "source.png"),
-                                      "confirmed_at": now(), "method": "user_review"})
+            seed = json.loads(
+                (workspace / "review-seed.json").read_text(encoding="utf-8")
+            )
+            seed.update(
+                layout=document.layout.model_dump(),
+                awaiting_review=False,
+                confirmed_structure=True,
+                confirmation={
+                    "structure_hash": structure_hash(document.layout),
+                    "source_sha256": source_hash(workspace / "source.png"),
+                    "confirmed_at": now(),
+                    "method": "user_review",
+                },
+            )
             seed.pop("result", None)
             temporary = workspace / "rebuild-seed.json.tmp"
             temporary.write_text(json.dumps(seed, ensure_ascii=False), encoding="utf-8")
             temporary.replace(workspace / "rebuild-seed.json")
-            claimed = await store.update(job_id.hex, status="queued", stage="结构已确认，准备家具规划",
-                                         message="已保存确认的结构，后续建模锁定墙体与门窗",
-                                         expected_status="awaiting_review")
+            claimed = await store.update(
+                job_id.hex,
+                status="queued",
+                stage="结构已确认，准备家具规划",
+                message="已保存确认的结构，后续建模锁定墙体与门窗",
+                expected_status="awaiting_review",
+            )
             if not claimed:
                 raise HTTPException(409, "任务状态已变化，请刷新后重试")
             pending = request.app.state.runner.tasks.get(job_id.hex)
@@ -359,7 +420,11 @@ def create_app(settings=None, *, client=None, model_builder=None):
             return public(await store.get(job_id.hex))
 
     @app.post("/api/jobs/{job_id}/retry", status_code=201)
-    async def retry(job_id: UUID, request: Request, changes: RetryRequest | None = Body(default=None)):
+    async def retry(
+        job_id: UUID,
+        request: Request,
+        changes: RetryRequest | None = Body(default=None),
+    ):
         previous = await require_job(job_id.hex)
         if previous["status"] not in {"failed", "cancelled"}:
             raise HTTPException(409, "仅失败或取消的任务可以重试")
@@ -373,28 +438,59 @@ def create_app(settings=None, *, client=None, model_builder=None):
             if layout is None:
                 raise HTTPException(409, "没有可恢复的有效识别结构，请重新识别户型图")
             timed_out = "超时" in (previous.get("error") or "")
-            warning = REVIEW_TIMEOUT_WARNING if timed_out else "AI 结构复核未完成。已恢复识别结构，请逐项对照原图核对后再继续。"
+            warning = (
+                REVIEW_TIMEOUT_WARNING
+                if timed_out
+                else "AI 结构复核未完成。已恢复识别结构，请逐项对照原图核对后再继续。"
+            )
             if len(layout.warnings) < 30 and warning not in layout.warnings:
                 layout.warnings.append(warning)
             new_id = uuid4().hex
             workspace = settings.workspace(new_id)
             workspace.mkdir(parents=True)
             await asyncio.to_thread(shutil.copyfile, source, workspace / "source.png")
-            (workspace / "rebuild-seed.json").write_text(json.dumps({
-                "layout": layout.model_dump(), "recovered_structure_of": job_id.hex,
-                "ai_review": {"status": "timed_out" if timed_out else "incomplete", "message": warning},
-                "agents": [],
-            }, ensure_ascii=False), encoding="utf-8")
+            (workspace / "rebuild-seed.json").write_text(
+                json.dumps(
+                    {
+                        "layout": layout.model_dump(),
+                        "recovered_structure_of": job_id.hex,
+                        "ai_review": {
+                            "status": "timed_out" if timed_out else "incomplete",
+                            "message": warning,
+                        },
+                        "agents": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
             await store.create(new_id, previous["name"], options.model_dump())
             request.app.state.runner.schedule(new_id)
             return public(await store.get(new_id))
         if changes:
-            overrides = changes.model_dump(exclude_unset=True, exclude={"reuse_structure"})
-            if "model" in overrides and overrides["model"] != options.model and "reasoning_effort" not in overrides:
+            overrides = changes.model_dump(
+                exclude_unset=True, exclude={"reuse_structure"}
+            )
+            if (
+                "model" in overrides
+                and overrides["model"] != options.model
+                and "reasoning_effort" not in overrides
+            ):
                 overrides["reasoning_effort"] = None
             options = options.model_copy(update=overrides)
-        seed = json.loads(seed_path.read_text(encoding="utf-8")) if seed_path.exists() else {}
-        if changes or not seed or any(seed.get(key) for key in ("refine_of", "restructure_of", "confirmed_structure")):
+        seed = (
+            json.loads(seed_path.read_text(encoding="utf-8"))
+            if seed_path.exists()
+            else {}
+        )
+        if (
+            changes
+            or not seed
+            or any(
+                seed.get(key)
+                for key in ("refine_of", "restructure_of", "confirmed_structure")
+            )
+        ):
             options = await resolve_model(options)
         new_id = uuid4().hex
         workspace = settings.workspace(new_id)
@@ -409,7 +505,9 @@ def create_app(settings=None, *, client=None, model_builder=None):
         return public(await store.get(new_id))
 
     @app.post("/api/jobs/{job_id}/rebuild", status_code=201)
-    async def rebuild(job_id: UUID, request: Request, replan: bool = False, restructure: bool = False):
+    async def rebuild(
+        job_id: UUID, request: Request, replan: bool = False, restructure: bool = False
+    ):
         previous = await require_job(job_id.hex)
         if previous["status"] != "succeeded":
             raise HTTPException(409, "请等待户型生成成功后再更新家具")
@@ -445,7 +543,11 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "rebuild_of": previous["id"],
         }
         inherited = previous["result"].get("consistency", {}).get("confirmation")
-        if inherited and not restructure and inherited["structure_hash"] == structure_hash(layout):
+        if (
+            inherited
+            and not restructure
+            and inherited["structure_hash"] == structure_hash(layout)
+        ):
             seed["confirmation"] = inherited
         if restructure:
             seed["restructure_of"] = previous["id"]
@@ -461,7 +563,14 @@ def create_app(settings=None, *, client=None, model_builder=None):
         )
         await store.create(
             new_id,
-            previous["name"][:100] + (" · 结构复核" if restructure else " · 优化方案" if replan else " · 效果更新"),
+            previous["name"][:100]
+            + (
+                " · 结构复核"
+                if restructure
+                else " · 优化方案"
+                if replan
+                else " · 效果更新"
+            ),
             options.model_dump(),
             message="对照原图复核墙体、门窗与房间连通，再生成新方案"
             if restructure

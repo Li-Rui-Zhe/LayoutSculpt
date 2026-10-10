@@ -1,3 +1,9 @@
+import {
+  estimatedModelBytes,
+  cameraState,
+  restoreCamera,
+  focusRoom,
+} from "./cameraTools.js";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -15,6 +21,10 @@ import { isolateSoftSurfaces, surfaceProfile } from "../materials/surfaces.js";
 import { frameBounds, visualCenter, perspectiveCenter } from "./viewFraming.js";
 import { isolateRoomFloors } from "./roomMaterials.js";
 import { selectedFloor } from "../materials/assignments.js";
+import {
+  setRoomIsolation,
+  prepareIsolationMaterials,
+} from "./roomIsolation.js";
 
 function disposeModel(root) {
   const geometries = new Set(),
@@ -296,6 +306,7 @@ export class StudioScene {
 
   cacheCurrentModel() {
     if (!this.model) return;
+    setRoomIsolation(this, null);
     this.restoreMaterials();
     this.scene.remove(this.model);
     this.cachedModels.set(this.modelUrl, {
@@ -308,12 +319,20 @@ export class StudioScene {
       zoom: this.camera.zoom,
       top: this.topView,
       thumbnails: this.thumbnails,
+      bytes: estimatedModelBytes(this.model),
     });
     this.model = null;
     this.modelUrl = null;
     this.originals = new Map();
     // 当前模型之外最多缓存两个户型，避免显存随任务数量持续增长。
-    while (this.cachedModels.size > 2) {
+    while (
+      this.cachedModels.size > 2 ||
+      [...this.cachedModels.values()].reduce(
+        (sum, v) => sum + (v.bytes || 0),
+        0,
+      ) >
+        256 * 1024 * 1024
+    ) {
       const oldest = this.cachedModels.keys().next().value;
       disposeModel(this.cachedModels.get(oldest).model);
       this.cachedModels.delete(oldest);
@@ -329,6 +348,7 @@ export class StudioScene {
     if (!entry.originals) {
       isolateSoftSurfaces(this.model);
       installCutaway(this.model);
+      prepareIsolationMaterials(this.model);
       installFixtureLights(this.model, {
         sample: url === showcase.model_url,
       });
@@ -342,7 +362,10 @@ export class StudioScene {
         obj.castShadow = !obj.userData.fixture_id && !lightSurfaces.has(obj);
         // Clear glazing transmits the sample's daylight; an opaque shadow here
         // would black out the rooms despite the visible transparent windows.
-        if (url === showcase.model_url && [obj.material].flat().some((m) => m.transparent && m.opacity < 0.6))
+        if (
+          url === showcase.model_url &&
+          [obj.material].flat().some((m) => m.transparent && m.opacity < 0.6)
+        )
           obj.castShadow = false;
         obj.receiveShadow = true;
         [obj.material].flat().forEach((m) => {
@@ -434,7 +457,9 @@ export class StudioScene {
   async load(url) {
     const revision = ++this.revision;
     if (this.modelUrl === url && this.model) {
+      setRoomIsolation(this, null);
       this.callbacks.onThumbnails?.(this.thumbnails);
+      this.callbacks.onRooms?.(isolateRoomFloors(this.model));
       this.presentModel();
       return;
     }
@@ -513,11 +538,17 @@ export class StudioScene {
             : material.name.startsWith("软装")
               ? "fabric"
               : null);
-      const selection = category === "floor" && material.userData.floor_room_id
-        ? selectedFloor(state, material.userData.floor_room_id) : state.selected[category];
+      const selection =
+        category === "floor" && material.userData.floor_room_id
+          ? selectedFloor(state, material.userData.floor_room_id)
+          : state.selected[category];
       const chosen = category && resolveMaterial(selection);
       if (chosen) {
-        const profile = surfaceProfile(chosen, category, material.userData.soft_role);
+        const profile = surfaceProfile(
+          chosen,
+          category,
+          material.userData.soft_role,
+        );
         if (!profile) continue;
         material.color.set(profile.color);
         const surface = profile.surface;
@@ -553,10 +584,13 @@ export class StudioScene {
   }
 
   surfaceTexture(surface, channel) {
+    if (surface.startsWith("texture:") && channel === "normal") return null;
     const key = `${surface}_${channel}`;
     if (!this.surfaceTextures.has(key)) {
       const texture = new THREE.TextureLoader().load(
-        `/materials/${key}.png`,
+        surface.startsWith("texture:")
+          ? `/api/materials/custom/${surface.slice(8)}.png`
+          : `/materials/${key}.png`,
         () => {
           if (this.disposed) return;
           this.dirty = true;
@@ -577,6 +611,10 @@ export class StudioScene {
   }
 
   settings({ shadows = true, rotate = false, grid = true, cutaway = true }) {
+    if (this.model?.userData.roomIsolation?.enabled.value) {
+      this.model.userData.roomIsolation.renderRestore.shadows = shadows;
+      shadows = false;
+    }
     this.cutaway = cutaway;
     this.renderer.domElement.dataset.wallView = cutaway ? "cutaway" : "full";
     updateCutaway(this.model, this.camera, {
@@ -595,7 +633,27 @@ export class StudioScene {
     this.guide.visible = grid;
     this.dirty = true;
   }
+  cameraState() {
+    return cameraState(this);
+  }
+  restoreCamera(value) {
+    return restoreCamera(this, value);
+  }
+  focusRoom(id, inside) {
+    return focusRoom(this, id, inside);
+  }
+  isolateRoom(id) {
+    return setRoomIsolation(this, id);
+  }
   reset(top = false) {
+    if (this.perspectiveCamera) {
+      this.perspectiveCamera.fov = 22;
+      this.perspectiveCamera.near = 0.1;
+      this.perspectiveCamera.updateProjectionMatrix();
+    }
+    this.controls.minDistance = 3;
+    this.controls.maxPolarAngle = Math.PI * 0.43;
+    this.controls.cursor?.copy(this.center);
     // 先耗尽残留惯性，避免复位后继续漂移。
     this.controls.autoRotate = false;
     this.controls.enableDamping = false;

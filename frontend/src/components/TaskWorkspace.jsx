@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Box,
@@ -31,18 +31,21 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
+import { designFingerprint } from "../editor/objectIdentity.js";
+import { toDraft } from "../editor/geometry.js";
 import Viewport from "./Viewport.jsx";
 import Modal from "./Modal.jsx";
 import { MaterialDock } from "./Materials.jsx";
 import { useStudio, initialStudio } from "../hooks/useStudio.js";
 import { effortLabel } from "../hooks/useModels.js";
 import { presets, showcase } from "../catalog.js";
-import { terminal } from "../api.js";
+import { api, terminal } from "../api.js";
 import { StatusBadge } from "./TaskRail.jsx";
-import ManualEditor from "../editor/ManualEditor.jsx";
+const ManualEditor = lazy(() => import("../editor/ManualEditor.jsx"));
 import StructureReview from "./StructureReview.jsx";
 import RetryDialog from "./RetryDialog.jsx";
 import { generationError } from "../hooks/modelSelection.js";
+import { useUrlContext } from "../hooks/urlContext.js";
 import { materialSelection } from "../materials/assignments.js";
 
 const lightIcons = {
@@ -190,6 +193,29 @@ function Activity({ job, events }) {
   );
 }
 function Deliverables({ job, onCapture }) {
+  const [draftWarning, setDraftWarning] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (!job) return;
+    Promise.all([
+      fetch(`/api/drafts/edit:${job.id}`).then((r) => r.json()),
+      fetch(
+        job.result?.layout_url || `/api/jobs/${job.id}/artifacts/layout.json`,
+      ).then((r) => r.json()),
+    ])
+      .then(([draft, layout]) => {
+        if (alive)
+          setDraftWarning(
+            !!draft.document &&
+              JSON.stringify(designFingerprint(draft.document)) !==
+                JSON.stringify(designFingerprint(toDraft(layout))),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [job?.id]);
   if (job?.status !== "succeeded" || !job?.result?.model_url)
     return (
       <div className="empty-state">
@@ -212,6 +238,42 @@ function Deliverables({ job, onCapture }) {
             {result.room_count} 个空间 · {result.area} ㎡ · 独立成果包
           </p>
         </div>
+      </div>
+      {draftWarning && (
+        <p className="workspace-note">
+          人工设计还有未生成的草稿修改。以下下载对应当前已生成版本，请回到人工设计保存并生成三维后再交付。
+        </p>
+      )}
+      <div className="delivery-actions">
+        <a
+          className="secondary-button"
+          href={`/api/jobs/${job.id}/drawing/svg`}
+          download
+        >
+          平面 SVG
+        </a>
+        <a
+          className="secondary-button"
+          href={`/api/jobs/${job.id}/drawing/dxf`}
+          download
+        >
+          平面 DXF · 毫米
+        </a>
+        <a
+          className="primary-button"
+          href={`/api/jobs/${job.id}/bundle`}
+          download
+        >
+          一键下载成果包
+        </a>
+        <a
+          className="secondary-button"
+          href={`/api/jobs/${job.id}/report`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          查看报告 / 导出 PDF
+        </a>
       </div>
       <div className="deliverable-grid">
         {[
@@ -314,6 +376,15 @@ export default function TaskWorkspace({
   const { state, update, undo, redo, canUndo, canRedo, storageError } =
     useStudio(id);
   const [rooms, setRooms] = useState([]);
+  const [roomView, setRoomView] = useUrlContext("room", "", active);
+  const [roomIsolated, setRoomIsolated] = useState(false);
+  const [savedCamera, setSavedCamera] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`camera:${id}`));
+    } catch {
+      return null;
+    }
+  });
   const [floorRequest, setFloorRequest] = useState(null);
   useEffect(() => {
     onMaterialContext?.({ id, rooms });
@@ -321,7 +392,29 @@ export default function TaskWorkspace({
   const lastMaterialRequest = useRef(null);
   const hasModel = !job || job.status === "succeeded";
   const reviewing = job?.status === "awaiting_review";
-  const [tab, setTab] = useState(hasModel ? "design" : "activity");
+  const [tab, setTab] = useUrlContext(
+    "tab",
+    () => {
+      try {
+        const saved = sessionStorage.getItem(`workspace-tab:${id}`);
+        return ["design", "source", "activity", "assets", "edit"].includes(
+          saved,
+        ) && hasModel
+          ? saved
+          : hasModel
+            ? "design"
+            : "activity";
+      } catch {
+        return hasModel ? "design" : "activity";
+      }
+    },
+    active,
+  );
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(`workspace-tab:${id}`, tab);
+    } catch {}
+  }, [id, tab]);
   useEffect(() => {
     if (diyMode && job?.status === "succeeded") setTab("edit");
   }, [diyMode, job?.status]);
@@ -376,6 +469,10 @@ export default function TaskWorkspace({
   }, [inspectorOpen, active]);
   const [loading, setLoading] = useState(true);
   const [modelError, setModelError] = useState("");
+  useEffect(() => {
+    if (!loading && roomView && rooms.some((r) => r.id === roomView))
+      viewer.current?.focusRoom(roomView, false);
+  }, [loading, rooms]);
   const [zoom, setZoom] = useState(100);
   const [thumbs, setThumbs] = useState({});
   const [view, setView] = useState("perspective");
@@ -429,6 +526,9 @@ export default function TaskWorkspace({
     `${showcase.model_url}?v=${showcase.revision || showcase.id}`;
   const currentResult = job?.result;
   const reset = (top = false) => {
+    viewer.current?.isolateRoom(null);
+    setRoomIsolated(false);
+    setRoomView("");
     setView(top ? "top" : "perspective");
     viewer.current?.reset(top);
   };
@@ -503,7 +603,7 @@ export default function TaskWorkspace({
               onClick={() => setTab("edit")}
             >
               <PencilRuler size={16} />
-              <span>手动调整布局</span>
+              <span>人工设计</span>
             </button>
           )}
           <button
@@ -531,22 +631,24 @@ export default function TaskWorkspace({
         </p>
       )}
       {tab === "edit" && job && (
-        <ManualEditor
-          key={job.id}
-          job={job}
-          active={active}
-          projects={projects}
-          designMode={diyMode}
-          onDesignModeChange={onDiyModeChange}
-          placementRequest={placementRequest}
-          onPlacementConsumed={onPlacementConsumed}
-          floorRequest={floorRequest}
-          onFloorConsumed={() => setFloorRequest(null)}
-          onClose={() => {
-            setTab(reviewing ? "review" : hasModel ? "design" : "activity");
-            if (diyMode) onExitDiy?.();
-          }}
-        />
+        <Suspense fallback={<p role="status">正在打开人工设计…</p>}>
+          <ManualEditor
+            key={job.id}
+            job={job}
+            active={active}
+            projects={projects}
+            designMode={diyMode}
+            onDesignModeChange={onDiyModeChange}
+            placementRequest={placementRequest}
+            onPlacementConsumed={onPlacementConsumed}
+            floorRequest={floorRequest}
+            onFloorConsumed={() => setFloorRequest(null)}
+            onClose={() => {
+              setTab(reviewing ? "review" : hasModel ? "design" : "activity");
+              if (diyMode) onExitDiy?.();
+            }}
+          />
+        </Suspense>
       )}
       {reviewing && tab !== "edit" && (
         <StructureReview
@@ -666,7 +768,10 @@ export default function TaskWorkspace({
                     }
                     state={state}
                     settings={settings}
-                    onLoading={setLoading}
+                    onLoading={(v) => {
+                      setLoading(v);
+                      if (v) setRoomIsolated(false);
+                    }}
                     onView={setView}
                     onError={setModelError}
                     onZoom={setZoom}
@@ -764,6 +869,76 @@ export default function TaskWorkspace({
                         </button>
                       ))}
                     </div>
+                  </div>
+                  <div className="room-view-tools">
+                    <select
+                      aria-label="定位房间"
+                      value={roomView}
+                      onChange={(e) => {
+                        if (roomIsolated)
+                          viewer.current?.isolateRoom(e.target.value || null);
+                        if (!e.target.value) setRoomIsolated(false);
+                        setRoomView(e.target.value);
+                        if (e.target.value)
+                          viewer.current?.focusRoom(e.target.value, false);
+                        else reset();
+                      }}
+                    >
+                      <option value="">全屋视角</option>
+                      {rooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      disabled={!roomView || loading}
+                      onClick={() => {
+                        update({ settings: { ...settings, cutaway: false } });
+                        viewer.current?.focusRoom(roomView, true);
+                      }}
+                    >
+                      室内视角
+                    </button>
+                    <button
+                      disabled={!roomView || loading}
+                      aria-pressed={roomIsolated}
+                      onClick={() => {
+                        if (
+                          viewer.current?.isolateRoom(
+                            roomIsolated ? null : roomView,
+                          )
+                        )
+                          setRoomIsolated(!roomIsolated);
+                        else
+                          setNotice(
+                            "此模型没有可用的房间边界，请保存为新的三维版本后重试。",
+                          );
+                      }}
+                    >
+                      {roomIsolated ? "退出房间隔离" : "只看此房间"}
+                    </button>
+                    <button
+                      disabled={loading}
+                      onClick={() => {
+                        const value = viewer.current?.cameraState();
+                        setSavedCamera(value);
+                        try {
+                          localStorage.setItem(
+                            `camera:${id}`,
+                            JSON.stringify(value),
+                          );
+                        } catch {}
+                      }}
+                    >
+                      保存镜头
+                    </button>
+                    <button
+                      disabled={!savedCamera || loading}
+                      onClick={() => viewer.current?.restoreCamera(savedCamera)}
+                    >
+                      恢复镜头
+                    </button>
                   </div>
                   <div className="canvas-controls">
                     <div>
@@ -1039,6 +1214,28 @@ export default function TaskWorkspace({
                   </div>
                 )}
                 <div className="overview-actions">
+                  {!job && (
+                    <button
+                      className="secondary-button full-width"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          const value = await api("/projects/sample", {
+                            method: "POST",
+                          });
+                          await projects.refresh();
+                          projects.select(value);
+                        } catch (e) {
+                          setActionError(e.message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      复制示例，开始我的设计
+                    </button>
+                  )}
                   {!job && (
                     <button
                       className="primary-button full-width"

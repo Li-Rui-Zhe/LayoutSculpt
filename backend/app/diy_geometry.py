@@ -6,6 +6,8 @@ import numpy as np
 import trimesh
 
 from .diy_schema import DiyDesign, design_bounds
+from .surface_materials import MATERIALS, ROOT
+from PIL import Image
 
 
 def design_meshes(design: DiyDesign, dimensions=None):
@@ -15,6 +17,23 @@ def design_meshes(design: DiyDesign, dimensions=None):
     for part in design.parts:
         if part.shape == "box":
             mesh = trimesh.creation.box(extents=[part.width, part.height, part.depth])
+        elif part.shape == "rounded_box":
+            extents = np.array([part.width, part.height, part.depth])
+            radius = min(extents) * 0.16
+            sphere = trimesh.creation.uv_sphere(radius=radius, count=[12, 12]).vertices
+            corners = np.array(
+                [[x, y, z] for x in [-1, 1] for y in [-1, 1] for z in [-1, 1]]
+            ) * (extents / 2 - radius)
+            mesh = trimesh.convex.convex_hull(
+                np.concatenate([sphere + corner for corner in corners])
+            )
+        elif part.shape == "cone":
+            mesh = trimesh.creation.cone(radius=0.5, height=1, sections=32)
+            mesh.apply_translation([0, 0, -0.5])
+            mesh.apply_transform(
+                trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0])
+            )
+            mesh.apply_scale([part.width, part.height, part.depth])
         elif part.shape == "cylinder":
             mesh = trimesh.creation.cylinder(radius=0.5, height=1, sections=32)
             mesh.apply_transform(
@@ -40,7 +59,29 @@ def design_meshes(design: DiyDesign, dimensions=None):
             roughnessFactor=part.roughness,
             metallicFactor=part.metallic,
         )
-        mesh.visual = trimesh.visual.TextureVisuals(material=material)
+        if part.material_id:
+            item = MATERIALS[part.material_id]
+            surface = item.get("surface") or {
+                "wood": "planks",
+                "stone": "stone",
+                "linen": "linen",
+            }.get(item.get("texture"))
+            if surface:
+                with Image.open(
+                    ROOT / f"public/materials/{surface}_color.png"
+                ) as image:
+                    material.baseColorTexture = image.copy()
+                normal = ROOT / f"public/materials/{surface}_normal.png"
+                if normal.is_file():
+                    with Image.open(normal) as image:
+                        material.normalTexture = image.copy()
+        mesh = mesh.copy()
+        mesh.unmerge_vertices()
+        uv = np.zeros((len(mesh.vertices), 2))
+        for face, normal in zip(mesh.faces, mesh.face_normals):
+            axes = [i for i in range(3) if i != int(np.argmax(np.abs(normal)))]
+            uv[face] = mesh.vertices[face][:, axes]
+        mesh.visual = trimesh.visual.TextureVisuals(uv=uv, material=material)
         yield part, mesh, material
 
 

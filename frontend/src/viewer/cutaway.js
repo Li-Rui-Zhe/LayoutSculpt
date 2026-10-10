@@ -44,7 +44,12 @@ export function installCutaway(model) {
     preview.position.copy(obj.position);
     preview.quaternion.copy(obj.quaternion);
     preview.scale.copy(obj.scale);
-    preview.userData.cutaway_only = true;
+    preview.userData = {
+      ...obj.userData,
+      cutaway_full: false,
+      cutaway_only: true,
+    };
+    delete preview.userData.cutaway_geometry;
     preview.castShadow = preview.receiveShadow = true;
     obj.parent.add(preview);
     obj.userData.cutaway_installed = true;

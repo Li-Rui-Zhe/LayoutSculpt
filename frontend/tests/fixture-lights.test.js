@@ -7,6 +7,65 @@ import {
 } from "../src/viewer/fixtureLights.js";
 import { presets } from "../src/catalog.js";
 
+test("落地灯只对自身灯罩使用柔光近似，保留其他光源与墙体的投影", () => {
+  for (const metadata of [false, true]) {
+    const model = new THREE.Group();
+    model.position.set(10, 0, -3);
+    const marker = new THREE.Object3D();
+    marker.position.set(2, 1.5, 3);
+    marker.userData = {
+      fixture_id: "lamp",
+      fixture_kind: "floor_lamp",
+      fixture_lumens: 650,
+    };
+    model.add(marker);
+    const shade = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.24, 0.24, 0.055),
+      new THREE.MeshStandardMaterial(),
+    );
+    shade.name = metadata ? "重命名灯罩" : "落地灯顶罩_42";
+    shade.position.set(2, 1.66, 3);
+    shade.castShadow = true;
+    if (metadata)
+      shade.userData = { fixture_owner_id: "lamp", fixture_soft_shadow: true };
+    const unrelated = shade.clone();
+    unrelated.position.x += 2;
+    unrelated.userData = metadata
+      ? { fixture_owner_id: "other", fixture_soft_shadow: true }
+      : {};
+    const originalHook = unrelated.onBeforeShadow;
+    model.add(shade, unrelated);
+    installFixtureLights(model);
+    const { light } = model.userData.designLights[0];
+    assert.equal(light.castShadow, true);
+    assert.equal(shade.castShadow, true);
+    assert.equal(unrelated.onBeforeShadow, originalHook);
+    const material = new THREE.MeshDistanceMaterial();
+    const args = [
+      null,
+      shade,
+      null,
+      light.shadow.camera,
+      shade.geometry,
+      material,
+      null,
+    ];
+    for (let face = 0; face < 6; face++) {
+      shade.onBeforeShadow(...args);
+      assert.equal(material.depthWrite, false);
+      assert.equal(material.colorWrite, false);
+      shade.onAfterShadow(...args);
+      assert.equal(material.depthWrite, true);
+      assert.equal(material.colorWrite, true);
+    }
+    args[3] = new THREE.PerspectiveCamera();
+    shade.onBeforeShadow(...args);
+    assert.equal(material.depthWrite, true);
+    assert.equal(material.colorWrite, true);
+    shade.onAfterShadow(...args);
+  }
+});
+
 test("白天和夜晚两种光照，灯具位置、强度、开关独立且安装幂等", () => {
   assert.deepEqual(
     presets.map((p) => p.name),

@@ -6,15 +6,17 @@ export default function SurfaceFinishPicker({
   value,
   onChange,
   disabled = false,
+  hint,
 }) {
   const label = category === "walls" ? "墙面" : "地板";
   return (
     <fieldset className="surface-finish-picker" disabled={disabled}>
       <legend>{label} DIY · 材质样板</legend>
       <p>
-        {category === "walls"
-          ? "仅修改选中墙体的两侧饰面，其他墙体不变。"
-          : "仅修改选中房间的地板，其他房间不变。"}
+        {hint ||
+          (category === "walls"
+            ? "仅修改选中墙体的两侧饰面，其他墙体不变。"
+            : "仅修改选中房间的地板，其他房间不变。")}
       </p>
       <div className="surface-finish-grid">
         {materialCategories[category].map((id) => {

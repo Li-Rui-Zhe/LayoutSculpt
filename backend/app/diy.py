@@ -41,6 +41,9 @@ class DiyService:
                 revision INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
             await db.execute(
+                "CREATE TABLE IF NOT EXISTS diy_versions (asset_id TEXT NOT NULL,revision INTEGER NOT NULL,design TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(asset_id,revision))"
+            )
+            await db.execute(
                 "UPDATE diy_assets SET status='failed', error=?, updated_at=? WHERE status IN ('queued','running')",
                 ("服务重启中断了生成，请点击重试。原有素材不受影响。", now()),
             )
@@ -69,11 +72,12 @@ class DiyService:
         finally:
             await db.close()
 
-    async def listing(self):
+    async def listing(self, archived=False):
         db = await self.store.connect()
         try:
             async with db.execute(
-                "SELECT * FROM diy_assets WHERE archived=0 ORDER BY created_at DESC"
+                "SELECT * FROM diy_assets WHERE archived=? ORDER BY created_at DESC",
+                (int(archived),),
             ) as cursor:
                 return [
                     {
@@ -105,7 +109,7 @@ class DiyService:
                     design.name if design else request.prompt[:60],
                     "ready" if design else "queued",
                     request.model_dump_json() if request else "{}",
-                    design.model_dump_json() if design else None,
+                    design.model_dump_json(exclude_defaults=True) if design else None,
                     None,
                     1 if design else 0,
                     0,
@@ -141,7 +145,7 @@ class DiyService:
                     status,
                     error,
                     now(),
-                    design.model_dump_json() if design else None,
+                    design.model_dump_json(exclude_defaults=True) if design else None,
                     design.name if design else None,
                     1 if design else 0,
                     asset_id,
@@ -195,6 +199,57 @@ class DiyService:
                     for attempt in range(2):
                         try:
                             output = await chain.ainvoke(variables)
+                            if request.target_part_id:
+                                replacement = next(
+                                    (
+                                        p
+                                        for p in output.parts
+                                        if p.id == request.target_part_id
+                                    ),
+                                    None,
+                                )
+                                if replacement is None:
+                                    raise ValueError("必须保留并返回指定部件编号")
+                                output = DiyDesign.model_validate(
+                                    {
+                                        **request.base.model_dump(),
+                                        "parts": [
+                                            (
+                                                replacement
+                                                if p.id == request.target_part_id
+                                                else p
+                                            ).model_dump()
+                                            for p in request.base.parts
+                                        ],
+                                    }
+                                )
+                            if request.base:
+                                locked = {
+                                    p.id: p for p in request.base.parts if p.edit_locked
+                                }
+                                parts = [locked.pop(p.id, p) for p in output.parts]
+                                output = DiyDesign.model_validate(
+                                    {
+                                        **output.model_dump(),
+                                        "parts": [
+                                            p.model_dump()
+                                            for p in [*parts, *locked.values()]
+                                        ],
+                                    }
+                                )
+                            if (
+                                request.preserve_dimensions
+                                and request.base
+                                and any(
+                                    abs(a - b) > 0.005
+                                    for a, b in zip(
+                                        output.dimensions(), request.base.dimensions()
+                                    )
+                                )
+                            ):
+                                raise ValueError(
+                                    "整体尺寸必须保持不变，允许误差 5 毫米"
+                                )
                             return {"design": output.model_dump()}
                         except ValueError as exc:
                             if attempt:
@@ -240,12 +295,17 @@ class DiyService:
     async def save(self, asset_id, body):
         db = await self.store.connect()
         try:
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute(
+                "INSERT OR IGNORE INTO diy_versions SELECT id,revision,design,updated_at FROM diy_assets WHERE id=? AND revision=? AND status='ready' AND archived=0 AND design IS NOT NULL",
+                (str(asset_id), body.revision),
+            )
             result = await db.execute(
                 """UPDATE diy_assets SET name=?,design=?,revision=revision+1,updated_at=?
                 WHERE id=? AND revision=? AND status='ready' AND archived=0""",
                 (
                     body.design.name,
-                    body.design.model_dump_json(),
+                    body.design.model_dump_json(exclude_defaults=True),
                     now(),
                     str(asset_id),
                     body.revision,
@@ -277,9 +337,42 @@ class DiyService:
 
 
 def install_diy_routes(app, service, resolve_model):
+    @app.get("/api/diy/assets/{asset_id}/history")
+    async def history(asset_id: UUID):
+        await service.get(asset_id.hex)
+        db = await service.store.connect()
+        try:
+            async with db.execute(
+                "SELECT revision,design,created_at FROM diy_versions WHERE asset_id=? ORDER BY revision DESC",
+                (asset_id.hex,),
+            ) as rows:
+                return {
+                    "items": [
+                        {**dict(r), "design": json.loads(r["design"])}
+                        for r in await rows.fetchall()
+                    ]
+                }
+        finally:
+            await db.close()
+
+    @app.post("/api/diy/assets/{asset_id}/restore")
+    async def restore(asset_id: UUID):
+        db = await service.store.connect()
+        try:
+            result = await db.execute(
+                "UPDATE diy_assets SET archived=0 WHERE id=? AND archived=1",
+                (asset_id.hex,),
+            )
+            await db.commit()
+            if not result.rowcount:
+                raise HTTPException(404, "已移出素材不存在")
+        finally:
+            await db.close()
+        return await service.get(asset_id.hex)
+
     @app.get("/api/diy/assets")
-    async def listing():
-        return {"items": await service.listing()}
+    async def listing(archived: bool = False):
+        return {"items": await service.listing(archived)}
 
     @app.post("/api/diy/generate", status_code=202)
     async def generate(body: DiyGenerate):
