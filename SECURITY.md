@@ -15,8 +15,8 @@
 
 **请勿在公开 Issue、PR、讨论或截图中发布可利用的漏洞细节、凭据或用户数据。**
 
-1. 优先在本仓库 **Security → Report a vulnerability** 提交私密报告：[进入漏洞报告页面](https://github.com/Li-Rui-Zhe/LayoutSculpt/security/advisories/new)。
-2. 如果入口不可用，请通过[维护者 GitHub 主页](https://github.com/Li-Rui-Zhe)上公开提供的私密联系方式联系；若没有可用方式，可创建仅用于请求私密联系渠道的 Issue，标题为「请求私密安全报告渠道」，不要附带漏洞内容或复现材料。
+1. 请登录 GitHub 后，通过本仓库 **Security → Report a vulnerability** 提交私密报告：[进入漏洞报告页面](https://github.com/Li-Rui-Zhe/LayoutSculpt/security/advisories/new)。报告提交后，在 GitHub 的私密报告中继续沟通复现、影响和修复方案。
+2. 如果看不到报告按钮或无法打开页面，请先确认已登录 GitHub 并访问本仓库。若仍无法提交，可通过[维护者 GitHub 主页](https://github.com/Li-Rui-Zhe)上公开提供的私密联系方式联系；没有可用方式时，可创建标题为「请求私密安全报告渠道」的 Issue，**仅请求联系方式，不附带漏洞内容或复现材料**。
 3. 在维护者确认影响及修复方案前，请保留利用细节私密。是否、何时公开，由报告者和维护者协商；不要求无限期保密。
 
 报告建议包含：
