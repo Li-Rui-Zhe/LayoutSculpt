@@ -27,7 +27,7 @@
 
 README 直接使用品牌横幅 `header.svg`、第三版原创空间演示 `showcase.gif`、墙地面搭配 `materials.gif`、家具模板编辑 `diy.gif`，以及当前工作台 `workbench.webp`。GIF 来自真实程序渲染和界面操作；空间采用随项目分发的「林间暖居」，DIY 采用内置玄关柜模板，不包含用户任务、私人物品或上传原图。GIF 压缩后循环播放，原始帧、录制环境和制作中间文件保留在被忽略的 `data/` 中。
 
-详细用法移至 [设计工作流](design-workflows.md)，相关功能截图放在 `docs/images/` 并由文档引用。公开安全报告方式与数据处理边界见根目录 [SECURITY.md](../SECURITY.md)。
+详细用法移至 [设计工作流](design-workflows.md)，相关功能截图放在 `docs/images/` 并由文档引用。日常反馈与可选的私密报告入口见根目录 [SECURITY.md](../SECURITY.md)。
 
 ## 本地备份
 

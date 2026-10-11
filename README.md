@@ -270,7 +270,7 @@ node scripts/review/verify_workspace.mjs <任务ID>
 
 ## 安全与隐私
 
-漏洞报告、支持版本与本地运行边界见 [Security Policy](SECURITY.md)。请勿在公开 Issue 或 PR 中附上密钥、登录信息、私人户型和完整任务数据库。AI 识别会调用所配置的服务，任务本地保存不表示推理完全离线。
+日常问题与建议欢迎通过 [Issues](https://github.com/Li-Rui-Zhe/LayoutSculpt/issues) 交流；需要私下沟通的安全问题，可使用 [Security Policy](SECURITY.md) 中的可选入口。分享截图或报告时请隐去密钥、登录信息及个人数据。AI 识别会调用所配置的服务，任务本地保存不表示推理完全离线。
 
 ## 许可
 
