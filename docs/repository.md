@@ -5,7 +5,7 @@
 ## 保留
 
 - React / Three.js 前端、FastAPI 后端和项目 AI 契约。
-- 14 类运行时家具 GLB、当前首页设计示例、材质与上传演示户型。
+- 29 类运行时家具 GLB、当前首页设计示例、材质与上传演示户型。
 - pnpm 锁文件、Python 依赖及已验证环境的依赖快照。
 - 单元测试、真实 GLB 校验、浏览器检查及基准测试脚本。
 - 可选离线家具制作代码，用于重建本地源工程。
@@ -25,7 +25,9 @@
 
 ### README 展示素材
 
-`docs/images/` 仅保留 README 直接引用的四个文件：品牌横幅 `header.svg`、实际三维旋转与昼夜切换 `showcase.gif`，以及当前工作台 `workbench.webp` 和材质调整 `materials.webp`。演示均使用随项目分发的原创「林间暖居」，不包含用户任务或上传原图。截图采用 WebP，GIF 为压缩后的循环录制；原始帧和制作中间文件不提交。
+README 直接使用品牌横幅 `header.svg`、第三版原创空间演示 `showcase.gif`、墙地面搭配 `materials.gif`、家具模板编辑 `diy.gif`，以及当前工作台 `workbench.webp`。GIF 来自真实程序渲染和界面操作；空间采用随项目分发的「林间暖居」，DIY 采用内置玄关柜模板，不包含用户任务、私人物品或上传原图。GIF 压缩后循环播放，原始帧、录制环境和制作中间文件保留在被忽略的 `data/` 中。
+
+详细用法移至 [设计工作流](design-workflows.md)，相关功能截图放在 `docs/images/` 并由文档引用。公开安全报告方式与数据处理边界见根目录 [SECURITY.md](../SECURITY.md)。
 
 ## 本地备份
 
