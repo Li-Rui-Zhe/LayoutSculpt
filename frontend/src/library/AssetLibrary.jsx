@@ -13,11 +13,17 @@ import DiyPreview from "../diy/DiyPreview.jsx";
 import "./library.css";
 import { useLibraryPreferences } from "../hooks/useLibraryPreferences.js";
 import MaterialLibrary from "./MaterialLibrary.jsx";
+import AssetManager from "./AssetManager.jsx";
 import { readContext, writeContext } from "../hooks/urlContext.js";
+import {
+  matchesCatalog,
+  catalogFacets,
+  dimensionLabel,
+} from "./catalogFilters.js";
 
 const sources = {
   all: "全部模型",
-  builtin: "内置家具",
+  builtin: "官方家具",
   imported: "导入素材",
   diy: "DIY 素材",
   generated: "户型方案",
@@ -80,6 +86,8 @@ export default function AssetLibrary({
             query: readContext("q", saved.query),
             source: readContext("librarySource", saved.source),
             category: readContext("category", saved.category),
+            family: readContext("family", saved.family),
+            style: readContext("furnitureStyle", saved.style),
           };
     } catch {
       return {};
@@ -112,9 +120,28 @@ export default function AssetLibrary({
   const [items, setItems] = useState([]),
     [selectedId, setSelectedId] = useState(savedContext.selectedId || null);
   const [query, setQuery] = useState(savedContext.query || ""),
-    [source, setSource] = useState(savedContext.source || "all"),
+    [source, setSource] = useState(savedContext.source || "builtin"),
     [sort, setSort] = useState(savedContext.sort || "source");
   const [category, setCategory] = useState(savedContext.category || "all");
+  const [family, setFamily] = useState(savedContext.family || "all");
+  const [style, setStyle] = useState(savedContext.style || "all");
+  const inspector = useRef(null);
+  const choose = (id) => {
+    setSelectedId(id);
+    if (window.matchMedia("(max-width: 900px)").matches)
+      inspector.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    else inspector.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const resetFilters = () => {
+    setQuery("");
+    setCategory("all");
+    setFamily("all");
+    setStyle("all");
+    setMaxWidth("");
+    setFavoritesOnly(false);
+    setRecentOnly(false);
+    setArchivedOnly(false);
+  };
   useEffect(() => {
     if (active && !onClose)
       writeContext({
@@ -123,8 +150,20 @@ export default function AssetLibrary({
         q: query,
         librarySource: source,
         category,
+        family,
+        furnitureStyle: style,
       });
-  }, [active, onClose, assetType, selectedId, query, source, category]);
+  }, [
+    active,
+    onClose,
+    assetType,
+    selectedId,
+    query,
+    source,
+    category,
+    family,
+    style,
+  ]);
   useEffect(() => {
     if (active)
       try {
@@ -137,6 +176,8 @@ export default function AssetLibrary({
             source,
             sort,
             category,
+            family,
+            style,
           }),
         );
       } catch {}
@@ -149,15 +190,14 @@ export default function AssetLibrary({
     source,
     sort,
     category,
+    family,
+    style,
   ]);
-  const categories = [
-    ...new Set(
-      items
-        .filter((i) => source === "all" || i.source === source)
-        .map((i) => i.category)
-        .filter(Boolean),
-    ),
-  ];
+  const {
+    rooms: categories,
+    families,
+    styles,
+  } = catalogFacets(items, source, category);
   const [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
@@ -186,17 +226,18 @@ export default function AssetLibrary({
         .filter(
           (i) =>
             (archivedOnly
-              ? preferences.value.archived?.includes(i.id)
-              : !preferences.value.archived?.includes(i.id)) &&
+              ? i.archived || preferences.value.archived?.includes(i.id)
+              : !i.archived && !preferences.value.archived?.includes(i.id)) &&
             (!recentOnly || preferences.value.recent?.includes(i.id)) &&
-            (!maxWidth ||
-              (i.dimensions && i.dimensions[0] <= Number(maxWidth))) &&
             (!favoritesOnly || favorites.includes(i.id)) &&
-            (source === "all" || i.source === source) &&
-            (category === "all" || i.category === category) &&
-            `${i.name} ${i.filename} ${i.category || ""}`
-              .toLocaleLowerCase()
-              .includes(query.trim().toLocaleLowerCase()),
+            matchesCatalog(i, {
+              source,
+              category,
+              family,
+              style,
+              query,
+              maxWidth,
+            }),
         )
         .sort((a, b) =>
           sort === "name"
@@ -211,6 +252,8 @@ export default function AssetLibrary({
       items,
       source,
       category,
+      family,
+      style,
       query,
       sort,
       favoritesOnly,
@@ -222,6 +265,16 @@ export default function AssetLibrary({
     ],
   );
   const selected = visible.find((i) => i.id === selectedId) || visible[0];
+  const variants =
+    selected?.family && selected.source === "builtin"
+      ? items.filter(
+          (i) =>
+            i.source === "builtin" &&
+            i.family === selected.family &&
+            !preferences.value.archived?.includes(i.id),
+        )
+      : [];
+  const official = items.filter((i) => i.source === "builtin");
   useEffect(() => {
     setPlaceError("");
     setScale("100");
@@ -259,46 +312,51 @@ export default function AssetLibrary({
     <section className="asset-library-page" aria-label="素材库页面">
       <header className="diy-page-heading">
         <div>
-          <span>三维资源管理</span>
+          <span>为每一种日常，找到合适的家具</span>
           <h1>
             素材库{" "}
             <small>
               {assetType === "models" ? `${items.length} 个模型` : "装修材质"}
             </small>
           </h1>
-          <p>家具、户型模型与装修材质，在这里统一选择。</p>
+          <p>按空间挑选，比较不同款式，再放进你的家。</p>
         </div>
         <div className="library-actions">
-          <select
-            aria-label="导入模型朝向"
-            hidden={assetType !== "models"}
-            value={importRotation}
-            onChange={(e) => setImportRotation(e.target.value)}
-          >
-            {[0, 90, 180, 270].map((v) => (
-              <option key={v} value={v}>
-                旋转 {v}°
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="导入模型单位"
-            hidden={assetType !== "models"}
-            value={importUnit}
-            onChange={(e) => setImportUnit(e.target.value)}
-          >
-            <option value="m">模型单位：米</option>
-            <option value="cm">模型单位：厘米</option>
-            <option value="mm">模型单位：毫米</option>
-          </select>
-          <button
-            className="secondary-button"
-            disabled={importing}
-            onClick={() => importPicker.current.click()}
-            hidden={assetType !== "models"}
-          >
-            {importing ? "正在导入…" : "导入 GLB"}
-          </button>
+          <details className="library-import" hidden={assetType !== "models"}>
+            <summary>导入外部素材</summary>
+            <div>
+              <select
+                aria-label="导入模型朝向"
+                hidden={assetType !== "models"}
+                value={importRotation}
+                onChange={(e) => setImportRotation(e.target.value)}
+              >
+                {[0, 90, 180, 270].map((v) => (
+                  <option key={v} value={v}>
+                    旋转 {v}°
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="导入模型单位"
+                hidden={assetType !== "models"}
+                value={importUnit}
+                onChange={(e) => setImportUnit(e.target.value)}
+              >
+                <option value="m">模型单位：米</option>
+                <option value="cm">模型单位：厘米</option>
+                <option value="mm">模型单位：毫米</option>
+              </select>
+              <button
+                className="secondary-button"
+                disabled={importing}
+                onClick={() => importPicker.current.click()}
+                hidden={assetType !== "models"}
+              >
+                {importing ? "正在导入…" : "导入 GLB"}
+              </button>
+            </div>
+          </details>
           <input
             ref={importPicker}
             hidden
@@ -317,6 +375,7 @@ export default function AssetLibrary({
                 await api("/library/import", { method: "POST", body: form });
                 setRevision((r) => r + 1);
                 setSource("imported");
+                resetFilters();
                 setAssetType("models");
               } catch (e) {
                 setError(e.message);
@@ -344,6 +403,7 @@ export default function AssetLibrary({
           </button>
         </div>
       </header>
+      <AssetManager onChange={() => setRevision((r) => r + 1)} />
       <div className="library-tabs library-type-tabs" aria-label="素材类型">
         <button
           aria-pressed={assetType === "models"}
@@ -365,11 +425,30 @@ export default function AssetLibrary({
           targetName={materialTargetName || targetName || "当前方案"}
           floorOnly={floorOnly}
           initialRoomId={materialRoomId}
+          initialCategory={readContext("materialCategory", "walls")}
         />
       ) : (
         <>
           {preferences.error && (
             <p className="form-error">素材偏好同步失败：{preferences.error}</p>
+          )}
+          {source === "builtin" && (
+            <div className="library-collection-summary">
+              <div>
+                <strong>家庭家具系列</strong>
+                <span>原木、织物与日常收纳，统一真实尺度</span>
+              </div>
+              <span>
+                <b>{official.length}</b> 款家具
+              </span>
+              <span>
+                <b>
+                  {new Set(official.map((i) => i.family).filter(Boolean)).size}
+                </b>{" "}
+                个品类
+              </span>
+              <span className="library-series-hint">款式均有独立三维模型</span>
+            </div>
           )}
           <div className="library-filters">
             <button
@@ -413,6 +492,8 @@ export default function AssetLibrary({
                   onClick={() => {
                     setSource(id);
                     setCategory("all");
+                    setFamily("all");
+                    setStyle("all");
                   }}
                 >
                   {name}
@@ -429,7 +510,7 @@ export default function AssetLibrary({
               <input
                 type="search"
                 aria-label="搜索 GLB 素材"
-                placeholder="搜索名称或文件名"
+                placeholder="搜家具、款式、空间，如：沙发 左贵妃"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -437,12 +518,40 @@ export default function AssetLibrary({
             <select
               aria-label="家具用途分类"
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                setFamily("all");
+                setStyle("all");
+              }}
             >
-              <option value="all">全部用途</option>
+              <option value="all">全部空间</option>
               {categories.map((label) => (
                 <option key={label} value={label}>
                   {label}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="家具品类"
+              value={family}
+              onChange={(e) => setFamily(e.target.value)}
+            >
+              <option value="all">全部品类</option>
+              {families.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="家具风格"
+              value={style}
+              onChange={(e) => setStyle(e.target.value)}
+            >
+              <option value="all">全部风格</option>
+              {styles.map((s) => (
+                <option key={s} value={s}>
+                  {s}
                 </option>
               ))}
             </select>
@@ -455,6 +564,9 @@ export default function AssetLibrary({
               <option value="recent">最近更新</option>
               <option value="name">按名称排列</option>
             </select>
+            <button className="text-button" onClick={resetFilters}>
+              重置筛选
+            </button>
           </div>
           {error && (
             <div className="diy-error" role="alert">
@@ -466,7 +578,7 @@ export default function AssetLibrary({
           <div className="library-content">
             <div className="library-browser">
               <div className="library-result-label">
-                找到 {visible.length} 个模型
+                找到 {visible.length} 个模型 · 点击查看款式与三维细节
               </div>
               <div className="library-cards" aria-label="GLB 素材列表">
                 {visible.map((item) => (
@@ -474,16 +586,21 @@ export default function AssetLibrary({
                     className="library-card"
                     key={item.id}
                     aria-pressed={selected?.id === item.id}
-                    onClick={() => setSelectedId(item.id)}
+                    onClick={() => choose(item.id)}
                   >
                     <div className={`library-card-symbol ${item.source}`}>
                       <Thumbnail item={item} />
                     </div>
                     <strong>{item.name}</strong>
                     <small>
-                      {item.category || sources[item.source]} ·{" "}
-                      {bytes(item.size_bytes)}
+                      {item.family || item.category || sources[item.source]} ·{" "}
+                      {item.variant || sources[item.source]}
                     </small>
+                    {item.dimensions && (
+                      <span className="library-card-dimensions">
+                        {dimensionLabel(item)}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -495,9 +612,8 @@ export default function AssetLibrary({
                   <button
                     className="secondary-button"
                     onClick={() => {
-                      setQuery("");
+                      resetFilters();
                       setSource("all");
-                      setCategory("all");
                     }}
                   >
                     查看全部模型
@@ -505,42 +621,106 @@ export default function AssetLibrary({
                 </div>
               )}
             </div>
-            <aside className="library-inspector">
+            <aside className="library-inspector" ref={inspector}>
               {selected ? (
                 <>
                   <div className="library-selection">
-                    <button
-                      className="text-button"
-                      disabled={!preferences.ready}
-                      onClick={() =>
-                        preferences.change("archived", selected.id)
-                      }
-                    >
-                      {preferences.value.archived?.includes(selected.id)
-                        ? "恢复到素材库"
-                        : "归档素材"}
-                    </button>
-                    <button
-                      className="text-button"
-                      onClick={() => toggleFavorite(selected.id)}
-                    >
-                      {favorites.includes(selected.id)
-                        ? "★ 已收藏"
-                        : "☆ 收藏素材"}
-                    </button>
-                    <span>{sources[selected.source]}</span>
+                    <div className="library-selection-actions">
+                      <button
+                        className="text-button"
+                        disabled={!preferences.ready}
+                        onClick={async () => {
+                          if (selected.source !== "imported") {
+                            preferences.change("archived", selected.id);
+                            return;
+                          }
+                          try {
+                            await api("/library/manage", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                id: selected.id,
+                                archived: !(
+                                  selected.archived ||
+                                  preferences.value.archived?.includes(
+                                    selected.id,
+                                  )
+                                ),
+                              }),
+                            });
+                            if (
+                              preferences.value.archived?.includes(selected.id)
+                            )
+                              preferences.change("archived", selected.id);
+                            setRevision((r) => r + 1);
+                          } catch (e) {
+                            setError(e.message);
+                          }
+                        }}
+                      >
+                        {selected.archived ||
+                        preferences.value.archived?.includes(selected.id)
+                          ? "恢复到素材库"
+                          : "归档素材"}
+                      </button>
+                      <button
+                        className="text-button"
+                        onClick={() => toggleFavorite(selected.id)}
+                      >
+                        {favorites.includes(selected.id)
+                          ? "★ 已收藏"
+                          : "☆ 收藏素材"}
+                      </button>
+                      <span>{sources[selected.source]}</span>
+                    </div>
                     <h2>{selected.name}</h2>
-                    <p>{selected.filename}</p>
+                    <p>
+                      {selected.family
+                        ? `${selected.category} / ${selected.family} / ${selected.variant}`
+                        : selected.filename}
+                    </p>
                   </div>
                   <DiyPreview
                     modelUrl={selected.model_url}
                     onInfo={setInfo}
-                    frontDirection={
-                      selected.source === "builtin" && selected.kind !== "model"
-                        ? 1
-                        : -1
-                    }
+                    frontDirection={selected.source === "builtin" ? 1 : -1}
                   />
+                  {selected.description && (
+                    <p className="library-description">
+                      {selected.description}
+                    </p>
+                  )}
+                  {variants.length > 1 && (
+                    <section
+                      className="library-variants"
+                      aria-label="同类家具款式"
+                    >
+                      <header>
+                        <strong>{selected.family} · 款式选择</strong>
+                        <small>{variants.length} 款</small>
+                      </header>
+                      <div>
+                        {variants.map((item) => (
+                          <button
+                            key={item.id}
+                            aria-pressed={selected.id === item.id}
+                            onClick={() => {
+                              resetFilters();
+                              setSource("builtin");
+                              setFamily(item.family);
+                              choose(item.id);
+                            }}
+                          >
+                            <Thumbnail item={item} />
+                            <span>
+                              {item.variant}
+                              <small>{dimensionLabel(item)}</small>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
                   <dl className="library-metadata">
                     <div>
                       <dt>宽 × 深 × 高</dt>
@@ -613,7 +793,7 @@ export default function AssetLibrary({
                           }
                           onClick={place}
                         >
-                          {placing ? "正在准备家具…" : "放入户型并编辑"}
+                          {placing ? "正在准备家具…" : "去户型选择位置"}
                         </button>
                         {placeError && (
                           <p className="diy-error" role="alert">
@@ -622,8 +802,8 @@ export default function AssetLibrary({
                         )}
                         <small>
                           {selected.kind === "wall_television"
-                            ? "自动寻找完整墙面，默认底部离地 1.05 米；可在人工设计中调整高度，保存后更新三维。"
-                            : "自动寻找空位；放入后可移动、旋转、缩放，保存后更新三维。"}
+                            ? "进入人工设计后点击墙边放置，自动贴合完整墙面；也可自动找空位。默认底部离地 1.05 米。"
+                            : "进入人工设计后预览占地并点击放下，也可自动找空位。确认前不会添加，放下后仍可拖动和精调。"}
                         </small>
                       </div>
                     )}

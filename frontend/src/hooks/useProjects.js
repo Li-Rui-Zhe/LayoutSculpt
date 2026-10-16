@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { projectGroups } from "../projects.js";
 import { api, terminal } from "../api.js";
 import { readContext, writeContext } from "./urlContext.js";
+import {
+  operationKey,
+  finishOperation,
+  formSignature,
+} from "./operationKeys.js";
 
 // 列表是任务状态的唯一来源；异步响应只更新自己的任务，不能改变当前选择。
 export function useProjects() {
@@ -26,7 +31,13 @@ export function useProjects() {
   useEffect(() => writeContext({ project: selectedId }), [selectedId]);
   const listRequest = useRef(0);
   const changesCursor = useRef("");
+  const initialized = useRef(false);
+  const [historyBefore, setHistoryBefore] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyLock = useRef(false);
   const changes = async () => {
+    if (!initialized.current)
+      return { ...(await api("/jobs/page")), initial: true };
     let cursor = changesCursor.current,
       items = [],
       page;
@@ -66,6 +77,10 @@ export function useProjects() {
         healthTime.current = Date.now();
       }
       setMetadata(m.items);
+      if (j.initial) {
+        initialized.current = true;
+        setHistoryBefore(j.before);
+      }
       changesCursor.current = j.cursor;
       merge(j.items);
       setError("");
@@ -164,41 +179,34 @@ export function useProjects() {
       stream.close();
     };
   }, [selectedId, merge, refresh]);
-  const pendingOperations = useRef(new Map());
-  const operationKey = (type, signature) => {
-    const old = pendingOperations.current.get(type);
-    if (old?.signature === signature) return old.key;
-    const key = crypto.randomUUID();
-    pendingOperations.current.set(type, { signature, key });
-    return key;
-  };
-  const create = async (form) => {
-    const signature = JSON.stringify(
-      [...form.entries()].map(([k, v]) => [
-        k,
-        typeof v === "string" ? v : [v.name, v.size, v.lastModified],
-      ]),
-    );
-    const item = await api("/jobs", {
+  const create = async (form, importing = false) => {
+    const signature = await formSignature(form);
+    const type = importing ? "import" : "create";
+    const item = await api(importing ? "/projects/import" : "/jobs", {
       method: "POST",
       body: form,
-      headers: { "Idempotency-Key": operationKey("create", signature) },
+      headers: { "Idempotency-Key": operationKey(type, signature) },
     });
-    pendingOperations.current.delete("create");
+    finishOperation(type);
     merge([item]);
     select(item);
     return item;
   };
   const action = async (id, verb, changes) => {
+    const type = `${id}:${verb}`;
     const item = await api(`/jobs/${id}/${verb}`, {
       method: "POST",
+      headers: {
+        "Idempotency-Key": operationKey(type, JSON.stringify(changes || {})),
+        ...(changes ? { "Content-Type": "application/json" } : {}),
+      },
       ...(changes
         ? {
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(changes),
           }
         : {}),
     });
+    finishOperation(type);
     merge([item]);
     if (verb !== "cancel" && selection.current === id) select(item);
     return item;
@@ -220,7 +228,28 @@ export function useProjects() {
     });
     await refresh();
   };
+  const loadMore = async () => {
+    if (!historyBefore || historyLock.current) return;
+    historyLock.current = true;
+    setHistoryLoading(true);
+    try {
+      const page = await api(
+        `/jobs/page?before=${encodeURIComponent(historyBefore)}`,
+      );
+      merge(page.items);
+      setHistoryBefore(page.before);
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      historyLock.current = false;
+      setHistoryLoading(false);
+    }
+  };
   return {
+    hasMoreHistory: !!historyBefore,
+    historyLoading,
+    loadMore,
     jobs: enriched,
     groups,
     changeMetadata,
@@ -241,6 +270,7 @@ export function useProjects() {
     loading,
     select,
     create,
+    importProject: (form) => create(form, true),
     refresh,
     cancel: (id) => action(id, "cancel"),
     retry: (id, changes) => action(id, "retry", changes),
@@ -268,7 +298,7 @@ export function useProjects() {
         },
         body: JSON.stringify(document),
       });
-      pendingOperations.current.delete(`edit:${id}`);
+      finishOperation(`edit:${id}`);
       merge([item]);
       if (selection.current === id) select(item);
       return item;

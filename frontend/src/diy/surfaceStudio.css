@@ -1,0 +1,506 @@
+.surface-studio {
+  overflow: auto;
+  min-height: 0;
+  padding: 24px;
+  flex: 1;
+  background: #f5f5ef;
+  color: #29483f;
+}
+.surface-studio header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.surface-studio h1 {
+  margin: 6px 0;
+  font-size: 28px;
+}
+.surface-studio h2 {
+  font-size: 16px;
+  margin: 0 0 16px;
+}
+.surface-studio p,
+.surface-studio small {
+  color: #6d7d72;
+  line-height: 1.65;
+}
+.surface-studio-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(280px, 1fr) 250px;
+  gap: 20px;
+}
+.surface-base-list,
+.surface-design-controls,
+.surface-design-preview {
+  padding: 20px;
+  border: 1px solid #dde3d4;
+  border-radius: 16px;
+  background: #fffefa;
+}
+.surface-base-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.surface-base-grid button {
+  padding: 8px;
+  border: 1px solid #dde3d4;
+  border-radius: 9px;
+  text-align: left;
+  background: #fff;
+  min-width: 0;
+}
+.surface-base-grid button[aria-pressed="true"] {
+  border-color: #476d58;
+  background: #edf2e5;
+}
+.surface-base-grid .surface-sample {
+  display: block;
+  width: 100%;
+  height: 72px;
+  border-radius: 5px;
+}
+.surface-base-grid strong,
+.surface-base-grid small {
+  display: block;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.surface-design-controls fieldset {
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 18px;
+}
+.surface-design-controls label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.surface-design-controls input:not([type="range"]),
+.surface-design-controls select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+}
+.surface-design-controls input[type="color"] {
+  height: 42px;
+  padding: 4px;
+}
+.surface-design-preview {
+  text-align: center;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.surface-three-preview {
+  width: 100%;
+  height: 310px;
+  overflow: hidden;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+.surface-three-preview canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.surface-saved {
+  margin-top: 28px;
+  padding-bottom: 28px;
+}
+.surface-saved .surface-base-grid {
+  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+}
+.surface-saved .surface-base-grid button {
+  max-width: 210px;
+}
+@media (max-width: 1150px) {
+  .surface-studio-layout {
+    grid-template-columns: 190px minmax(220px, 1fr);
+  }
+  .surface-design-controls {
+    grid-column: 1/-1;
+  }
+  .surface-design-controls fieldset {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .surface-studio {
+    padding: 14px;
+  }
+  .surface-studio-layout {
+    display: flex;
+    flex-direction: column;
+  }
+  .surface-base-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .surface-design-controls fieldset {
+    grid-template-columns: 1fr;
+  }
+  .surface-three-preview {
+    height: 260px;
+  }
+  .surface-studio header {
+    align-items: flex-start;
+  }
+}
+
+.surface-design-controls input:not([type="range"]),
+.surface-design-controls select {
+  border: 1px solid #d4dfca;
+  border-radius: 6px;
+  padding: 7px;
+  background: #fafbf6;
+  color: #29483f;
+}
+.surface-studio .primary-button {
+  color: #fff;
+}
+.diy-hub-nav button[aria-selected="true"] {
+  color: #fff;
+}
+.surface-studio-layout {
+  align-items: start;
+}
+.surface-base-list .surface-base-grid {
+  max-height: 440px;
+  overflow: auto;
+}
+.surface-design-preview {
+  min-height: 450px;
+}
+.surface-design-controls fieldset {
+  gap: 12px;
+}
+.surface-design-controls small {
+  font-size: 11px;
+}
+.surface-save-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.surface-creation-modes,
+.surface-paint-toolbar,
+.surface-preview-heading,
+.surface-ai-examples,
+.surface-ai-result-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.surface-creation-modes {
+  margin-bottom: 18px;
+}
+.surface-studio button {
+  min-height: 34px;
+}
+.surface-creation-modes button,
+.surface-paint-toolbar button,
+.surface-preview-heading button,
+.surface-ai-examples button,
+.surface-ai-history button {
+  border: 1px solid #d4dfca;
+  background: #fffefa;
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: #29483f;
+}
+.surface-studio .surface-creation-modes button[aria-selected="true"],
+.surface-studio .surface-paint-toolbar button[aria-pressed="true"] {
+  background: #345f4b;
+  color: white;
+  border-color: #345f4b;
+}
+.surface-studio .primary-button {
+  background: #345f4b;
+}
+.surface-studio button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.surface-studio button:focus-visible,
+.surface-studio input:focus-visible,
+.surface-studio textarea:focus-visible,
+.surface-studio select:focus-visible {
+  outline: 2px solid #345f4b;
+  outline-offset: 3px;
+}
+.creation-draw,
+.creation-ai,
+.creation-upload {
+  grid-template-columns: minmax(320px, 1.15fr) minmax(260px, 1fr) 220px;
+}
+.creation-draw > .surface-base-list,
+.creation-ai > .surface-base-list {
+  display: none;
+}
+.surface-painter,
+.surface-ai-creator {
+  text-align: left;
+}
+.surface-creation-panel {
+  padding: 18px;
+  border: 1px solid #dde3d4;
+  border-radius: 16px;
+  background: #fffefa;
+  min-width: 0;
+}
+.surface-creation-panel[hidden] {
+  display: none;
+}
+.surface-painter > canvas {
+  display: block;
+  width: min(100%, 490px);
+  height: auto;
+  aspect-ratio: 1;
+  margin: 16px auto;
+  border: 1px solid #dde3d4;
+  touch-action: none;
+  cursor: crosshair;
+  border-radius: 4px;
+}
+.surface-paint-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: center;
+  margin: 14px 0;
+  font-size: 12px;
+}
+.surface-paint-options label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.surface-paint-options input[type="range"] {
+  width: 90px;
+}
+.surface-paint-options input[type="color"] {
+  width: 35px;
+  height: 30px;
+}
+.surface-drawing-notice {
+  background: #fff4d9;
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+.surface-preview-heading {
+  justify-content: center;
+  margin: 8px 0 16px;
+  font-size: 12px;
+}
+.surface-tile-check {
+  width: min(100%, 460px);
+  aspect-ratio: 1;
+  background-size: 33.333333% 33.333333%;
+  background-repeat: repeat;
+  border: 1px solid #d4dfca;
+  margin: 0 auto 20px;
+}
+.surface-ai-creator textarea {
+  display: block;
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid #d4dfca;
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+.surface-ai-creator select {
+  padding: 8px;
+  border: 1px solid #d4dfca;
+  border-radius: 6px;
+  background: white;
+}
+.surface-ai-examples button {
+  font-size: 12px;
+}
+.surface-ai-result {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 10px;
+  background: #f1f4ed;
+}
+.surface-ai-result-heading {
+  justify-content: space-between;
+}
+.surface-ai-result img {
+  display: block;
+  max-width: 100%;
+  width: 340px;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 6px;
+  margin: 14px auto;
+}
+.surface-ai-history {
+  margin-top: 16px;
+  font-size: 12px;
+}
+.surface-ai-history button {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.surface-ai-history [aria-pressed="true"] {
+  border-color: #345f4b;
+  background: #e8f0e4;
+}
+.surface-studio [role="alert"] {
+  color: #a23f28;
+}
+@media (max-width: 1150px) {
+  .creation-draw,
+  .creation-ai,
+  .creation-upload {
+    grid-template-columns: minmax(300px, 1.2fr) minmax(230px, 1fr);
+  }
+}
+.surface-workflow-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.surface-workflow-bar .surface-creation-modes {
+  margin: 0;
+}
+.surface-workflow-bar > span {
+  font-size: 12px;
+  color: #7a877d;
+}
+.surface-generate-button {
+  width: 100%;
+  margin-bottom: 10px;
+}
+.surface-ai-creator .field-note {
+  margin-top: 0;
+}
+.surface-ai-progress {
+  padding: 14px;
+  background: #eef3eb;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+.surface-ai-result {
+  padding: 12px;
+}
+.surface-preview-stage {
+  position: relative;
+}
+.surface-preview-loading {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  border-radius: 20px;
+  padding: 6px 12px;
+  background: #fffefaeb;
+  color: #476d58;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.surface-preview-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 340px;
+  padding: 24px;
+  border: 1px dashed #d8e0d0;
+  border-radius: 12px;
+  background: #f7f8f2;
+}
+.surface-preview-empty > span {
+  font-size: 36px;
+  color: #9cab89;
+  margin-bottom: 20px;
+}
+.surface-preview-empty h2 {
+  margin-bottom: 6px;
+}
+.surface-preview-empty p {
+  font-size: 13px;
+}
+.surface-continue-paint {
+  align-self: center;
+  margin-top: 18px;
+  padding: 9px 18px;
+  border: 1px solid #d4dfca;
+  border-radius: 8px;
+  background: #f2f5ec;
+  color: #345f4b;
+}
+.surface-upload-panel > small {
+  display: block;
+  margin: 18px 0;
+}
+.surface-upload-panel .primary-button {
+  width: 100%;
+}
+.surface-tint-options {
+  border-top: 1px solid #e1e6dc;
+  padding-top: 14px;
+}
+.surface-tint-options summary {
+  font-size: 12px;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+.surface-save-hint {
+  font-size: 12px;
+  margin-top: 20px;
+}
+.surface-design-controls > .primary-button {
+  width: 100%;
+}
+.surface-sync-status {
+  font-size: 12px;
+  padding: 8px 12px;
+  background: #eef3eb;
+  border-radius: 8px;
+}
+.surface-replace-prompt {
+  border: 1px solid #d9c79c;
+  background: #fff5df;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 18px;
+}
+.surface-replace-prompt button {
+  margin-right: 12px;
+}
+.surface-studio > [role="status"] {
+  padding: 10px 16px;
+  background: #e8f0e4;
+  border: 1px solid #ccdcca;
+  border-radius: 8px;
+  color: #345f4b;
+}
+@media (max-width: 680px) {
+  .surface-studio header {
+    flex-direction: column;
+  }
+}
+.surface-parametric-note {
+  font-size: 12px;
+  color: #647364;
+  line-height: 1.65;
+}

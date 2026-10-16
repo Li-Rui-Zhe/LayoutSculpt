@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   Sparkles,
   Plus,
@@ -15,6 +16,7 @@ import NumberField from "../editor/NumberField.jsx";
 import { useModels } from "../hooks/useModels.js";
 import { api } from "../api.js";
 import DiyPreview from "./DiyPreview.jsx";
+import DiyReferenceImage from "./DiyReferenceImage.jsx";
 import { furnitureTemplate } from "./templates.js";
 import { useDraftSync } from "../hooks/useDraftSync.js";
 import { writeContext, readContext } from "../hooks/urlContext.js";
@@ -59,7 +61,10 @@ export default function DiyStudio({
 }) {
   const formId = useId();
   const linkedPart = useRef(readContext("part"));
-  const models = useModels({ requiresImage: false });
+  const [referenceId, setReferenceId] = useState(null);
+  const [referenceVersion, setReferenceVersion] = useState(0);
+  const [referenceUploading, setReferenceUploading] = useState(false);
+  const models = useModels({ requiresImage: !!referenceId });
   const root = useRef(null),
     token = useRef(0),
     operation = useRef(false);
@@ -95,18 +100,31 @@ export default function DiyStudio({
   const [preserveSize, setPreserveSize] = useState(true);
   const design = history.present,
     part = design?.parts.find((p) => p.id === partId);
+  const designRef = useRef(design);
+  designRef.current = design;
+  const [hasPendingInput, setHasPendingInput] = useState(false);
+  const syncInputState = () => {
+    setHasPendingInput(
+      [
+        ...(root.current?.querySelectorAll("input[data-number-value]") || []),
+      ].some((input) => input.value !== input.dataset.numberValue),
+    );
+  };
+  const generating = ["queued", "running"].includes(asset?.status);
   const draftKey = `diy:${asset?.id || "new"}`;
   const draftSync = useDraftSync(
     draftKey,
     design,
-    !initialDesign && draftMeta?.key === draftKey ? draftMeta.revision : null,
+    !initialDesign && !generating && draftMeta?.key === draftKey
+      ? draftMeta.revision
+      : null,
     (merged) => setHistory({ past: [], present: merged, future: [] }),
   );
   useEffect(() => {
     let alive = true;
     setRecoverable(null);
     setDraftMeta(null);
-    if (initialDesign) return;
+    if (initialDesign || generating) return;
     let cached = null;
     try {
       cached = JSON.parse(localStorage.getItem(`diy-cache:${draftKey}`));
@@ -122,7 +140,7 @@ export default function DiyStudio({
         if (
           value.document &&
           !designIssues(value.document).length &&
-          JSON.stringify(value.document) !== JSON.stringify(design)
+          JSON.stringify(value.document) !== JSON.stringify(designRef.current)
         )
           setRecoverable({ ...value, key: draftKey });
         else setDraftMeta({ key: draftKey, revision: value.revision });
@@ -133,9 +151,10 @@ export default function DiyStudio({
     return () => {
       alive = false;
     };
-  }, [draftKey]);
+  }, [draftKey, generating]);
   useEffect(() => {
-    if (initialDesign || !design || draftMeta?.key !== draftKey) return;
+    if (initialDesign || generating || !design || draftMeta?.key !== draftKey)
+      return;
     try {
       localStorage.setItem(
         `diy-cache:${draftKey}`,
@@ -147,7 +166,7 @@ export default function DiyStudio({
     } catch {
       setError("浏览器草稿缓存空间不足，请及时保存素材");
     }
-  }, [design, draftKey, draftMeta, initialDesign]);
+  }, [design, draftKey, draftMeta, initialDesign, generating]);
   useEffect(() => {
     setVersions([]);
     setCompareBase(false);
@@ -162,8 +181,8 @@ export default function DiyStudio({
       alive = false;
     };
   }, [asset?.id, asset?.revision]);
-  const generating = ["queued", "running"].includes(asset?.status);
   const dirty = JSON.stringify(design) !== baseline;
+  const unsaved = dirty || hasPendingInput;
   const issues = design ? designIssues(design) : [];
   const refresh = async () => setItems((await api("/diy/assets")).items);
   const loadValue = (value) => {
@@ -172,6 +191,7 @@ export default function DiyStudio({
     const next = value?.design || value?.request?.base || null;
     setHistory({ past: [], present: copy(next), future: [] });
     setBaseline(JSON.stringify(next));
+    setHasPendingInput(false);
     setPartId(
       next?.parts.some((p) => p.id === linkedPart.current)
         ? linkedPart.current
@@ -181,6 +201,8 @@ export default function DiyStudio({
     setNotice("");
     setError("");
     setPrompt(value?.status === "ready" ? "" : value?.request?.prompt || "");
+    setReferenceId(value?.request?.reference_id || null);
+    setReferenceVersion((n) => n + 1);
     setPartSearch("");
     setRequestExpanded(
       !next ||
@@ -202,14 +224,14 @@ export default function DiyStudio({
     };
   }, []);
   useEffect(() => {
-    if (!dirty) return;
+    if (!unsaved) return;
     const warn = (e) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [unsaved]);
   useEffect(() => {
     if (design && !design.parts.some((p) => p.id === partId))
       setPartId(design.parts[0]?.id || "");
@@ -318,6 +340,11 @@ export default function DiyStudio({
       return d;
     });
   const inputValid = () => {
+    // 数值输入按失焦提交；先完成提交，再读取最新设计，避免保存旧值。
+    const focused = document.activeElement;
+    if (root.current?.contains(focused) && focused.matches("input")) {
+      flushSync(() => focused.blur());
+    }
     const invalid = root.current?.querySelector(
       'input:invalid, input[aria-invalid="true"]',
     );
@@ -326,8 +353,11 @@ export default function DiyStudio({
       setError("请先修正标红的输入；按 Esc 可恢复原值。");
       return false;
     }
-    if (issues.length) {
-      setError(issues[0]);
+    const currentIssues = designRef.current
+      ? designIssues(designRef.current)
+      : [];
+    if (currentIssues.length) {
+      setError(currentIssues[0]);
       return false;
     }
     return true;
@@ -349,7 +379,7 @@ export default function DiyStudio({
   };
   const guard = (run, label = "舍弃未保存修改") => {
     if (
-      dirty ||
+      unsaved ||
       root.current?.querySelector('input:invalid, input[aria-invalid="true"]')
     )
       setPending({ run, label });
@@ -377,6 +407,15 @@ export default function DiyStudio({
     });
   const save = async (asNew = false) => {
     if (!design || !inputValid()) return;
+    const current = copy(designRef.current);
+    if (
+      !asNew &&
+      asset?.status === "ready" &&
+      JSON.stringify(current) === baseline
+    ) {
+      setNotice("当前素材已保存，没有待保存的修改。");
+      return;
+    }
     await act(async () => {
       const path =
         asset?.status === "ready" && !asNew
@@ -384,7 +423,7 @@ export default function DiyStudio({
           : "/diy/assets";
       const value = await api(
         path,
-        json({ design, revision: asset?.revision || 0 }),
+        json({ design: current, revision: asset?.revision || 0 }),
       );
       loadValue(value);
       setNotice("已保存到素材库，可在人工设计中使用。");
@@ -392,7 +431,14 @@ export default function DiyStudio({
     });
   };
   const generate = () => {
-    if (!prompt.trim() || (design && !inputValid())) return;
+    if (
+      referenceUploading ||
+      !models.ready ||
+      (!prompt.trim() && !referenceId) ||
+      (design && !inputValid())
+    )
+      return;
+    const current = designRef.current;
     act(async () => {
       const value = await api(
         "/diy/generate",
@@ -400,7 +446,8 @@ export default function DiyStudio({
           prompt: `${prompt.trim()}${modifyScope === "selected" && part ? `\n只修改部件 ${part.id}（${part.name}），其余部件的尺寸、位置与材质必须保持不变。` : ""}${preserveSize && design ? "\n保持家具整体宽深高不变。" : ""}`,
           model: models.model,
           reasoning_effort: models.effort || null,
-          base: design,
+          base: current,
+          reference_id: referenceId,
           target_part_id: modifyScope === "selected" ? part?.id : null,
           preserve_dimensions: !!design && preserveSize,
         }),
@@ -477,7 +524,12 @@ export default function DiyStudio({
           {onUse ? "返回人工设计" : "返回工作台"}
         </button>
       </header>
-      <div ref={root} className="diy-studio">
+      <div
+        ref={root}
+        className="diy-studio"
+        onChangeCapture={syncInputState}
+        onBlurCapture={() => requestAnimationFrame(syncInputState)}
+      >
         {pending && (
           <div className="diy-confirm" role="alert">
             <span>{pending.message || "当前有未保存的修改，是否继续？"}</span>
@@ -602,10 +654,13 @@ export default function DiyStudio({
           <section className="diy-workbench">
             {recoverable && (
               <div className="workspace-note">
-                找到本机草稿
+                另有本机草稿尚未应用。
+                {design
+                  ? `当前显示的是${dirty ? "正在编辑的内容" : "已保存版本"}。`
+                  : "可恢复后继续创作。"}
                 <button
                   onClick={() => {
-                    commit(recoverable.document);
+                    if (!commit(recoverable.document)) return;
                     setPartId(recoverable.document.parts[0].id);
                     setDraftMeta({
                       key: draftKey,
@@ -614,7 +669,7 @@ export default function DiyStudio({
                     setRecoverable(null);
                   }}
                 >
-                  恢复草稿
+                  恢复草稿继续编辑
                 </button>
                 <button
                   onClick={() => {
@@ -625,7 +680,7 @@ export default function DiyStudio({
                     setRecoverable(null);
                   }}
                 >
-                  沿用已保存素材
+                  保留当前内容
                 </button>
               </div>
             )}
@@ -667,6 +722,13 @@ export default function DiyStudio({
                     ))}
                   </div>
                 )}
+                <DiyReferenceImage
+                  key={`${asset?.id || "new"}:${referenceVersion}`}
+                  value={referenceId}
+                  onChange={setReferenceId}
+                  disabled={busy || generating}
+                  onBusyChange={setReferenceUploading}
+                />
                 {design && asset?.request?.prompt && (
                   <details className="diy-original-request">
                     <summary>查看原始设计要求</summary>
@@ -677,13 +739,17 @@ export default function DiyStudio({
                   <summary>
                     模型与推理强度 · {models.model || "正在读取"}
                   </summary>
-                  <ModelFields models={models} idPrefix={formId} />
+                  <ModelFields models={models} idPrefix={formId} purpose="diy" />
                 </details>
                 <div className="diy-generate-row">
                   <button
                     className="primary-button"
                     disabled={
-                      busy || generating || !models.ready || !prompt.trim()
+                      busy ||
+                      generating ||
+                      referenceUploading ||
+                      !models.ready ||
+                      (!prompt.trim() && !referenceId)
                     }
                     onClick={generate}
                   >
@@ -724,7 +790,13 @@ export default function DiyStudio({
                   </p>
                 )}
                 {["failed", "cancelled"].includes(asset?.status) && (
-                  <p role="alert">{asset.error} 修改描述后可重新生成。</p>
+                  <div><p role="alert">{asset.error} 修改描述后可重新生成。</p>
+                    <button disabled={busy} onClick={() => guard(() => act(async () => {
+                      const value = await api(`/diy/assets/${asset.id}/retry`, json({}));
+                      loadValue(value);
+                      await refresh();
+                    }))}>按原参数重新生成</button>
+                  </div>
                 )}
               </div>
             </details>
@@ -1098,10 +1170,10 @@ export default function DiyStudio({
           <span>
             {generating
               ? "AI 生成中"
-              : dirty
+              : unsaved
                 ? "有未保存的修改"
                 : asset?.status === "ready"
-                  ? `素材版本 ${asset.revision}`
+                  ? `${asset.request?.prompt ? "AI 结果已自动保存到素材库" : "已保存到素材库"} · 版本 ${asset.revision}`
                   : "保存后可反复使用"}
           </span>
           {asset && (
@@ -1140,17 +1212,29 @@ export default function DiyStudio({
           <button
             className="primary-button"
             data-diy-save
-            disabled={
-              busy ||
-              generating ||
-              !design ||
-              !!issues.length ||
-              (!dirty && asset?.status === "ready")
-            }
+            disabled={busy || generating || !design || !!issues.length}
             onClick={() => save()}
+            title={
+              busy
+                ? "正在处理，请稍候"
+                : generating
+                  ? "AI 生成完成后会自动保存"
+                  : !design
+                    ? "请先生成或创建素材"
+                    : issues[0] ||
+                      (unsaved
+                        ? "保存当前修改到素材库"
+                        : "当前内容已保存；修改属性后可再次保存")
+            }
           >
             <Save size={14} />
-            保存素材
+            {busy
+              ? "正在处理…"
+              : unsaved
+                ? "保存修改"
+                : asset?.status === "ready"
+                  ? "已保存"
+                  : "保存素材"}
           </button>
           {onUse && (
             <button
@@ -1159,17 +1243,25 @@ export default function DiyStudio({
               onClick={() => {
                 if (inputValid())
                   act(async () => {
-                    if (saveBeforeUse && (dirty || asset?.status !== "ready")) {
+                    const current = copy(designRef.current);
+                    if (
+                      saveBeforeUse &&
+                      (JSON.stringify(current) !== baseline ||
+                        asset?.status !== "ready")
+                    ) {
                       const saved = await api(
                         asset?.status === "ready"
                           ? `/diy/assets/${asset.id}/save`
                           : "/diy/assets",
-                        json({ design, revision: asset?.revision || 0 }),
+                        json({
+                          design: current,
+                          revision: asset?.revision || 0,
+                        }),
                       );
                       loadValue(saved);
                       await refresh();
                     }
-                    await onUse(copy(design), { preserveSize });
+                    await onUse(current, { preserveSize });
                     onClose();
                   });
               }}

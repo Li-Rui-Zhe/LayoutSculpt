@@ -1,3 +1,5 @@
+import { apiErrorMessage } from "./apiErrors.js";
+
 export async function api(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(
@@ -14,15 +16,7 @@ export async function api(path, options = {}) {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      const error = new Error(
-        typeof body.detail === "string"
-          ? body.detail
-          : Array.isArray(body.detail)
-            ? body.detail
-                .map((error) => error.msg.replace(/^Value error, /, ""))
-                .join("；")
-            : `请求失败（${response.status}），请检查本地服务是否启动。`,
-      );
+      const error = new Error(apiErrorMessage(body.detail, response.status));
       error.status = response.status;
       throw error;
     }

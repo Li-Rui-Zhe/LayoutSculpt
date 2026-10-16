@@ -2,7 +2,11 @@ import { RotateCcw } from "lucide-react";
 import { effortLabel } from "../hooks/useModels.js";
 import { selectableModel } from "../hooks/modelSelection.js";
 
-export default function ModelFields({ models, idPrefix = "project" }) {
+export default function ModelFields({
+  models,
+  idPrefix = "project",
+  purpose = "floorplan",
+}) {
   const id = idPrefix;
   return (
     <>
@@ -75,7 +79,7 @@ export default function ModelFields({ models, idPrefix = "project" }) {
         </select>
         <small className="field-note">
           {models.efforts.length
-            ? models.requiresImage === false
+            ? models.requiresImage === false || purpose === "diy"
               ? "应用于当前素材设计；强度越高，通常耗时越长。"
               : "应用于识别、复核和规划；强度越高，通常耗时越长。"
             : "当前服务未返回该模型的推理档位，沿用本地设置。"}

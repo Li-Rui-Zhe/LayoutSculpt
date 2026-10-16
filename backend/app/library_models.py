@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from .glb_limits import validate_glb_budget
 
 
 def load_glb(data):
@@ -19,11 +20,17 @@ def load_glb(data):
     _, version, length, size, kind = struct.unpack_from("<4sIIII", data)
     if version != 2 or length != len(data) or kind != 0x4E4F534A:
         raise ValueError("GLB 文件结构不完整")
+    if size > 4 * 1024 * 1024 or 20 + size > len(data):
+        raise ValueError("GLB 索引过大或不完整")
     document = json.loads(data[20 : 20 + size])
     for item in document.get("buffers", []) + document.get("images", []):
         if item.get("uri") and not item["uri"].startswith("data:"):
             raise ValueError("请使用内嵌纹理和几何数据的 GLB")
-    scene = trimesh.load(io.BytesIO(data), file_type="glb", force="scene")
+    try:
+        validate_glb_budget(document, data, size)
+        scene = trimesh.load(io.BytesIO(data), file_type="glb", force="scene")
+    except (KeyError, IndexError, TypeError, RecursionError, OSError, struct.error) as exc:
+        raise ValueError("模型结构或贴图无效，请重新导出标准 GLB") from exc
     bounds = scene.bounds
     if bounds is None or not np.isfinite(bounds).all():
         raise ValueError("模型没有有效几何体")

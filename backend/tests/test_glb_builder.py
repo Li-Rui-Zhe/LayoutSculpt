@@ -93,6 +93,25 @@ def test_new_layout_exports_glb_without_blender(tmp_path, monkeypatch):
         for material in gltf["materials"]
     )
     assert gltf.get("textures")
+    # 所有灯具外壳与门窗部件带有独立对象标识，供三维点选使用。
+    opening_nodes = [node for node in gltf["nodes"] if node.get("extras", {}).get("opening_index") == 0]
+    assert opening_nodes
+    assert all(node["extras"]["opening_kind"] == "door" for node in opening_nodes)
+    lamp_nodes = [node for node in gltf["nodes"] if "mesh" in node and node.get("extras", {}).get("fixture_owner_id") == "lamp"]
+    assert lamp_nodes
+
+
+def test_kitchen_accessories_follow_furniture_selection(tmp_path):
+    data = Layout.model_validate(layout_data()).model_dump()
+    data.update(furniture=[{**furniture_data()["items"][0], "kind": "counter", "name": "水槽操作台"}], style="natural", furniture_mode="library")
+    Builder(data, Settings().furniture_catalog).build(tmp_path)
+    with (tmp_path / "model.glb").open("rb") as file:
+        file.read(12)
+        length, _ = struct.unpack("<II", file.read(8))
+        gltf = json.loads(file.read(length))
+    details = [node for node in gltf["nodes"] if any(word in node.get("name", "") for word in ["水槽", "水龙头"])]
+    assert len(details) >= 4
+    assert all(node.get("extras", {}).get("furniture_index") == 0 for node in details)
 
 
 def test_bare_fixture_parts_keep_light_records_with_placeholder_metadata(tmp_path):
@@ -186,3 +205,20 @@ def test_api_generates_new_job_without_blender(tmp_path, monkeypatch):
         assert job["status"] == "succeeded", job
         assert "blend_url" not in job["result"]
         assert client.get(job["result"]["model_url"]).content.startswith(b"glTF")
+
+
+def test_painted_walls_export_explicit_nonmetallic_factor(tmp_path):
+    document = layout_data()
+    finishes = ["white", "cream", "sage", "gray"]
+    for index, wall in enumerate(document["walls"]):
+        wall["finish"] = finishes[index % len(finishes)]
+    document.update(furniture=[], style="natural", furniture_mode="library")
+    Builder(document, Settings().furniture_catalog).build(tmp_path)
+    raw = (tmp_path / "model.glb").read_bytes()
+    length = struct.unpack_from("<I", raw, 12)[0]
+    gltf = json.loads(raw[20:20 + length])
+    materials = [m for m in gltf["materials"] if m.get("name", "").startswith("墙面_微调_")]
+    assert materials
+    for material in materials:
+        assert material["pbrMetallicRoughness"]["metallicFactor"] == 0
+        assert material["pbrMetallicRoughness"]["roughnessFactor"] == .75

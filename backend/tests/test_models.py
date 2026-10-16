@@ -3,13 +3,20 @@ from dataclasses import replace
 
 import pytest
 
-from backend.app.codex import CodexClient, CodexError, codex_error_message, strict_output_schema
+from backend.app.ai_contracts import LayoutExtraction, LayoutReviewPatch
+from backend.app.codex import (
+    CodexClient,
+    CodexError,
+    codex_error_message,
+    strict_output_schema,
+)
 from backend.app.config import Settings
 from backend.app.schemas import Furnishing, Layout
-from backend.app.ai_contracts import LayoutExtraction, LayoutReviewPatch
 
 
-@pytest.mark.parametrize("model", [Layout, Furnishing, LayoutExtraction, LayoutReviewPatch])
+@pytest.mark.parametrize(
+    "model", [Layout, Furnishing, LayoutExtraction, LayoutReviewPatch]
+)
 def test_pydantic_schema_is_compatible_with_strict_output(model):
     original = model.model_json_schema()
     schema = strict_output_schema(original)
@@ -86,26 +93,49 @@ async def test_catalog_uses_all_pages_local_default_and_safe_fields():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("auth,requires_auth,available", [
-    ("chatgpt", True, False), ("apiKey", True, True),
-    ("chatgpt", False, True), (None, None, True),
-])
-async def test_configured_model_missing_from_catalog_respects_provider(auth, requires_auth, available):
+@pytest.mark.parametrize(
+    "auth,requires_auth,available",
+    [
+        ("chatgpt", True, False),
+        ("apiKey", True, True),
+        ("chatgpt", False, True),
+        (None, None, True),
+    ],
+)
+async def test_configured_model_missing_from_catalog_respects_provider(
+    auth, requires_auth, available
+):
     client = CodexClient(replace(Settings(), codex_model=None))
+
     async def started():
         pass
+
     async def request(method, params):
         if method == "config/read":
             return {"config": {"model": "new-model", "api_key": "do-not-expose"}}
         if method == "account/read":
             if auth is None:
                 raise CodexError("method not found")
-            return {"account": {"type": auth, "email": "private@example.test"}, "requiresOpenaiAuth": requires_auth}
-        return {"data": [
-            {"model": "text-default", "isDefault": True, "inputModalities": ["text"]},
-            {"model": "vision", "inputModalities": ["image"],
-             "supportedReasoningEfforts": [{"reasoningEffort": "high"}], "defaultReasoningEffort": "high"},
-        ]}
+            return {
+                "account": {"type": auth, "email": "private@example.test"},
+                "requiresOpenaiAuth": requires_auth,
+            }
+        return {
+            "data": [
+                {
+                    "model": "text-default",
+                    "isDefault": True,
+                    "inputModalities": ["text"],
+                },
+                {
+                    "model": "vision",
+                    "inputModalities": ["image"],
+                    "supportedReasoningEfforts": [{"reasoningEffort": "high"}],
+                    "defaultReasoningEffort": "high",
+                },
+            ]
+        }
+
     client.ensure_started = started
     client.request = request
     catalog = await client.list_models()
@@ -118,10 +148,13 @@ async def test_configured_model_missing_from_catalog_respects_provider(auth, req
 
 
 def test_unsupported_model_error_is_actionable():
-    raw = {"message": '{"detail":"The \'gpt-6.1-sol\' model is not supported when using Codex with a ChatGPT account."}'}
+    raw = {
+        "message": '{"detail":"The \'gpt-6.1-sol\' model is not supported when using Codex with a ChatGPT account."}'
+    }
     assert "当前本地 Codex 登录不支持模型「gpt-6.1-sol」" in codex_error_message(raw)
     assert codex_error_message("ordinary error") == "ordinary error"
     import json
+
     assert "不支持模型「gpt-6.1-sol」" in codex_error_message(json.dumps(raw))
 
 
@@ -131,19 +164,27 @@ async def test_definite_rejection_disables_catalog_model_and_notifies_only_its_t
     blocked, other = asyncio.Queue(), asyncio.Queue()
     client.threads.update(blocked_thread=blocked, other_thread=other)
     client.thread_models.update(blocked_thread="blocked", other_thread="vision")
-    client.record_model_rejection("The 'blocked' model is not supported when using Codex with a ChatGPT account.")
+    client.record_model_rejection(
+        "The 'blocked' model is not supported when using Codex with a ChatGPT account."
+    )
     assert (await blocked.get())["method"] == "client/modelRejected"
     assert other.empty()
+
     async def started():
         pass
+
     async def request(method, params):
         if method == "config/read":
             return {"config": {}}
         if method == "account/read":
             return {"account": {"type": "chatgpt"}, "requiresOpenaiAuth": True}
-        return {"data": [
-            {"model": "blocked", "isDefault": True}, {"model": "vision"},
-        ]}
+        return {
+            "data": [
+                {"model": "blocked", "isDefault": True},
+                {"model": "vision"},
+            ]
+        }
+
     client.ensure_started = started
     client.request = request
     catalog = await client.list_models(refresh=True)
@@ -161,6 +202,8 @@ async def test_each_codex_thread_receives_its_own_selected_model(tmp_path):
         pass
 
     async def request(method, params, timeout=60):
+        if method == "config/read":
+            return {"config": {"mcp_servers": {"example": {"enabled": True}}}}
         if method == "thread/start":
             starts.append(params)
             return {"thread": {"id": params["model"]}, "model": params["model"]}
@@ -210,7 +253,15 @@ async def test_each_codex_thread_receives_its_own_selected_model(tmp_path):
         ]
     )
     assert {p["model"] for p in starts} == {"selected-a", "selected-b"}
-    assert {e["model"] for e in events} == {"selected-a", "selected-b"}
+    assert all(
+        p["config"] == {"web_search": "disabled", "mcp_servers.example.enabled": False}
+        for p in starts
+    )
+    assert {e["model"] for e in events if e["type"] == "thread"} == {
+        "selected-a",
+        "selected-b",
+    }
+    assert sum(e["type"] == "analysis_started" for e in events) == 2
     assert {p["threadId"]: p["effort"] for p in turns} == {
         "selected-a": "low",
         "selected-b": "high",

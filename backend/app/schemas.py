@@ -1,15 +1,16 @@
 """Codex → LangChain → GLB 建模的数据契约，所有长度以米计。"""
 
-from typing import Annotated, Literal
 import math
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from shapely.geometry import Polygon, LineString
+from shapely.geometry import LineString, Polygon
+
 from .diy_schema import DiyDesign
 from .surface_materials import (
+    CUSTOM_COLOR_PATTERN,
     FLOOR_MATERIALS,
     WALL_MATERIALS,
-    CUSTOM_COLOR_PATTERN,
     TextureReference,
 )
 
@@ -354,13 +355,32 @@ class Furnishing(StrictModel):
         return self
 
 
+class CustomStyleFurnishing(Furnishing):
+    render_style: Literal["natural", "cream", "modern"]
+    wall_material: Literal[WALL_MATERIALS] | TextureReference
+    floor_material: Literal[FLOOR_MATERIALS] | TextureReference
+
+
 class JobOptions(StrictModel):
-    style: Literal["natural", "cream", "modern"] = "natural"
+    style: Literal["natural", "cream", "modern", "custom"] = "natural"
+    style_description: str = Field(default="", max_length=1000)
+    render_style: Literal["natural", "cream", "modern"] | None = None
     notes: str = Field(default="", max_length=3000)
     collaboration: bool = True
     model: str | None = Field(default=None, min_length=1, max_length=160)
     reasoning_effort: str | None = Field(default=None, min_length=1, max_length=40)
     furniture_mode: Literal["library", "basic"] = "library"
+    wall_material: Literal[WALL_MATERIALS] | TextureReference | None = None
+    floor_material: Literal[FLOOR_MATERIALS] | TextureReference | None = None
+
+    @model_validator(mode="after")
+    def custom_style_requires_description(self):
+        self.style_description = self.style_description.strip()
+        if self.style == "custom" and not self.style_description:
+            raise ValueError("请填写自定义空间风格")
+        if self.style != "custom":
+            self.style_description = ""
+        return self
 
 
 class RetryRequest(StrictModel):

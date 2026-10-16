@@ -5,9 +5,12 @@ import hashlib
 import io
 import json
 import re
+
 from fastapi import File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from .surface_design import SurfaceDesign, embedded_design, render_surface
 
 
 def texture_folder(settings):
@@ -17,7 +20,7 @@ def texture_folder(settings):
 def texture_info(path):
     identifier = path.stem
     info = json.loads(path.read_text(encoding="utf-8"))
-    return {
+    result = {
         **info,
         "id": f"texture:{identifier}",
         "surface": f"texture:{identifier}",
@@ -30,20 +33,71 @@ def texture_info(path):
         "roughness": 0.8,
         "type": "walls",
     }
+    design = embedded_design(path.with_suffix(".png"))
+    if design:
+        result.update(
+            name=design.name,
+            type=design.category,
+            categories=[design.category],
+            family="DIY 墙面" if design.category == "walls" else "DIY 地板",
+            roughness=design.roughness,
+            finish="柔光" if design.roughness < 0.5 else "哑光",
+            sub=f"{ {'preset':'自主设计','draw':'手绘材质','ai':'AI 材质','upload':'导入创作'}[design.origin]} · {design.repeat} 倍纹理 · {design.rotation}°",
+            usage="墙面饰面" if design.category == "walls" else "地板铺装",
+            recipe=design.model_dump(exclude_none=True),
+            optics=design.optics.model_dump() if design.optics else None,
+        )
+        if design.optics and design.optics.transmission > 0:
+            result["finish"] = "磨砂透光" if design.roughness >= 0.3 else "通透高光"
+        elif design.optics and design.optics.metalness > 0.5:
+            result["finish"] = "金属反射"
+    result["name"] = info.get("name") or result["name"]
+    return result
+
+
+def available_textures(settings, archived=False):
+    items, unavailable = [], []
+    for path in sorted(texture_folder(settings).glob("*.json")):
+        if not re.fullmatch(r"[a-f0-9]{64}", path.stem):
+            continue
+        try:
+            item = texture_info(path)
+            if bool(item.get("archived")) == archived:
+                items.append(item)
+        except (OSError, ValueError, TypeError, KeyError):
+            unavailable.append({"id": f"texture:{path.stem}", "message": "材质记录损坏或贴图缺失，其他素材仍可使用"})
+    return {"items": items, "unavailable": unavailable}
 
 
 def install_texture_routes(app, settings):
     root = texture_folder(settings)
 
+    @app.post("/api/materials/preview")
+    async def preview(design: SurfaceDesign):
+        try:
+            data = await asyncio.to_thread(render_surface, design, settings.data_dir)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return Response(data, media_type="image/png")
+
+    @app.post("/api/materials/design", status_code=201)
+    async def save_design(design: SurfaceDesign):
+        try:
+            data = await asyncio.to_thread(render_surface, design, settings.data_dir)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        digest = hashlib.sha256(data).hexdigest()
+        root.mkdir(parents=True, exist_ok=True)
+        (root / f"{digest}.png").write_bytes(data)
+        meta = root / f"{digest}.json"
+        meta.write_text(
+            json.dumps({"name": design.name}, ensure_ascii=False), encoding="utf-8"
+        )
+        return texture_info(meta)
+
     @app.get("/api/materials/custom")
-    async def listing():
-        return {
-            "items": [
-                texture_info(p)
-                for p in sorted(root.glob("*.json"))
-                if re.fullmatch(r"[a-f0-9]{64}", p.stem)
-            ]
-        }
+    async def listing(archived: bool = False):
+        return await asyncio.to_thread(available_textures, settings, archived)
 
     @app.get("/api/materials/custom/{digest}.png")
     async def image(digest: str):

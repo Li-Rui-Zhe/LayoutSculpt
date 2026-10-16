@@ -11,12 +11,17 @@ import { useProjects } from "./hooks/useProjects.js";
 import TaskRail from "./components/TaskRail.jsx";
 import TaskWorkspace from "./components/TaskWorkspace.jsx";
 import GenerationForm from "./components/GenerationForm.jsx";
+const SurfaceStudio = lazy(() => import("./diy/SurfaceStudio.jsx"));
 const DiyStudio = lazy(() => import("./diy/DiyStudio.jsx"));
 import WorkspaceHelp from "./components/WorkspaceHelp.jsx";
 import { useCustomTextures } from "./materials/customTextures.js";
 import { placedDesign } from "./diy/design.js";
 import AssetLibrary from "./library/AssetLibrary.jsx";
-import { readContext, useUrlContext } from "./hooks/urlContext.js";
+import {
+  readContext,
+  writeContext,
+  useUrlContext,
+} from "./hooks/urlContext.js";
 
 export default function App() {
   useCustomTextures();
@@ -269,7 +274,7 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              {surface === "diy" && (
+              {!surfaceDiy && (
                 <label>
                   目标户型
                   <select
@@ -308,30 +313,25 @@ export default function App() {
               )}
               <p>
                 {surfaceDiy
-                  ? "在平面图中选中单面墙或房间，设置材质后保存为新的三维版本。"
+                  ? "独立制作墙地面材质，保存到素材库后可用于任意户型。"
                   : "创建家具素材，再放入你的户型方案。"}
               </p>
             </div>
           )}
-          {surfaceDiy && !projects.job && (
-            <div className="empty-state">
-              <Boxes size={32} />
-              <h2>
-                选择一个户型，开始{diyMode === "walls" ? "墙面" : "地板"} DIY
-              </h2>
-              <p>使用上方「目标户型」选择已完成的方案。示例空间仅供预览。</p>
-              {!projects.jobs.some((job) => job.status === "succeeded") && (
-                <button
-                  className="primary-button"
-                  onClick={() => {
-                    navigate("workspace");
-                    setCreating(true);
-                  }}
-                >
-                  先生成我的户型
-                </button>
-              )}
-            </div>
+          {surfaceDiy && (
+            <Suspense fallback={<p role="status">正在打开材质设计…</p>}>
+              <SurfaceStudio
+                key={diyMode}
+                category={diyMode}
+                onLibrary={() => {
+                  writeContext({
+                    assetType: "materials",
+                    materialCategory: diyMode,
+                  });
+                  navigate("library");
+                }}
+              />
+            </Suspense>
           )}
           {diyVisited && (
             <div
@@ -456,11 +456,8 @@ export default function App() {
           {projects.selectedId === "sample" || projects.job ? (
             <TaskWorkspace
               key={projects.job?.id || "sample"}
-              active={
-                !creating &&
-                (surface === "workspace" || (surfaceDiy && !!projects.job))
-              }
-              diyMode={surfaceDiy ? diyMode : null}
+              active={!creating && surface === "workspace"}
+              diyMode={null}
               onDiyModeChange={setDiyMode}
               onExitDiy={() => navigate("workspace")}
               job={projects.job}

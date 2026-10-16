@@ -3,6 +3,8 @@
 import asyncio
 import hashlib
 import json
+import time
+import threading
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile, File, Form
@@ -17,6 +19,9 @@ class LibraryService:
     def __init__(self, settings, store, diy, roots=None):
         self.settings, self.store, self.diy = settings, store, diy
         self.snapshot_cache = {}
+        self._files_cache = None
+        self._files_until = 0
+        self._files_lock = threading.Lock()
         self.roots = roots or [
             (ROOT / "assets", "builtin"),
             (ROOT / "public" / "models", "sample"),
@@ -25,7 +30,14 @@ class LibraryService:
         if not settings.furniture_catalog.resolve().is_relative_to(ROOT / "assets"):
             self.roots = [*self.roots, (settings.furniture_catalog.parent, "builtin")]
 
-    def files(self):
+    def files(self, refresh=True):
+        with self._files_lock:
+            if refresh or self._files_cache is None or time.monotonic() >= self._files_until:
+                self._files_cache = self._scan_files()
+                self._files_until = time.monotonic() + 2
+            return self._files_cache
+
+    def _scan_files(self):
         try:
             catalog = json.loads(
                 self.settings.furniture_catalog.read_text(encoding="utf-8")
@@ -82,6 +94,10 @@ class LibraryService:
                         "source": source,
                         "placeable": source in {"builtin", "imported"},
                         "kind": path.stem if registered else "model",
+                        "furniture_kind": registered.get("furniture_kind", path.stem) if registered else "model",
+                        "catalog_kind": path.stem if registered else None,
+                        **{key: registered.get(key) if registered else None for key in
+                           ("family", "variant", "style", "tags", "rooms", "description")},
                         "category": registered.get("category") if registered else None,
                         "revision": registered.get("revision") if registered else None,
                         "dimensions": registered.get("dimensions")
@@ -179,7 +195,7 @@ class LibraryService:
             content = {"kind": "custom", "diy": design.model_dump()}
             name = design.name
         elif identifier.startswith("file:"):
-            entry = (await asyncio.to_thread(self.files)).get(identifier[5:])
+            entry = (await asyncio.to_thread(self.files, False)).get(identifier[5:])
             if not entry or not entry["item"]["placeable"]:
                 raise HTTPException(404, "该素材不存在或不是可放置家具")
             path = entry["path"]
@@ -203,7 +219,7 @@ class LibraryService:
                 )
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 raise HTTPException(422, f"无法放置此模型：{exc}") from exc
-            content = {"kind": entry["item"]["kind"], "asset_id": asset_id}
+            content = {"kind": entry["item"]["furniture_kind"], "asset_id": asset_id}
             name = entry["item"]["name"]
         else:
             raise HTTPException(
@@ -230,12 +246,12 @@ class LibraryService:
         """AI 与人工使用同一索引，目录仅包含有效的可放置素材。"""
         result = []
         for item in (await self.listing())["items"]:
-            if not item.get("placeable"):
+            if not item.get("placeable") or item.get("archived"):
                 continue
             try:
                 if item.get("dimensions"):
                     dimensions = item["dimensions"]
-                    kind = item.get("kind", "model")
+                    kind = item.get("furniture_kind", item.get("kind", "model"))
                 else:
                     template = await self.placement(item["id"])
                     dimensions = [template[k] for k in ["width", "depth", "height"]]
@@ -250,6 +266,7 @@ class LibraryService:
                     "kind": "model" if kind == "custom" else kind,
                     "dimensions": dimensions,
                     "category": item.get("category"),
+                    **{key: item.get(key) for key in ("family", "variant", "style", "tags", "rooms", "description")},
                     "default_elevation": 1.05 if kind == "wall_television" else 0,
                 }
             )
@@ -336,6 +353,7 @@ def install_library_routes(app, service):
             encoding="utf-8",
         )
         await asyncio.to_thread(path.write_bytes, normalized)
+        await asyncio.to_thread(service.files)
         return {"name": name, "dimensions": dimensions}
 
     @app.post("/api/library/placement")
@@ -351,8 +369,8 @@ def install_library_routes(app, service):
 
     @app.get("/api/library/files/{identifier}/model.glb")
     async def download(identifier: str):
-        entry = (await asyncio.to_thread(service.files)).get(identifier)
-        if entry is None:
+        entry = (await asyncio.to_thread(service.files, False)).get(identifier)
+        if entry is None or not entry["path"].is_file():
             raise HTTPException(404, "素材文件不存在，请刷新素材库")
         return FileResponse(
             entry["path"],
@@ -362,7 +380,7 @@ def install_library_routes(app, service):
 
     @app.get("/api/library/files/{identifier}/thumbnail.png")
     async def thumbnail(identifier: str):
-        entry = (await asyncio.to_thread(service.files)).get(identifier)
-        if not entry or not entry.get("thumbnail"):
+        entry = (await asyncio.to_thread(service.files, False)).get(identifier)
+        if not entry or not entry.get("thumbnail") or not entry["thumbnail"].is_file():
             raise HTTPException(404, "素材缩略图不存在")
         return FileResponse(entry["thumbnail"], media_type="image/png")

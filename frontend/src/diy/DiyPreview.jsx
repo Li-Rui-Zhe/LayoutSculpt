@@ -9,10 +9,27 @@ import {
   updateFixtureLights,
 } from "../viewer/fixtureLights.js";
 import { installCutaway, updateCutaway } from "../viewer/cutaway.js";
+import { repairLegacyWallMaterials } from "../viewer/materialCompatibility.js";
 import { materials } from "../catalog.js";
+import furnitureMaterials from "../../../assets/materials/furniture.json" with { type: "json" };
 import { designBounds, designIssues } from "./design.js";
 import { frameBounds, perspectiveCenter } from "../viewer/viewFraming.js";
 import "./diy.css";
+import {
+  bindLiveFurniture,
+  syncLiveFurniture,
+  liveKey,
+  planOrigin,
+  installEditProxies,
+} from "../editor/liveModel.js";
+import { installFurniturePlacement } from "../editor/scenePlacement.js";
+import { furnitureCorners } from "../editor/geometry.js";
+import { installDirectDrag } from "../editor/directSceneDrag.js";
+import { scenePose, sceneModes } from "../editor/sceneEdits.js";
+import {
+  updateLiveArchitecture,
+  clearLiveArchitecture,
+} from "../editor/liveArchitecture.js";
 
 function dispose(group) {
   const resources = new Set();
@@ -35,7 +52,7 @@ function fit(rt, view) {
   const points = [];
   rt.group.updateMatrixWorld(true);
   rt.group.traverseVisible((child) => {
-    if (!child.isMesh || !child.geometry) return;
+    if (!child.isMesh || !child.geometry || child.userData.editor_proxy) return;
     child.geometry.computeBoundingBox();
     const box = child.geometry.boundingBox;
     if (!box || box.isEmpty()) return;
@@ -104,14 +121,47 @@ export default function DiyPreview({
   cutaway = false,
   night = false,
   frontDirection = -1,
+  modelDocument,
+  liveDocument,
+  liveSelection,
+  liveEditable = false,
+  onModelReady,
+  onModelError,
+  onSceneGesture,
+  placement,
+  onPlacementMove,
+  onPlacementConfirm,
 }) {
   const host = useRef(null),
     runtime = useRef(null),
     callbacks = useRef({ onSelect, onInfo, onObjectSelect, onTransform });
-  callbacks.current = { onSelect, onInfo, onObjectSelect, onTransform };
+  callbacks.current = {
+    onSelect,
+    onInfo,
+    onObjectSelect,
+    onTransform,
+    onModelReady,
+    onModelError,
+    liveDocument,
+    modelDocument,
+    onSceneGesture,
+    placement,
+    onPlacementMove,
+    onPlacementConfirm,
+    liveSelection,
+    liveEditable,
+    cutaway,
+  };
   const [error, setError] = useState(""),
     [loading, setLoading] = useState(false);
-  const [transformMode, setTransformMode] = useState(null);
+  const [transformMode, setTransformMode] = useState(
+    modelDocument ? "direct" : null,
+  );
+  useEffect(() => {
+    if (liveSelection?.type === "furniture" && transformMode === "rotate")
+      setTransformMode("direct");
+  }, [liveSelection?.type, transformMode]);
+  callbacks.current.transformMode = transformMode;
   const [solo, setSolo] = useState(false),
     [gridVisible, setGridVisible] = useState(!cutaway);
   const [view, setView] = useState("perspective"),
@@ -127,6 +177,9 @@ export default function DiyPreview({
       renderer = new THREE.WebGLRenderer({ antialias: true });
     } catch {
       setError("当前设备无法打开三维预览，可继续编辑参数或下载 GLB。");
+      callbacks.current.onModelError?.(
+        "当前设备无法打开三维预览，可继续编辑参数或下载 GLB。",
+      );
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -171,11 +224,51 @@ export default function DiyPreview({
     gizmo.setSize(0.7);
     scene.add(gizmo.getHelper());
     rt.gizmo = gizmo;
+    rt.editHandle = new THREE.Object3D();
+    rt.editHandle.userData.sceneHandle = true;
+    scene.add(rt.editHandle);
+    const sceneTransform = () => ({
+      x: rt.editHandle.position.x + rt.liveOrigin.x,
+      y: rt.editHandle.position.z + rt.liveOrigin.y,
+      elevation: rt.editHandle.position.y,
+      rotation: -THREE.MathUtils.radToDeg(rt.editHandle.rotation.y),
+      scale: {
+        x: rt.editHandle.scale.x,
+        y: rt.editHandle.scale.y,
+        z: rt.editHandle.scale.z,
+      },
+    });
+    gizmo.addEventListener("mouseDown", () => {
+      if (gizmo.object !== rt.editHandle) return;
+      rt.liveCancelled = false;
+      callbacks.current.onSceneGesture?.("start", sceneTransform());
+    });
+    gizmo.addEventListener("objectChange", () => {
+      if (gizmo.object === rt.editHandle && gizmo.dragging && !rt.liveCancelled)
+        callbacks.current.onSceneGesture?.("preview", sceneTransform());
+    });
+    const cancelGesture = (event) => {
+      if (
+        event.key !== "Escape" ||
+        !gizmo.dragging ||
+        gizmo.object !== rt.editHandle
+      )
+        return;
+      rt.liveCancelled = true;
+      gizmo.reset();
+      callbacks.current.onSceneGesture?.("cancel");
+    };
+    window.addEventListener("keydown", cancelGesture);
     gizmo.addEventListener("change", render);
     gizmo.addEventListener("dragging-changed", (e) => {
       controls.enabled = !e.value;
     });
     gizmo.addEventListener("mouseUp", () => {
+      if (gizmo.object === rt.editHandle) {
+        if (!rt.liveCancelled)
+          callbacks.current.onSceneGesture?.("end", sceneTransform());
+        return;
+      }
       const mesh = gizmo.object,
         p = mesh?.userData.sourcePart,
         offset = mesh?.userData.designOffset;
@@ -208,10 +301,12 @@ export default function DiyPreview({
       if (disposed) return;
       const { width, height } = container.getBoundingClientRect();
       if (!width || !height) return;
+      const firstSize = !rt.sized;
+      rt.sized = true;
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      if (rt.needsFit) {
+      if (rt.needsFit || firstSize) {
         fit(rt, viewRef.current);
         rt.needsFit = false;
       } else render();
@@ -223,15 +318,19 @@ export default function DiyPreview({
     const pointerDown = (e) => {
       down = e.button === 0 ? [e.clientX, e.clientY] : null;
     };
-    const pointerUp = (e) => {
-      if (
-        gizmo.dragging ||
-        gizmo.axis ||
-        !down ||
-        Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5
-      )
-        return;
-      down = null;
+    const rayAt = (e) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(
+        new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          (-(e.clientY - rect.top) / rect.height) * 2 + 1,
+        ),
+        camera,
+      );
+      return ray.ray;
+    };
+    const pick = (e) => {
       const rect = renderer.domElement.getBoundingClientRect(),
         ray = new THREE.Raycaster();
       ray.setFromCamera(
@@ -241,6 +340,14 @@ export default function DiyPreview({
         ),
         camera,
       );
+      const pickData = (object) => {
+        let data = {};
+        while (object && object !== group) {
+          data = { ...object.userData, ...data };
+          object = object.parent;
+        }
+        return data;
+      };
       const hit = ray
         .intersectObjects(
           group.children.filter((c) => c.visible),
@@ -252,29 +359,82 @@ export default function DiyPreview({
             if (!o.visible) return false;
             o = o.parent;
           }
+          const data = pickData(h.object);
+          // 剖切隐藏掉的门窗上半部不能留下透明点击墙，遮住后面的家具。
+          if (
+            data.editor_proxy &&
+            data.opening_index != null &&
+            callbacks.current.cutaway &&
+            h.point.y > 1.2
+          )
+            return false;
           return (
-            h.object.userData.partId ||
+            data.partId ||
             (callbacks.current.onObjectSelect &&
-              (h.object.userData.furniture_index != null ||
-                h.object.userData.room_id ||
-                h.object.userData.wall_id ||
-                h.object.userData.wall_ids))
+              (data.live_selection ||
+                data.furniture_index != null ||
+                data.opening_index != null ||
+                data.fixture_id ||
+                data.fixture_owner_id ||
+                data.room_id ||
+                data.wall_id ||
+                data.wall_ids))
           );
         });
       if (hit) {
-        callbacks.current.onSelect?.(hit.object.userData.partId);
+        const data = pickData(hit.object);
         const p = group.children[0]?.worldToLocal(hit.point.clone());
-        callbacks.current.onObjectSelect?.({
-          ...hit.object.userData,
-          point: p ? { x: p.x, y: p.z } : null,
-        });
+        const origin = rt.modelDocument
+          ? planOrigin(rt.modelDocument)
+          : { x: 0, y: 0 };
+        return {
+          point: hit.point,
+          data: {
+            ...data,
+            point: p ? { x: p.x + origin.x, y: p.z + origin.y } : null,
+          },
+        };
+      }
+      return null;
+    };
+    const pointerUp = (e) => {
+      const start = down;
+      down = null;
+      if (
+        gizmo.dragging ||
+        gizmo.axis ||
+        !start ||
+        Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 5
+      )
+        return;
+      const hit = pick(e);
+      if (hit) {
+        callbacks.current.onSelect?.(hit.data.partId);
+        callbacks.current.onObjectSelect?.(hit.data, rt.modelDocument);
       }
     };
+    const removePlacement = installFurniturePlacement({
+      element: renderer.domElement,
+      rt,
+      callbacks,
+      rayAt,
+    });
+    const removeDirectDrag = installDirectDrag({
+      element: renderer.domElement,
+      rt,
+      callbacks,
+      pick,
+      rayAt,
+    });
     renderer.domElement.addEventListener("pointerdown", pointerDown);
     renderer.domElement.addEventListener("pointerup", pointerUp);
     return () => {
       disposed = true;
       observer.disconnect();
+      removePlacement();
+      removeDirectDrag();
+      window.removeEventListener("keydown", cancelGesture);
+      clearLiveArchitecture(rt);
       gizmo.dispose();
       controls.dispose();
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
@@ -293,7 +453,8 @@ export default function DiyPreview({
     rt.needsFit = true;
   }, [frontDirection]);
   useEffect(() => {
-    if (cutaway && runtime.current?.group.children.length) return;
+    if ((cutaway || modelDocument) && runtime.current?.group.children.length)
+      return;
     setSolo(false);
     setView("perspective");
     if (runtime.current) runtime.current.needsFit = true;
@@ -346,7 +507,15 @@ export default function DiyPreview({
           p.y - (low[1] + high[1]) / 2,
         );
         mesh.rotation.y = (-p.rotation * Math.PI) / 180;
-        const finish = materials.find((m) => m.id === p.material_id);
+        const finish = [...furnitureMaterials, ...materials].find(
+          (m) => m.id === p.material_id,
+        );
+        if (finish?.opacity < 1) {
+          mesh.material.transparent = true;
+          mesh.material.opacity = finish.opacity;
+          mesh.material.depthWrite = false;
+          mesh.material.side = THREE.DoubleSide;
+        }
         const surface =
           finish?.surface ||
           { wood: "planks", stone: "stone", linen: "linen" }[finish?.texture];
@@ -416,6 +585,14 @@ export default function DiyPreview({
       const buffer = await response.arrayBuffer();
       if (!alive) return;
       const gltf = await new GLTFLoader(manager).parseAsync(buffer, "");
+      repairLegacyWallMaterials(gltf.scene);
+      if (!alive) {
+        dispose(gltf.scene);
+        return;
+      }
+      // 背景精细模型到达时，不打断正在进行的鼠标手势。
+      while (alive && (rt.directDragging || rt.gizmo.dragging))
+        await new Promise((resolve) => setTimeout(resolve, 50));
       if (!alive) {
         dispose(gltf.scene);
         return;
@@ -427,9 +604,18 @@ export default function DiyPreview({
         dispose(gltf.scene);
         throw Error("模型中没有可预览的有效几何体。");
       }
-      gltf.scene.position.sub(
-        new THREE.Vector3(center.x, bounds.min.y, center.z),
-      );
+      if (modelDocument) {
+        const origin = planOrigin(modelDocument);
+        rt.liveOrigin ||= origin;
+        gltf.scene.position.set(
+          origin.x - rt.liveOrigin.x,
+          0,
+          origin.y - rt.liveOrigin.y,
+        );
+      } else
+        gltf.scene.position.sub(
+          new THREE.Vector3(center.x, bounds.min.y, center.z),
+        );
       let meshes = 0,
         triangles = 0;
       gltf.scene.traverse((o) => {
@@ -441,16 +627,27 @@ export default function DiyPreview({
               0) / 3;
         }
       });
-      if (cutaway) {
+      if (cutaway || modelDocument) {
         installFixtureLights(gltf.scene);
         installCutaway(gltf.scene);
-        updateCutaway(gltf.scene, rt.camera, { enabled: true });
+        updateCutaway(gltf.scene, rt.camera, { enabled: cutaway });
       }
+      if (modelDocument) installEditProxies(gltf.scene, modelDocument);
       const firstLoad = !rt.group.children.length;
+      rt.cancelDirectDrag?.();
+      if (rt.gizmo.dragging) callbacks.current.onSceneGesture?.("cancel");
+      rt.gizmo.detach();
+      clearLiveArchitecture(rt);
+      rt.modelDocument = modelDocument;
+      rt.liveGroups = modelDocument
+        ? bindLiveFurniture(gltf.scene, modelDocument)
+        : null;
+      if (rt.liveGroups && callbacks.current.liveDocument)
+        syncLiveFurniture(rt.liveGroups, callbacks.current.liveDocument);
       dispose(rt.group);
       rt.group.clear();
       rt.group.add(gltf.scene);
-      rt.needsFit = firstLoad || !cutaway;
+      rt.needsFit = firstLoad || (!cutaway && !modelDocument);
       callbacks.current.onInfo?.({
         dimensions: [size.x, size.z, size.y],
         meshes,
@@ -458,10 +655,14 @@ export default function DiyPreview({
         bytes: buffer.byteLength,
       });
       setVersion((n) => n + 1);
+      callbacks.current.onModelReady?.(modelUrl);
     };
     load()
       .catch((e) => {
-        if (alive) setError(e.message || "模型预览失败");
+        if (alive) {
+          setError(e.message || "模型预览失败");
+          callbacks.current.onModelError?.(e.message || "模型预览失败");
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -471,6 +672,51 @@ export default function DiyPreview({
       abort.abort();
     };
   }, [modelUrl]);
+  const placing = !!placement;
+  useEffect(() => {
+    const rt = runtime.current;
+    if (!rt || !placing) return;
+    const previous = { ...rt.controls.mouseButtons };
+    rt.controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;
+    return () => {
+      rt.controls.mouseButtons = previous;
+    };
+  }, [placing]);
+  useEffect(() => {
+    const rt = runtime.current;
+    if (!rt) return;
+    if (placement) rt.gizmo.detach();
+    if (!placement?.item || !rt.liveOrigin) return;
+    const item = placement.item;
+    const points = furnitureCorners(item).map(
+      (p) =>
+        new THREE.Vector3(p.x - rt.liveOrigin.x, 0.035, p.y - rt.liveOrigin.y),
+    );
+    points.push(points[0].clone());
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({
+      color: placement.valid ? 0x059669 : 0xef4444,
+      depthTest: false,
+    });
+    const marker = new THREE.Line(geometry, material);
+    marker.renderOrder = 1000;
+    rt.scene.add(marker);
+    rt.render();
+    return () => {
+      rt.scene.remove(marker);
+      geometry.dispose();
+      material.dispose();
+      rt.render();
+    };
+  }, [placement, version]);
+  useEffect(() => {
+    const rt = runtime.current;
+    if (!rt || !modelDocument) return;
+    rt.group.children.forEach((model) =>
+      updateCutaway(model, rt.camera, { enabled: cutaway }),
+    );
+    rt.render();
+  }, [cutaway, version]);
   useEffect(() => {
     const rt = runtime.current;
     if (!rt) return;
@@ -484,6 +730,18 @@ export default function DiyPreview({
     const rt = runtime.current;
     if (!rt) return;
     let picked = null;
+    if (rt.liveGroups && liveDocument && !rt.gizmo.dragging) {
+      syncLiveFurniture(rt.liveGroups, liveDocument);
+      if (liveSelection?.type === "furniture") {
+        const item = liveDocument.furniture.items[liveSelection.index];
+        if (item && !item.edit_hidden)
+          picked = rt.liveGroups.get(liveKey(item, liveSelection.index));
+      }
+    }
+    // 即使拖动的是结构手柄，家具位置也从同一草稿更新。
+    if (rt.liveGroups && liveDocument && rt.gizmo.object === rt.editHandle)
+      syncLiveFurniture(rt.liveGroups, liveDocument);
+    if (liveDocument) updateLiveArchitecture(rt, liveDocument, cutaway, night);
     for (const mesh of rt.group.children) {
       mesh.visible = !solo || !selected || mesh.userData.partId === selected;
       if (mesh.userData.partId === selected && selected) picked = mesh;
@@ -492,13 +750,70 @@ export default function DiyPreview({
       picked &&
       transformMode &&
       callbacks.current.onTransform &&
-      !picked.userData.sourcePart?.edit_locked
+      !picked.userData.sourcePart?.edit_locked &&
+      !(
+        picked.userData.liveFurniture &&
+        liveDocument?.furniture.items[liveSelection?.index]?.edit_locked
+      )
     ) {
       rt.gizmo.setMode(transformMode);
       rt.gizmo.showX = transformMode !== "rotate";
       rt.gizmo.showZ = transformMode !== "rotate";
       rt.gizmo.showY = true;
       rt.gizmo.attach(picked);
+    } else if (
+      modelDocument &&
+      liveSelection &&
+      onSceneGesture &&
+      liveEditable &&
+      (!loading || rt.group.children.length > 0)
+    ) {
+      const pose = scenePose(liveDocument, liveSelection);
+      const object =
+        liveSelection.type === "furniture"
+          ? liveDocument.furniture.items[liveSelection.index]
+          : liveDocument.layout[liveSelection.type]?.[liveSelection.index];
+      if (
+        pose &&
+        !object?.edit_locked &&
+        !object?.edit_hidden &&
+        transformMode &&
+        !(liveSelection.type === "furniture" && transformMode === "rotate") &&
+        sceneModes(liveSelection.type).includes(transformMode)
+      ) {
+        if (!rt.gizmo.dragging) {
+          rt.editHandle.position.set(
+            pose.x - rt.liveOrigin.x,
+            pose.elevation,
+            pose.y - rt.liveOrigin.y,
+          );
+          rt.editHandle.rotation.set(
+            0,
+            -THREE.MathUtils.degToRad(pose.rotation),
+            0,
+          );
+          rt.editHandle.scale.set(1, 1, 1);
+        }
+        rt.gizmo.setMode(transformMode);
+        rt.gizmo.setSpace(
+          ["walls", "openings"].includes(liveSelection.type) ||
+            transformMode === "scale"
+            ? "local"
+            : "world",
+        );
+        rt.gizmo.showX = transformMode !== "rotate";
+        rt.gizmo.showZ =
+          transformMode !== "rotate" && liveSelection.type !== "openings";
+        rt.gizmo.showY =
+          liveSelection.type === "rooms"
+            ? transformMode === "rotate"
+            : liveSelection.type === "walls"
+              ? transformMode !== "translate"
+              : liveSelection.type === "openings"
+                ? transformMode === "scale" || object.kind === "window"
+                : true;
+        if (rt.gizmo.object !== rt.editHandle) rt.gizmo.attach(rt.editHandle);
+      } else rt.gizmo.detach();
     } else rt.gizmo.detach();
     rt.selection.visible = !!picked;
     if (picked) rt.selection.setFromObject(picked);
@@ -527,64 +842,198 @@ export default function DiyPreview({
     version,
     frontDirection,
     transformMode,
+    liveDocument,
+    liveSelection,
+    liveEditable,
+    loading,
+    cutaway,
+    night,
   ]);
+  const liveObject =
+    liveSelection &&
+    liveDocument &&
+    (liveSelection.type === "furniture"
+      ? liveDocument.furniture.items
+      : liveDocument.layout[liveSelection.type])?.[liveSelection.index];
   return (
     <div className="diy-preview-wrap">
       <div
         ref={host}
         className="diy-preview"
-        aria-label={modelUrl ? "GLB 模型三维预览" : "DIY 素材三维预览"}
+        aria-label={
+          modelDocument
+            ? "户型三维编辑画布"
+            : modelUrl
+              ? "GLB 模型三维预览"
+              : "DIY 素材三维预览"
+        }
       />
       <div className="diy-view-toolbar" aria-label="模型查看工具">
-        {design &&
-          onTransform &&
-          [
-            ["translate", "移动部件"],
-            ["rotate", "旋转部件"],
-            ["scale", "缩放部件"],
-          ].map(([id, label]) => (
+        {modelDocument ? (
+          <>
+            {!placement && (
+              <label className="scene-toolbar-select">
+                操作
+                <select
+                  aria-label="三维操作方式"
+                  value={transformMode || "direct"}
+                  onChange={(e) => setTransformMode(e.target.value)}
+                >
+                  <option value="direct">直接拖动</option>
+                  <option value="orbit">浏览视角</option>
+                  {[
+                    ["translate", "精确移动"],
+                    ["rotate", "旋转结构"],
+                    ["scale", "缩放对象"],
+                  ]
+                    .filter(
+                      ([mode]) =>
+                        !(
+                          mode === "rotate" &&
+                          liveSelection?.type === "furniture"
+                        ),
+                    )
+                    .map(([mode, label]) => (
+                      <option
+                        key={mode}
+                        value={mode}
+                        disabled={
+                          !liveEditable ||
+                          !liveSelection ||
+                          !liveObject ||
+                          liveObject.edit_locked ||
+                          liveObject.edit_hidden ||
+                          !sceneModes(liveSelection.type).includes(mode)
+                        }
+                      >
+                        {label}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+            <label className="scene-toolbar-select">
+              视角
+              <select
+                aria-label="三维观察视角"
+                value={view}
+                onChange={(e) => {
+                  setView(e.target.value);
+                  setFrame((n) => n + 1);
+                }}
+              >
+                {Object.entries(views).map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button onClick={() => setFrame((n) => n + 1)}>居中</button>
+            <details className="scene-view-more">
+              <summary>辅助</summary>
+              <div>
+                <button
+                  aria-pressed={gridVisible}
+                  onClick={() => setGridVisible(!gridVisible)}
+                >
+                  {gridVisible ? "隐藏网格" : "显示网格"}
+                </button>
+              </div>
+            </details>
+          </>
+        ) : (
+          <>
+            {!placement &&
+              ((design && onTransform) || (modelDocument && onSceneGesture)) &&
+              [
+                ...(modelDocument
+                  ? [
+                      ["direct", "直接拖动"],
+                      ["orbit", "浏览视角"],
+                    ]
+                  : []),
+                ["translate", "移动部件"],
+                ["rotate", "旋转部件"],
+                ["scale", "缩放部件"],
+              ]
+                .filter(
+                  ([id]) =>
+                    !(
+                      modelDocument &&
+                      liveSelection?.type === "furniture" &&
+                      id === "rotate"
+                    ),
+                )
+                .map(([id, label]) => (
+                  <button
+                    key={id}
+                    disabled={
+                      modelDocument
+                        ? !["direct", "orbit"].includes(id) &&
+                          (!liveEditable ||
+                            !liveSelection ||
+                            !liveObject ||
+                            liveObject.edit_locked ||
+                            liveObject.edit_hidden ||
+                            (id !== "direct" &&
+                              !sceneModes(liveSelection.type).includes(id)))
+                        : !selected
+                    }
+                    aria-pressed={transformMode === id}
+                    onClick={() =>
+                      setTransformMode(
+                        transformMode === id
+                          ? modelDocument
+                            ? "direct"
+                            : null
+                          : id,
+                      )
+                    }
+                  >
+                    {modelDocument ? label.replace("部件", "对象") : label}
+                  </button>
+                ))}
+            {Object.entries(views).map(([id, label]) => (
+              <button
+                key={id}
+                aria-pressed={view === id}
+                onClick={() => {
+                  setView(id);
+                  setFrame((n) => n + 1);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            <button onClick={() => setFrame((n) => n + 1)}>适配模型</button>
             <button
-              key={id}
-              disabled={!selected}
-              aria-pressed={transformMode === id}
-              onClick={() => setTransformMode(transformMode === id ? null : id)}
+              aria-pressed={gridVisible}
+              onClick={() => setGridVisible(!gridVisible)}
             >
-              {label}
+              网格
             </button>
-          ))}
-        {Object.entries(views).map(([id, label]) => (
-          <button
-            key={id}
-            aria-pressed={view === id}
-            onClick={() => {
-              setView(id);
-              setFrame((n) => n + 1);
-            }}
-          >
-            {label}
-          </button>
-        ))}
-        <button onClick={() => setFrame((n) => n + 1)}>适配模型</button>
-        <button
-          aria-pressed={gridVisible}
-          onClick={() => setGridVisible(!gridVisible)}
-        >
-          网格
-        </button>
-        {!modelUrl && (
-          <button
-            disabled={!selected}
-            aria-pressed={solo}
-            onClick={() => setSolo(!solo)}
-          >
-            只看选中
-          </button>
+            {!modelUrl && !modelDocument && (
+              <button
+                disabled={!selected}
+                aria-pressed={solo}
+                onClick={() => setSolo(!solo)}
+              >
+                只看选中
+              </button>
+            )}
+          </>
         )}
       </div>
       <span className="diy-preview-hint">
-        拖动旋转 · 滚轮缩放{!modelUrl && " · 点选部件"}
+        {placement
+          ? "绿色可放置 · 红色表示冲突 · R 旋转 · Esc 取消"
+          : modelDocument
+            ? "拖动物体摆放 · 空白处拖动旋转视角 · 滚轮缩放"
+            : "拖动旋转 · 滚轮缩放"}
+        {!modelUrl && !modelDocument && " · 点选部件"}
       </span>
-      {loading && (
+      {loading && !modelDocument && (
         <div className="diy-preview-message" role="status">
           正在加载三维模型…
         </div>
@@ -594,7 +1043,7 @@ export default function DiyPreview({
           {error}
         </div>
       )}
-      {!design && !modelUrl && (
+      {!design && !modelUrl && !modelDocument && (
         <div className="diy-preview-empty">
           <strong>从一个想法开始</strong>
           <span>输入描述让 AI 设计，或从左侧选择已有素材。</span>

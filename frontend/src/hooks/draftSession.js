@@ -9,10 +9,12 @@ export function createDraftSession(
   options = {},
 ) {
   let pending = null,
-    saved = null,
+    saved = options.baseDocument ? JSON.stringify(options.baseDocument) : null,
     timer,
     blocked = false,
-    running = null;
+    running = null,
+    failures = 0,
+    closed = false;
   const flush = () => {
     clearTimeout(timer);
     if (running) return running;
@@ -30,9 +32,12 @@ export function createDraftSession(
             });
             revision = result.revision;
             saved = encoded;
+            failures = 0;
             report({
               message: `已同步本机 · ${new Date(result.updated_at).toLocaleTimeString("zh-CN")}`,
               error: "",
+              syncedDocument: JSON.parse(encoded),
+              syncedRevision: revision,
             });
           } catch (error) {
             if (
@@ -66,8 +71,22 @@ export function createDraftSession(
                 error.message = mergeError.message;
               }
             }
-            blocked = true;
-            report({ message: "尚未同步后端", error: error.message });
+            const retryable =
+              !error.status || error.status >= 500 || error.status === 429;
+            pending ||= encoded;
+            blocked = !retryable;
+            report({
+              message: retryable ? "连接恢复后自动同步" : "尚未同步后端",
+              error: error.message,
+            });
+            if (retryable && !closed) {
+              timer = setTimeout(
+                flush,
+                Math.min(30000, 1000 * 2 ** Math.min(failures++, 5)),
+              );
+              timer.unref?.();
+            }
+            break;
           }
         }
       })
@@ -78,6 +97,11 @@ export function createDraftSession(
   };
   return {
     flush,
+    close() {
+      closed = true;
+      clearTimeout(timer);
+      return flush();
+    },
     schedule(document) {
       const encoded = JSON.stringify(document);
       if (blocked || encoded === pending || (encoded === saved && !running))

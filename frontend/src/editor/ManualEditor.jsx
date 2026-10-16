@@ -1,3 +1,4 @@
+import "./editorWorkspace.css";
 import PlanReferenceTools from "./PlanReferenceTools.jsx";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -30,8 +31,16 @@ import {
 import { wallSides, calibrate, snapFurniture } from "./designTools.js";
 import { batchFurniture } from "./batch.js";
 import LivePreview from "./LivePreview.jsx";
+import SceneStructureForm from "./SceneStructureForm.jsx";
+import { applySceneEdit } from "./sceneEdits.js";
+import { lockedChange } from "./objectIdentity.js";
 import LocalReview from "./LocalReview.jsx";
-import { readContext, writeContext } from "../hooks/urlContext.js";
+import {
+  readContext,
+  writeContext,
+  useUrlContext,
+} from "../hooks/urlContext.js";
+import { LiveParameterContext } from "./LiveParameterContext.js";
 import { UnitContext } from "./UnitContext.js";
 import WallElevation from "./WallElevation.jsx";
 import LightGroupControls from "./LightGroupControls.jsx";
@@ -41,7 +50,12 @@ const DiyStudio = lazy(() => import("../diy/DiyStudio.jsx"));
 import SurfaceFinishPicker from "./SurfaceFinishPicker.jsx";
 import SurfaceTransfer from "./SurfaceTransfer.jsx";
 import AssetLibrary from "../library/AssetLibrary.jsx";
-import { placeLibraryFurniture } from "../library/placement.js";
+import {
+  placeLibraryFurniture,
+  validateFurnitureTemplate,
+  furniturePlacementAt,
+  commitFurniturePlacement,
+} from "../library/placement.js";
 import { updatePlacedDesign, placedDesign } from "../diy/design.js";
 import OpeningComposer from "./OpeningComposer.jsx";
 import { validateOpening } from "./openingPlacement.js";
@@ -71,6 +85,7 @@ import {
   openingPoints,
   problems,
   furnitureNames,
+  furnitureCorners,
   openingNames,
   floorFinishes,
   wallFinishes,
@@ -107,16 +122,6 @@ const hints = {
   passages:
     "独立管理无门扇的开放通道，沿墙调整位置和宽高。走廊区域可在地板 / 空间中绘制。",
 };
-function wallDistance(w, p) {
-  const dx = w.end.x - w.start.x,
-    dy = w.end.y - w.start.y,
-    length = dx * dx + dy * dy;
-  const t = Math.max(
-    0,
-    Math.min(1, ((p.x - w.start.x) * dx + (p.y - w.start.y) * dy) / length),
-  );
-  return Math.hypot(p.x - w.start.x - t * dx, p.y - w.start.y - t * dy);
-}
 const floorColors = {
   default: "#e3d6b8",
   oak: "#dbc395",
@@ -151,6 +156,8 @@ export default function ManualEditor({
   designMode = null,
   onDesignModeChange,
 }) {
+  const [sidebarTab, setSidebarTab] = useState("objects");
+  const [focusCanvas, setFocusCanvas] = useState(false);
   const [displayUnit, setDisplayUnit] = useState("m");
   const [multi, setMulti] = useState([]);
   const [hideFurniture, setHideFurniture] = useState(false);
@@ -186,9 +193,22 @@ export default function ManualEditor({
     } catch {}
   }, [job.id, registration]);
 
-  const [livePreview, setLivePreview] = useState(false);
+  const [editorView, setEditorView] = useUrlContext(
+    "editorView",
+    "plan",
+    isActive,
+  );
+  const isScene = editorView === "scene";
   const [libraryOpen, setLibraryOpen] = useState(false);
   const consumedPlacement = useRef(null);
+  const [placement, setPlacement] = useState(null);
+  const placementCommitted = useRef(false);
+  const placementPointer = useRef(null);
+  const rotationDrag = useRef(null);
+  useEffect(() => {
+    setPlacement(null);
+  }, [editorView, isActive, job.id, designMode]);
+
   const [diyOpen, setDiyOpen] = useState(null);
   const reviewing = job.status === "awaiting_review";
   const draft = useEditDraft(job.id, reviewing);
@@ -243,6 +263,9 @@ export default function ManualEditor({
       type: initialTool,
       index: 0,
     });
+  useEffect(() => {
+    if (tool !== "furniture") setPlacement(null);
+  }, [tool]);
   const linkedObject = useRef(readContext("object"));
   useEffect(() => {
     if (!draft.document) return;
@@ -340,17 +363,37 @@ export default function ManualEditor({
   useEffect(() => {
     if (!isActive) {
       drag.current = null;
+      sceneDrag.current = null;
+      rotationDrag.current = null;
       setPreview(null);
     }
   }, [isActive]);
+  useEffect(() => {
+    drag.current = null;
+    sceneDrag.current = null;
+    rotationDrag.current = null;
+    marquee.current = null;
+    setPreview(null);
+    setDrawing(null);
+    setPendingDelete(null);
+    setMeasureMode(false);
+    setBoxMode(false);
+    setSelectionBox(null);
+    setMulti([]);
+    setPickingWall(false);
+    setOpeningKind(null);
+    setOpeningPreview(null);
+    setError("");
+  }, [editorView]);
   const svg = useRef(null),
     drag = useRef(null),
+    sceneDrag = useRef(null),
     lastNavigationClick = useRef(false),
     root = useRef(null);
   const navigation = usePlanNavigation(
     svg,
     draft.document ? bounds(draft.document.layout) : null,
-    isActive,
+    isActive && !isScene,
     () => !drag.current,
   );
   const { zoom, focusPoint } = navigation;
@@ -409,6 +452,8 @@ export default function ManualEditor({
     return () => window.removeEventListener("keydown", close);
   }, [isActive, validationOpen]);
   const select = (type, index, object) => {
+    setSidebarTab("objects");
+    setPlacement(null);
     cancelOpening();
     if (type === "outline") {
       setTool("walls");
@@ -441,14 +486,32 @@ export default function ManualEditor({
       });
     } else setOpeningAnchor(null);
   };
+  const commitParameter = (next) => {
+    if (busy || drawing || sceneDrag.current) return false;
+    const fitted = fitOutline(draft.document, next);
+    const previousIssues = new Set(
+      problems(draft.document).map((p) => `${p.type}:${p.index}:${p.text}`),
+    );
+    const issue =
+      isScene &&
+      problems(fitted).find(
+        (p) => !previousIssues.has(`${p.type}:${p.index}:${p.text}`),
+      );
+    const message = lockedChange(draft.document, fitted) || issue?.text;
+    if (message) {
+      setError(message);
+      return message;
+    }
+    draft.commit(fitted);
+    setError("");
+    return true;
+  };
   const patch = (change) => {
     if (busy || !item || locked.includes(`${selected.type}:${selected.index}`))
-      return;
-    draft.commit((next) => {
-      change(next, objects(next, selected.type)[selected.index]);
-      return next;
-    });
-    setError("");
+      return false;
+    const next = clone(draft.document);
+    change(next, objects(next, selected.type)[selected.index]);
+    return commitParameter(next);
   };
   const rotate = (angle) => {
     if (
@@ -459,8 +522,56 @@ export default function ManualEditor({
       locked.includes(`${selected.type}:${selected.index}`)
     )
       return;
-    draft.commit(rotateFurniture(draft.document, selected.index, angle));
-    setError("");
+    return commitParameter(
+      rotateFurniture(draft.document, selected.index, angle),
+    );
+  };
+  const previewRotation = (angle) => {
+    if (
+      busy ||
+      drawing ||
+      placement ||
+      sceneDrag.current ||
+      !item ||
+      selected?.type !== "furniture" ||
+      item.edit_locked
+    )
+      return;
+    rotationDrag.current ||= {
+      document: draft.document,
+      index: selected.index,
+    };
+    const gesture = rotationDrag.current;
+    if (
+      gesture.document !== draft.document ||
+      gesture.index !== selected.index
+    ) {
+      rotationDrag.current = null;
+      setPreview(null);
+      return;
+    }
+    setPreview(rotateFurniture(gesture.document, gesture.index, angle));
+  };
+  const cancelRotation = () => {
+    rotationDrag.current = null;
+    setPreview(null);
+  };
+  const finishRotation = (angle) => {
+    const gesture = rotationDrag.current;
+    cancelRotation();
+    if (
+      !gesture ||
+      gesture.document !== draft.document ||
+      gesture.index !== selected?.index
+    )
+      return;
+    if (
+      normalizeRotation(angle) !==
+      normalizeRotation(
+        gesture.document.furniture.items[gesture.index].rotation,
+      )
+    )
+      rotate(angle);
   };
   const move = (dx, dy) => {
     if (
@@ -490,9 +601,28 @@ export default function ManualEditor({
         ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)
       )
         return;
+      if (placement) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setPlacement(null);
+          return;
+        }
+        if (
+          event.key.toLowerCase() === "r" &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          placement.template.kind !== "wall_television"
+        ) {
+          event.preventDefault();
+          setPlacement((p) => p && { ...p, rotation: (p.rotation + 90) % 360 });
+          return;
+        }
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        setPlacement(null);
         event.preventDefault();
         drag.current = null;
+        sceneDrag.current = null;
         setPreview(null);
         setDrawing(null);
         setPendingDelete(null);
@@ -504,7 +634,7 @@ export default function ManualEditor({
     };
     window.addEventListener("keydown", keyboard);
     return () => window.removeEventListener("keydown", keyboard);
-  }, [isActive, busy, draft, diyOpen]);
+  }, [isActive, busy, draft, diyOpen, placement]);
   const pointAt = (event) => {
     const matrix = svg.current.getScreenCTM();
     if (!matrix) return { x: 0, y: 0 };
@@ -552,6 +682,10 @@ export default function ManualEditor({
     };
   };
   const pointerMove = (event) => {
+    if (placement && !event.buttons) {
+      movePlacement(pointAt(event));
+      return;
+    }
     if (marquee.current) {
       setSelectionBox({ ...marquee.current, end: pointAt(event) });
       return;
@@ -634,20 +768,87 @@ export default function ManualEditor({
       );
     setPreview(null);
   };
-  const useLibrary = (template) => {
-    const next = placeLibraryFurniture(
+  const startPlacement = (template) => {
+    validateFurnitureTemplate(draft.document, template);
+    if (!draft.document.layout.rooms.length)
+      throw Error("请先创建空间，再放置家具。");
+    cancelOpening();
+    setDrawing(null);
+    setPendingDelete(null);
+    navigation.setPanMode(false);
+    setMeasureMode(false);
+    setBoxMode(false);
+    setHideFurniture(false);
+    setSelected(null);
+    setMulti([]);
+    setTool("furniture");
+    setPreview(null);
+    placementCommitted.current = false;
+    setPlacement({
+      template: clone(template),
+      point: null,
+      rotation: template.rotation || 0,
+      preferredRoomId:
+        item?.room_id || (selected?.type === "rooms" ? item?.id : null),
+    });
+    setError("");
+  };
+  const movePlacement = (point) =>
+    setPlacement((current) => (current ? { ...current, point } : null));
+  const placementResult =
+    placement?.point && draft.document
+      ? furniturePlacementAt(
+          draft.document,
+          placement.template,
+          placement.point,
+          placement.rotation,
+        )
+      : null;
+  const confirmPlacement = (point = placement?.point) => {
+    if (!placement || !point || busy || placementCommitted.current) return;
+    const result = furniturePlacementAt(
       draft.document,
-      template,
-      item?.room_id || item?.id,
+      placement.template,
+      point,
+      placement.rotation,
     );
+    movePlacement(point);
+    if (!result.valid) return;
+    const next = commitFurniturePlacement(
+      draft.document,
+      placement.template,
+      point,
+      placement.rotation,
+    );
+    placementCommitted.current = true;
     draft.commit(next);
     select(
       "furniture",
       next.furniture.items.length - 1,
       next.furniture.items.at(-1),
     );
+  };
+  const autoPlacement = () => {
+    try {
+      const next = placeLibraryFurniture(
+        draft.document,
+        placement.template,
+        placement.preferredRoomId,
+      );
+      const candidate = next.furniture.items.at(-1);
+      setPlacement((current) => ({
+        ...current,
+        point: { x: candidate.x, y: candidate.y },
+        rotation: candidate.rotation,
+      }));
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const useLibrary = (template) => {
+    startPlacement(template);
     setLibraryOpen(false);
-    setError("");
   };
   useEffect(() => {
     if (
@@ -673,18 +874,9 @@ export default function ManualEditor({
       Object.assign(target, updatePlacedDesign(target, design, preserveSize));
       reconcileFurnitureRoom(next, target);
     } else {
-      if (next.furniture.items.length >= 90)
-        throw Error("最多可放置 90 件家具。");
-      const room =
-        next.layout.rooms.find((r) => r.id === item?.room_id) ||
-        next.layout.rooms[0];
-      if (!room) throw Error("请先创建一个空间，再放置 DIY 素材。");
-      const point = center(room.polygon);
-      next.furniture.items.push(
-        placedDesign(design, { x: round(point.x), y: round(point.y) }, room.id),
-      );
-      const index = next.furniture.items.length - 1;
-      select("furniture", index, next.furniture.items[index]);
+      startPlacement(placedDesign(design, { x: 0, y: 0 }, ""));
+      setDiyOpen(null);
+      return;
     }
     if (
       next.furniture.items.reduce(
@@ -697,19 +889,6 @@ export default function ManualEditor({
     setError("");
   };
   const addFurniture = () => {
-    const next = clone(draft.document);
-    if (next.furniture.items.length >= 90) {
-      setError("最多可放置 90 件家具。");
-      return;
-    }
-    const room =
-      next.layout.rooms.find((r) => r.id === (item?.room_id || item?.id)) ||
-      next.layout.rooms[0];
-    if (!room) {
-      setError("请先在地板 / 空间中新增一个空间，再添加家具。");
-      return;
-    }
-    const p = center(room.polygon);
     const sizes = {
       sofa: [2, 0.85, 0.85],
       bed: [1.5, 2, 0.9],
@@ -741,44 +920,19 @@ export default function ManualEditor({
       armchair: [0.78, 0.8, 0.86],
       bench: [0.9, 0.36, 0.46],
     }[furnitureKind];
-    if (
-      furnitureKind === "wall_television" ||
-      showerKinds.includes(furnitureKind)
-    ) {
-      try {
-        const placed = placeLibraryFurniture(
-          next,
-          {
-            kind: furnitureKind,
-            name: furnitureNames[furnitureKind],
-            width: sizes[0],
-            depth: sizes[1],
-            height: sizes[2],
-            elevation: furnitureKind === "wall_television" ? 1.05 : 0,
-          },
-          room.id,
-        );
-        draft.commit(placed);
-        select("furniture", placed.furniture.items.length - 1);
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
-      return;
+    try {
+      startPlacement({
+        kind: furnitureKind,
+        name: furnitureNames[furnitureKind],
+        width: sizes[0],
+        depth: sizes[1],
+        height: sizes[2],
+        elevation: furnitureKind === "wall_television" ? 1.05 : 0,
+        rotation: 0,
+      });
+    } catch (e) {
+      setError(e.message);
     }
-    next.furniture.items.push({
-      kind: furnitureKind,
-      room_id: room.id,
-      x: round(p.x),
-      y: round(p.y),
-      width: sizes[0],
-      depth: sizes[1],
-      height: sizes[2],
-      elevation: furnitureKind === "wall_television" ? 1.05 : 0,
-      rotation: 0,
-    });
-    draft.commit(next);
-    select("furniture", next.furniture.items.length - 1);
   };
   const addOpening = (kind, targetId = targetWallId) => {
     const next = clone(draft.document),
@@ -999,7 +1153,7 @@ export default function ManualEditor({
     ? labelFor(item, selected.type, selected.index)
     : "选择一个对象";
   const changeWallPoint = (endpoint, axis, value) =>
-    draft.commit(
+    commitParameter(
       moveWall(
         draft.document,
         selected.index,
@@ -1093,13 +1247,170 @@ export default function ManualEditor({
               ? document.furniture.items[diyOpen.index]?.diy
               : null
           }
-          useLabel={diyOpen.mode === "edit" ? "应用到选中家具" : "放入当前户型"}
+          useLabel={
+            diyOpen.mode === "edit" ? "应用到选中家具" : "去户型选择位置"
+          }
         />
       </Suspense>
     );
+  const sceneCanvas = (
+    <LivePreview
+      document={document}
+      committedDocument={draft.document}
+      editError={error}
+      placement={placement ? { active: true, ...placementResult } : null}
+      onPlacementMove={movePlacement}
+      onPlacementConfirm={confirmPlacement}
+      active={isActive}
+      busy={busy || !!drawing || pickingWall}
+      selected={selected}
+      onRotate={rotate}
+      onRotationPreview={previewRotation}
+      onRotationFinish={finishRotation}
+      onRotationCancel={cancelRotation}
+      jobId={job.id}
+      onSelect={({ type, index }) => {
+        if (drawing || placement) return;
+        if (pickingWall) {
+          if (type === "walls")
+            chooseOpeningWall(document.layout.walls[index].id);
+          return;
+        }
+        select(type, index);
+      }}
+      onGesture={(phase, transform, hitSelection) => {
+        if (phase === "start") {
+          const target = hitSelection || selected;
+          if (busy || placement || drawing || pickingWall || !target)
+            return false;
+          sceneDrag.current = {
+            document: draft.document,
+            selection: { ...target },
+          };
+          select(target.type, target.index);
+          return true;
+        }
+        const gesture = sceneDrag.current;
+        if (phase === "cancel") {
+          sceneDrag.current = null;
+          setPreview(null);
+          return;
+        }
+        if (!gesture) return;
+        try {
+          if (gesture.document !== draft.document)
+            throw Error("设计数据已更新，本次拖动已取消，请重新操作。");
+          const next = applySceneEdit(
+            gesture.document,
+            gesture.selection,
+            transform,
+          );
+          const violation = lockedChange(gesture.document, next);
+          if (violation) throw Error(violation);
+          if (phase === "preview") {
+            setError("");
+            setPreview(next);
+            return;
+          }
+          const errors = problems(next);
+          if (errors.length) throw Error(errors[0].text);
+          draft.commit(next);
+          setError("");
+        } catch (e) {
+          setError(e.message);
+        }
+        if (phase === "end") {
+          sceneDrag.current = null;
+          setPreview(null);
+        }
+      }}
+    />
+  );
   return (
     <UnitContext.Provider value={displayUnit}>
-      <div className="manual-editor" ref={root}>
+      <div
+        className={`manual-editor editor-view-${editorView}${focusCanvas ? " canvas-focused" : ""}`}
+        ref={root}
+      >
+        <nav className="editor-page-nav" aria-label="人工设计页面">
+          <div>
+            {[
+              ["plan", "平面设计"],
+              ["scene", "三维设计"],
+            ].map(([view, label]) => (
+              <button
+                key={view}
+                aria-current={editorView === view ? "page" : undefined}
+                disabled={busy}
+                onClick={() => setEditorView(view)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span>
+            {isScene ? "三维模型编辑 · 实时更新" : "平面图编辑 · 精确绘制"}
+          </span>
+        </nav>
+        {placement && (
+          <section
+            className="furniture-placement-bar"
+            aria-label="家具放置"
+            data-valid={placementResult?.valid ?? true}
+          >
+            <div>
+              <strong>
+                正在放置 ·{" "}
+                {placement.template.name ||
+                  furnitureNames[placement.template.kind]}
+              </strong>
+              <span>
+                {placementResult?.item.room_id
+                  ? `${document.layout.rooms.find((r) => r.id === placementResult.item.room_id)?.name || ""} · `
+                  : ""}
+                {round(placement.template.width)} ×{" "}
+                {round(placement.template.depth)} 米 ·{" "}
+                {round(placementResult?.item.rotation ?? placement.rotation)}°
+              </span>
+              <p role="status">
+                {placementResult?.message ||
+                  (placement.template.kind === "wall_television"
+                    ? "移动到墙边预览安装位置，点击放下；Esc 取消。"
+                    : "移动鼠标预览占地，点击画布放下；R 旋转，Esc 取消。")}
+              </p>
+              {placement.template.kind === "wall_television" && (
+                <small>靠近墙面自动吸附，方向随墙面调整。</small>
+              )}
+            </div>
+            <div className="furniture-placement-actions">
+              <button
+                type="button"
+                disabled={busy || placement.template.kind === "wall_television"}
+                onClick={() =>
+                  setPlacement((p) => ({
+                    ...p,
+                    rotation: (p.rotation + 90) % 360,
+                  }))
+                }
+              >
+                旋转 90°
+              </button>
+              <button type="button" disabled={busy} onClick={autoPlacement}>
+                自动找空位
+              </button>
+              <button
+                type="button"
+                disabled={busy || !placementResult?.valid}
+                onClick={() => confirmPlacement()}
+              >
+                确认放置
+              </button>
+              <button type="button" onClick={() => setPlacement(null)}>
+                取消
+              </button>
+            </div>
+          </section>
+        )}
         <div className="edit-toolbar">
           <div className="edit-tool-tabs" hidden={!!designMode}>
             {tools
@@ -1145,15 +1456,15 @@ export default function ManualEditor({
               ))}
           </div>
           <div className="edit-history">
-            {!reviewing && (
-              <button
-                className="secondary-button"
-                aria-pressed={livePreview}
-                onClick={() => setLivePreview(!livePreview)}
-              >
-                {livePreview ? "关闭三维校对" : "实时三维校对"}
-              </button>
-            )}
+            <button
+              type="button"
+              className="secondary-button"
+              aria-pressed={focusCanvas}
+              onClick={() => setFocusCanvas(!focusCanvas)}
+            >
+              <Focus size={14} />
+              {focusCanvas ? "展开面板" : "专注画布"}
+            </button>
             <button
               title="撤销设计"
               aria-label="撤销设计"
@@ -1163,6 +1474,7 @@ export default function ManualEditor({
                 cancelOpening();
                 setMulti([]);
                 setSelected(null);
+                setPlacement(null);
                 draft.undo();
               }}
               disabled={busy || !draft.canUndo}
@@ -1178,50 +1490,66 @@ export default function ManualEditor({
                 cancelOpening();
                 setMulti([]);
                 setSelected(null);
+                setPlacement(null);
                 draft.redo();
               }}
               disabled={busy || !draft.canRedo}
             >
               <Redo2 size={16} />
             </button>
-            <button
-              className="text-button"
-              onClick={() => {
-                setDrawing(null);
-                setPendingDelete(null);
-                cancelOpening();
-                setSelected(null);
-                setMulti([]);
-                draft.reset();
-                setError("");
-              }}
-              disabled={busy}
-            >
-              <RotateCcw size={13} />
-              还原原方案
-            </button>
+            <details className="editor-more">
+              <summary>更多</summary>
+              <div>
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    setDrawing(null);
+                    setPendingDelete(null);
+                    cancelOpening();
+                    setSelected(null);
+                    setMulti([]);
+                    setPlacement(null);
+                    draft.reset();
+                    setError("");
+                  }}
+                  disabled={busy}
+                >
+                  <RotateCcw size={13} />
+                  还原原方案
+                </button>
+              </div>
+            </details>
             <button className="secondary-button" onClick={onClose}>
-              {reviewing ? "返回结构核对" : "返回三维"}
+              {reviewing ? "返回结构核对" : "返回方案预览"}
             </button>
           </div>
         </div>
-        <div className="edit-intro">
-          <MousePointer2 size={15} />
-          <p>{hints[tool]}</p>
-          <label>
-            吸附 / 微移
-            <select
-              aria-label="移动步长"
-              value={step}
-              onChange={(e) => setStep(Number(e.target.value))}
-            >
-              <option value={0.1}>10 厘米</option>
-              <option value={0.05}>5 厘米</option>
-              <option value={0.01}>1 厘米</option>
-            </select>
-          </label>
-        </div>
-        {drawing && (
+        {!placement && !isScene && (
+          <details className="editor-tools-disclosure">
+            <summary>操作说明与步长</summary>
+            <div className="edit-intro">
+              <MousePointer2 size={15} />
+              <p>
+                {isScene
+                  ? "直接拖动物体摆放；需要精调时修改右侧参数，停输后自动更新。"
+                  : hints[tool]}
+              </p>
+              <label>
+                {isScene ? "微移步长" : "吸附 / 微移"}
+                <select
+                  aria-label="移动步长"
+                  value={step}
+                  onChange={(e) => setStep(Number(e.target.value))}
+                >
+                  <option value={0.1}>10 厘米</option>
+                  <option value={0.05}>5 厘米</option>
+                  <option value={0.01}>1 厘米</option>
+                </select>
+              </label>
+            </div>
+          </details>
+        )}
+        {drawing && !isScene && (
           <div className="edit-drawing-bar" role="status">
             <span>
               {drawing.type === "walls"
@@ -1256,114 +1584,144 @@ export default function ManualEditor({
             </button>
           </div>
         )}
-        <PlanReferenceTools
-          displayUnit={displayUnit}
-          setDisplayUnit={setDisplayUnit}
-          measureMode={measureMode}
-          setMeasureMode={setMeasureMode}
-          setBoxMode={setBoxMode}
-          measure={measure}
-          setMeasure={setMeasure}
-          overlay={overlay}
-          setOverlay={setOverlay}
-          opacity={opacity}
-          setOpacity={setOpacity}
-          snap={snap}
-          setSnap={setSnap}
-          registration={registration}
-          setRegistration={setRegistration}
-          constraintError={draft.constraintError}
-        />
-        {tool === "furniture" && (
-          <div className="batch-toolbar">
-            <button
-              aria-pressed={boxMode}
-              onClick={() => {
-                setBoxMode(!boxMode);
-                setMeasureMode(false);
-              }}
-            >
-              框选家具
-            </button>
-            <button
-              onClick={() =>
-                setMulti(document.furniture.items.map((_, i) => i))
-              }
-            >
-              全选家具
-            </button>
-            <button onClick={() => setMulti([])}>清除多选</button>
-            <button
-              onClick={() =>
-                draft.commit((next) => {
-                  next.furniture.items.forEach((f) => (f.edit_hidden = false));
-                  return next;
-                }, false)
-              }
-            >
-              显示隐藏对象
-            </button>
-            <button
-              aria-pressed={hideFurniture}
-              onClick={() => setHideFurniture(!hideFurniture)}
-            >
-              {hideFurniture ? "显示家具" : "隐藏家具"}
-            </button>
-            {multi.length > 1 && (
-              <>
-                <span>选中 {multi.length} 件</span>
-                {[
-                  ["group", "编为一组"],
-                  ["ungroup", "解除组合"],
-                  ["hide", "隐藏选中"],
-                  ["align-x", "左右居中"],
-                  ["align-y", "前后对齐"],
-                  ["distribute", "横向等距"],
-                  ["copy", "批量复制"],
-                  ["delete", "批量删除"],
-                ].map(([op, title]) => (
-                  <button
-                    key={op}
-                    onClick={() => {
-                      try {
-                        draft.commit(
-                          batchFurniture(
-                            draft.document,
-                            multi.filter(
-                              (i) => !locked.includes(`furniture:${i}`),
-                            ),
-                            op,
-                          ),
-                        );
-                        if (op === "delete") {
-                          setMulti([]);
-                          setSelected(null);
-                        }
-                      } catch (e) {
-                        setError(e.message);
-                      }
-                    }}
-                  >
-                    {title}
-                  </button>
-                ))}
-              </>
+        {!isScene && !placement && (
+          <details className="editor-tools-disclosure">
+            <summary>辅助工具 · 测量、原图与批量操作</summary>
+            {!isScene && !placement && (
+              <PlanReferenceTools
+                displayUnit={displayUnit}
+                setDisplayUnit={setDisplayUnit}
+                measureMode={measureMode}
+                setMeasureMode={setMeasureMode}
+                setBoxMode={setBoxMode}
+                measure={measure}
+                setMeasure={setMeasure}
+                overlay={overlay}
+                setOverlay={setOverlay}
+                opacity={opacity}
+                setOpacity={setOpacity}
+                snap={snap}
+                setSnap={setSnap}
+                registration={registration}
+                setRegistration={setRegistration}
+                constraintError={draft.constraintError}
+              />
             )}
-          </div>
+            {!isScene && !placement && tool === "furniture" && (
+              <div className="batch-toolbar">
+                <button
+                  aria-pressed={boxMode}
+                  onClick={() => {
+                    setBoxMode(!boxMode);
+                    setMeasureMode(false);
+                  }}
+                >
+                  框选家具
+                </button>
+                <button
+                  onClick={() =>
+                    setMulti(document.furniture.items.map((_, i) => i))
+                  }
+                >
+                  全选家具
+                </button>
+                <button onClick={() => setMulti([])}>清除多选</button>
+                <button
+                  onClick={() =>
+                    draft.commit((next) => {
+                      next.furniture.items.forEach(
+                        (f) => (f.edit_hidden = false),
+                      );
+                      return next;
+                    }, false)
+                  }
+                >
+                  显示隐藏对象
+                </button>
+                <button
+                  aria-pressed={hideFurniture}
+                  onClick={() => setHideFurniture(!hideFurniture)}
+                >
+                  {hideFurniture ? "显示家具" : "隐藏家具"}
+                </button>
+                {multi.length > 1 && (
+                  <>
+                    <span>选中 {multi.length} 件</span>
+                    {[
+                      ["group", "编为一组"],
+                      ["ungroup", "解除组合"],
+                      ["hide", "隐藏选中"],
+                      ["align-x", "左右居中"],
+                      ["align-y", "前后对齐"],
+                      ["distribute", "横向等距"],
+                      ["copy", "批量复制"],
+                      ["delete", "批量删除"],
+                    ].map(([op, title]) => (
+                      <button
+                        key={op}
+                        onClick={() => {
+                          try {
+                            draft.commit(
+                              batchFurniture(
+                                draft.document,
+                                multi.filter(
+                                  (i) => !locked.includes(`furniture:${i}`),
+                                ),
+                                op,
+                              ),
+                            );
+                            if (op === "delete") {
+                              setMulti([]);
+                              setSelected(null);
+                            }
+                          } catch (e) {
+                            setError(e.message);
+                          }
+                        }}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </details>
         )}
         <div className="edit-columns">
           <aside
             className="edit-library edit-properties"
             aria-label="对象库与添加"
           >
-            <fieldset disabled={busy || !!drawing}>
-              <div className="edit-section">
+            <div
+              className="editor-sidebar-tabs"
+              role="group"
+              aria-label="对象面板"
+            >
+              <button
+                aria-pressed={sidebarTab === "objects"}
+                onClick={() => setSidebarTab("objects")}
+              >
+                已放置 <small>{entries.length}</small>
+              </button>
+              <button
+                aria-pressed={sidebarTab === "add"}
+                onClick={() => setSidebarTab("add")}
+              >
+                <Plus size={14} />
+                添加
+              </button>
+            </div>
+            <fieldset disabled={busy || (!!drawing && !isScene)}>
+              <div
+                className="edit-section object-browser"
+                hidden={sidebarTab !== "objects"}
+              >
                 <div className="section-heading">
-                  <h2>对象库</h2>
+                  <h2>当前对象</h2>
                   <MousePointer2 size={14} />
                 </div>
                 <label className="edit-label">
-                  查询对象
                   <input
                     type="search"
                     aria-label="查询设计对象"
@@ -1378,7 +1736,7 @@ export default function ManualEditor({
                 </label>
                 <p className="field-note">
                   找到 {filteredEntries.length} / {entries.length} 个对象
-                  {tool === "furniture" && " · Shift 点击多选"}
+                  {!isScene && tool === "furniture" && " · Shift 点击多选"}
                 </p>
                 <div className="edit-object-list" aria-label="设计对象列表">
                   {filteredEntries.map(({ object, index, type }) => (
@@ -1419,7 +1777,7 @@ export default function ManualEditor({
                     没有匹配的对象，修改关键词或清空搜索。
                   </p>
                 )}
-                {item && (
+                {item && !isScene && (
                   <button
                     className="text-button"
                     onClick={() => {
@@ -1441,7 +1799,10 @@ export default function ManualEditor({
                   <p className="field-note">当前没有此类对象，请添加新对象。</p>
                 )}
               </div>
-              <div className="edit-section">
+              <div
+                className="edit-section object-adder"
+                hidden={sidebarTab !== "add"}
+              >
                 <div className="section-heading">
                   <h2>添加对象</h2>
                   <Plus size={14} />
@@ -1495,7 +1856,9 @@ export default function ManualEditor({
                       </button>
                     </div>
                     <p className="field-note">
-                      保存并生成三维后，在设计预览切换「夜晚」。最多 12
+                      {isScene
+                        ? "在三维画布切换「夜晚」查看灯光效果。最多 12"
+                        : "保存并生成三维后，在设计预览切换「夜晚」。最多 12"}
                       盏灯，可单独开关。
                     </p>
                   </>
@@ -1503,7 +1866,10 @@ export default function ManualEditor({
                 {tool === "furniture" && (
                   <button
                     className="diy-library-trigger"
-                    onClick={() => setLibraryOpen(true)}
+                    onClick={() => {
+                      setPlacement(null);
+                      setLibraryOpen(true);
+                    }}
                   >
                     <Armchair size={14} />从 GLB 素材库添加
                   </button>
@@ -1511,7 +1877,10 @@ export default function ManualEditor({
                 {tool === "furniture" && (
                   <button
                     className="diy-library-trigger"
-                    onClick={() => setDiyOpen({ mode: "add" })}
+                    onClick={() => {
+                      setPlacement(null);
+                      setDiyOpen({ mode: "add" });
+                    }}
                   >
                     <Sparkles size={14} />
                     DIY 素材库
@@ -1534,7 +1903,7 @@ export default function ManualEditor({
                     </select>
                     <button className="secondary-button" onClick={addFurniture}>
                       <Plus size={13} />
-                      添加
+                      选择位置
                     </button>
                   </div>
                 )}
@@ -1544,7 +1913,7 @@ export default function ManualEditor({
                     onClick={() => startDrawing("walls")}
                   >
                     <Plus size={14} />
-                    绘制新墙体
+                    {isScene ? "添加墙体" : "绘制新墙体"}
                   </button>
                 )}
                 {tool === "rooms" && (
@@ -1554,12 +1923,23 @@ export default function ManualEditor({
                       onClick={() => startDrawing("rooms")}
                     >
                       <Plus size={14} />
-                      绘制新空间 / 地板
+                      {isScene ? "添加空间 / 地板" : "绘制新空间 / 地板"}
                     </button>
                     <p className="field-note">
-                      在空白区域依次点击角点，轮廓自动适配新增空间。已有空间占满时，可先拆分空间或删除原空间再重画。
+                      {isScene
+                        ? "输入空间边界坐标后添加，新增空间不能与已有空间重叠。"
+                        : "在空白区域依次点击角点，轮廓自动适配新增空间。已有空间占满时，可先拆分空间或删除原空间再重画。"}
                     </p>
                   </>
+                )}
+                {isScene && drawing && (
+                  <SceneStructureForm
+                    key={drawing.type}
+                    type={drawing.type}
+                    origin={center(document.layout.outline)}
+                    onCreate={finishDrawing}
+                    onCancel={() => setDrawing(null)}
+                  />
                 )}
                 {["openings", "passages"].includes(tool) && (
                   <>
@@ -1581,7 +1961,9 @@ export default function ManualEditor({
                     </label>
                     <button
                       className="secondary-button pick-opening-wall"
-                      aria-label="在图上选择安装墙体"
+                      aria-label={
+                        isScene ? "在三维中选择安装墙体" : "在图上选择安装墙体"
+                      }
                       aria-pressed={pickingWall}
                       disabled={!document.layout.walls.length}
                       onClick={() => {
@@ -1590,12 +1972,18 @@ export default function ManualEditor({
                       }}
                     >
                       <MousePointer2 size={13} />
-                      {pickingWall ? "取消选墙" : "在图上选墙"}
+                      {pickingWall
+                        ? "取消选墙"
+                        : isScene
+                          ? "在三维中选墙"
+                          : "在图上选墙"}
                     </button>
                     <p className="field-note">
-                      {pickingWall
-                        ? "点击目标墙线，绿色高亮表示安装墙体。"
-                        : "可从列表选择，也可直接点击图上的墙线。"}
+                      {isScene
+                        ? "可从列表选择安装墙体，或开启选墙后点击三维墙面。"
+                        : pickingWall
+                          ? "点击目标墙线，绿色高亮表示安装墙体。"
+                          : "可从列表选择，也可直接点击图上的墙线。"}
                     </p>
                     <div className="edit-opening-add">
                       {Object.entries(openingChoices).map(([kind, name]) => (
@@ -1614,1040 +2002,987 @@ export default function ManualEditor({
               </div>
             </fieldset>
           </aside>
-          <section className="plan-editor-canvas">
-            <div className="plan-sheet-head">
-              <span>
-                <i />
-                俯视设计 · 图纸坐标：米
-              </span>
-              <small>平面即时预览，保存后更新三维</small>
-            </div>
-            <svg
-              ref={svg}
-              viewBox={viewBox}
-              role="application"
-              aria-label="人工设计平面图"
-              aria-describedby={`plan-navigation-${job.id}`}
-              tabIndex={0}
-              className={
-                navigation.panning
-                  ? "is-panning"
-                  : navigation.panMode || navigation.spaceHeld
-                    ? "can-pan"
-                    : ""
-              }
-              onPointerEnter={navigation.onPointerEnter}
-              onPointerLeave={navigation.onPointerLeave}
-              onPointerDownCapture={(event) => {
-                if (event.button === 0 && measureMode) {
-                  event.stopPropagation();
+          {isScene ? (
+            sceneCanvas
+          ) : (
+            <section className="plan-editor-canvas">
+              <div className="plan-sheet-head">
+                <span>
+                  <i />
+                  俯视设计 · 图纸坐标：米
+                </span>
+                <small>平面设计 · 修改自动保留为草稿</small>
+              </div>
+              <svg
+                ref={svg}
+                viewBox={viewBox}
+                role="application"
+                aria-label="人工设计平面图"
+                aria-describedby={`plan-navigation-${job.id}`}
+                tabIndex={0}
+                className={
+                  navigation.panning
+                    ? "is-panning"
+                    : navigation.panMode || navigation.spaceHeld
+                      ? "can-pan"
+                      : ""
+                }
+                onPointerEnter={navigation.onPointerEnter}
+                onPointerLeave={navigation.onPointerLeave}
+                onPointerDownCapture={(event) => {
+                  if (
+                    placement &&
+                    event.button === 0 &&
+                    !navigation.spaceHeld &&
+                    !navigation.panMode
+                  ) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    placementPointer.current = {
+                      id: event.pointerId,
+                      x: event.clientX,
+                      y: event.clientY,
+                    };
+                    svg.current.setPointerCapture(event.pointerId);
+                    movePlacement(pointAt(event));
+                    return;
+                  }
+                  if (event.button === 0 && measureMode) {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    const p = pointAt(event);
+                    setMeasure((v) => (v.length === 1 ? [...v, p] : [p]));
+                    return;
+                  }
+                  if (event.button === 0 && boxMode && tool === "furniture") {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    const p = pointAt(event);
+                    marquee.current = { start: p };
+                    setSelectionBox({ start: p, end: p });
+                    svg.current.setPointerCapture(event.pointerId);
+                    return;
+                  }
+                  navigation.onPointerDownCapture(event);
+                }}
+                onPointerDown={(event) => {
+                  lastNavigationClick.current = !drawing;
+                  if (drawing) drawPoint(event);
+                  else if (event.button === 0) navigation.beginPan(event);
+                }}
+                onDoubleClick={(event) => {
+                  if (!drawing && lastNavigationClick.current)
+                    navigation.reset();
+                }}
+                onPointerMove={pointerMove}
+                onPointerUpCapture={(event) => {
+                  const down = placementPointer.current;
+                  if (!down || down.id !== event.pointerId) return;
+                  placementPointer.current = null;
                   event.preventDefault();
-                  const p = pointAt(event);
-                  setMeasure((v) => (v.length === 1 ? [...v, p] : [p]));
-                  return;
-                }
-                if (event.button === 0 && boxMode && tool === "furniture") {
                   event.stopPropagation();
-                  event.preventDefault();
-                  const p = pointAt(event);
-                  marquee.current = { start: p };
-                  setSelectionBox({ start: p, end: p });
-                  svg.current.setPointerCapture(event.pointerId);
-                  return;
-                }
-                navigation.onPointerDownCapture(event);
-              }}
-              onPointerDown={(event) => {
-                lastNavigationClick.current = !drawing;
-                if (drawing) drawPoint(event);
-                else if (event.button === 0) navigation.beginPan(event);
-              }}
-              onDoubleClick={(event) => {
-                if (!drawing && lastNavigationClick.current) navigation.reset();
-              }}
-              onPointerMove={pointerMove}
-              onPointerUp={(e) => end(e)}
-              onPointerCancel={(e) => end(e, true)}
-              onLostPointerCapture={(e) => {
-                if (navigation.finishPan(e, true)) return;
-                if (drag.current) end(e, true);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  navigation.finishPan(null, true);
-                  drag.current = null;
-                  setPreview(null);
-                  setDrawing(null);
-                  setPendingDelete(null);
-                  cancelOpening();
-                  return;
-                }
-                if (drag.current || navigation.panMode || navigation.spaceHeld)
-                  return;
-                if (
-                  selected?.type === "furniture" &&
-                  ["[", "]"].includes(e.key)
-                ) {
-                  e.preventDefault();
-                  rotate(
-                    item.rotation +
-                      (e.key === "[" ? -1 : 1) * (e.shiftKey ? 90 : 15),
+                  if (svg.current.hasPointerCapture(event.pointerId))
+                    svg.current.releasePointerCapture(event.pointerId);
+                  const rect = svg.current.getBoundingClientRect();
+                  if (
+                    placement &&
+                    Math.hypot(
+                      event.clientX - down.x,
+                      event.clientY - down.y,
+                    ) <= 5 &&
+                    event.clientX >= rect.left &&
+                    event.clientX <= rect.right &&
+                    event.clientY >= rect.top &&
+                    event.clientY <= rect.bottom
+                  )
+                    confirmPlacement(pointAt(event));
+                }}
+                onPointerCancelCapture={() => {
+                  placementPointer.current = null;
+                }}
+                onPointerUp={(e) => end(e)}
+                onPointerCancel={(e) => end(e, true)}
+                onLostPointerCapture={(e) => {
+                  placementPointer.current = null;
+                  if (navigation.finishPan(e, true)) return;
+                  if (drag.current) end(e, true);
+                }}
+                onKeyDown={(e) => {
+                  if (placement) return;
+                  if (e.key === "Escape") {
+                    navigation.finishPan(null, true);
+                    drag.current = null;
+                    setPreview(null);
+                    setDrawing(null);
+                    setPendingDelete(null);
+                    cancelOpening();
+                    return;
+                  }
+                  if (
+                    drag.current ||
+                    navigation.panMode ||
+                    navigation.spaceHeld
+                  )
+                    return;
+                  if (
+                    selected?.type === "furniture" &&
+                    ["[", "]"].includes(e.key)
+                  ) {
+                    e.preventDefault();
+                    rotate(
+                      item.rotation +
+                        (e.key === "[" ? -1 : 1) * (e.shiftKey ? 90 : 15),
+                    );
+                    return;
+                  }
+                  const offsets = {
+                    ArrowLeft: [-step, 0],
+                    ArrowRight: [step, 0],
+                    ArrowUp: [0, -step],
+                    ArrowDown: [0, step],
+                  };
+                  if (offsets[e.key] && item && !drawing) {
+                    e.preventDefault();
+                    move(
+                      ...offsets[e.key].map((v) => v * (e.shiftKey ? 10 : 1)),
+                    );
+                  }
+                }}
+              >
+                <defs>
+                  <pattern
+                    id={`grid-${job.id}`}
+                    width=".5"
+                    height=".5"
+                    patternUnits="userSpaceOnUse"
+                  >
+                    <path
+                      d="M .5 0 L 0 0 0 .5"
+                      fill="none"
+                      stroke="#738a891c"
+                      strokeWidth=".015"
+                    />
+                  </pattern>
+                </defs>
+                <rect
+                  data-plan-background="true"
+                  x={box.x - 60}
+                  y={box.y - 60}
+                  width={box.width + 120}
+                  height={box.height + 120}
+                  fill="#eaf0e8"
+                />
+                <rect
+                  data-plan-background="true"
+                  x={box.x - 60}
+                  y={box.y - 60}
+                  width={box.width + 120}
+                  height={box.height + 120}
+                  fill={`url(#grid-${job.id})`}
+                />
+                <polygon
+                  data-plan-outline="true"
+                  points={document.layout.outline
+                    .map((p) => `${p.x},${p.y}`)
+                    .join(" ")}
+                  pointerEvents="none"
+                  fill="#d9e2d7"
+                  stroke="#718375"
+                  strokeWidth=".025"
+                  strokeDasharray=".09 .07"
+                />
+                {document.layout.rooms.map((room, index) => {
+                  const p = center(room.polygon);
+                  return (
+                    <g key={room.id}>
+                      <polygon
+                        role="button"
+                        aria-label={`选择地板 ${room.name}`}
+                        tabIndex={tool === "rooms" ? 0 : -1}
+                        onKeyDown={(e) => {
+                          if (placement) return;
+                          if (e.key === "Enter") select("rooms", index);
+                        }}
+                        points={room.polygon
+                          .map((p) => `${p.x},${p.y}`)
+                          .join(" ")}
+                        fill={floorColor(
+                          room,
+                          floorColors[room.floor_finish || "default"],
+                        )}
+                        fillOpacity={room.floor_enabled === false ? 0.12 : 0.78}
+                        stroke={active("rooms", index) ? "#367e64" : "#b7c4b2"}
+                        strokeWidth={active("rooms", index) ? 0.05 : 0.015}
+                        style={{
+                          pointerEvents:
+                            tool === "rooms" && !drawing ? "auto" : "none",
+                          cursor: "move",
+                        }}
+                        onPointerDown={
+                          tool === "rooms"
+                            ? (e) => begin(e, { type: "rooms", index })
+                            : undefined
+                        }
+                      />
+                      <text
+                        x={p.x}
+                        y={p.y - 0.12}
+                        textAnchor="middle"
+                        className="room-plan-label"
+                      >
+                        {room.name}
+                      </text>
+                      <text
+                        x={p.x}
+                        y={p.y + 0.13}
+                        textAnchor="middle"
+                        className="room-area-label"
+                      >
+                        {polygonArea(room.polygon).toFixed(1)} ㎡
+                      </text>
+                    </g>
                   );
-                  return;
-                }
-                const offsets = {
-                  ArrowLeft: [-step, 0],
-                  ArrowRight: [step, 0],
-                  ArrowUp: [0, -step],
-                  ArrowDown: [0, step],
-                };
-                if (offsets[e.key] && item && !drawing) {
-                  e.preventDefault();
-                  move(...offsets[e.key].map((v) => v * (e.shiftKey ? 10 : 1)));
-                }
-              }}
-            >
-              <defs>
-                <pattern
-                  id={`grid-${job.id}`}
-                  width=".5"
-                  height=".5"
-                  patternUnits="userSpaceOnUse"
-                >
-                  <path
-                    d="M .5 0 L 0 0 0 .5"
-                    fill="none"
-                    stroke="#738a891c"
-                    strokeWidth=".015"
-                  />
-                </pattern>
-              </defs>
-              <rect
-                data-plan-background="true"
-                x={box.x - 60}
-                y={box.y - 60}
-                width={box.width + 120}
-                height={box.height + 120}
-                fill="#eaf0e8"
-              />
-              <rect
-                data-plan-background="true"
-                x={box.x - 60}
-                y={box.y - 60}
-                width={box.width + 120}
-                height={box.height + 120}
-                fill={`url(#grid-${job.id})`}
-              />
-              <polygon
-                data-plan-outline="true"
-                points={document.layout.outline
-                  .map((p) => `${p.x},${p.y}`)
-                  .join(" ")}
-                pointerEvents="none"
-                fill="#d9e2d7"
-                stroke="#718375"
-                strokeWidth=".025"
-                strokeDasharray=".09 .07"
-              />
-              {document.layout.rooms.map((room, index) => {
-                const p = center(room.polygon);
-                return (
-                  <g key={room.id}>
-                    <polygon
+                })}
+                {document.layout.walls.map((wall, index) => (
+                  <g
+                    key={wall.id}
+                    role="button"
+                    aria-label={`${openingTool ? "选择安装墙体" : "选择墙体"} ${index + 1}`}
+                    tabIndex={tool === "walls" || openingTool ? 0 : -1}
+                    onKeyDown={(e) => {
+                      if (placement) return;
+                      if (e.key === "Enter" && !busy && !drawing) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (openingTool) chooseOpeningWall(wall.id);
+                        else select("walls", index);
+                      }
+                    }}
+                    onPointerDown={
+                      tool === "walls"
+                        ? (e) => begin(e, { type: "walls", index })
+                        : openingTool && !drawing
+                          ? (e) => {
+                              if (busy || e.button !== 0) return;
+                              e.preventDefault();
+                              e.stopPropagation();
+                              lastNavigationClick.current = false;
+                              svg.current.focus({ preventScroll: true });
+                              chooseOpeningWall(wall.id, pointAt(e));
+                            }
+                          : undefined
+                    }
+                    style={{
+                      pointerEvents:
+                        tool === "walls" || openingTool ? "auto" : "none",
+                      cursor: openingTool ? "pointer" : "move",
+                    }}
+                  >
+                    <line
+                      x1={wall.start.x}
+                      y1={wall.start.y}
+                      x2={wall.end.x}
+                      y2={wall.end.y}
+                      stroke="transparent"
+                      strokeWidth={Math.max(0.22, wall.thickness + 0.12)}
+                    />
+                    <line
+                      x1={wall.start.x}
+                      y1={wall.start.y}
+                      x2={wall.end.x}
+                      y2={wall.end.y}
+                      stroke={
+                        active("walls", index) ||
+                        (openingTool && targetWallId === wall.id)
+                          ? "#318765"
+                          : resolveMaterial(wall.wall_material)?.color ||
+                            (wall.exterior ? "#445a55" : "#748880")
+                      }
+                      strokeWidth={
+                        wall.thickness +
+                        (openingTool && targetWallId === wall.id ? 0.04 : 0)
+                      }
+                      strokeLinecap="square"
+                    />
+                  </g>
+                ))}
+                {openingKind &&
+                  openingPreview &&
+                  (() => {
+                    const { opening, valid } = openingPreview;
+                    const wall = document.layout.walls.find(
+                      (wall) => wall.id === opening.wall_id,
+                    );
+                    if (
+                      !wall ||
+                      ![opening.offset, opening.width].every(Number.isFinite)
+                    )
+                      return null;
+                    const [a, b] = openingPoints(opening, wall);
+                    return (
+                      <g pointerEvents="none" data-opening-preview="true">
+                        <line
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          stroke={valid ? "#247c93" : "#bb653a"}
+                          strokeWidth={wall.thickness + 0.08}
+                          strokeDasharray="0.12 0.08"
+                        />
+                        {opening.kind === "door" &&
+                          opening.door_leaf !== false &&
+                          Number.isFinite(opening.angle) &&
+                          (() => {
+                            const [hinge, tip] = doorLeafPoints(opening, wall);
+                            return (
+                              <line
+                                x1={hinge.x}
+                                y1={hinge.y}
+                                x2={tip.x}
+                                y2={tip.y}
+                                stroke={valid ? "#247c93" : "#bb653a"}
+                                strokeWidth="0.045"
+                                strokeDasharray="0.1 0.06"
+                              />
+                            );
+                          })()}
+                        <circle
+                          cx={wall.start.x}
+                          cy={wall.start.y}
+                          r="0.07"
+                          fill="#fff"
+                          stroke="#247c93"
+                          strokeWidth="0.025"
+                        />
+                        <text
+                          x={wall.start.x}
+                          y={wall.start.y - 0.2}
+                          fontSize="0.16"
+                          fill="#264e48"
+                        >
+                          墙起点
+                        </text>
+                        <text
+                          x={(a.x + b.x) / 2}
+                          y={(a.y + b.y) / 2 + 0.32}
+                          textAnchor="middle"
+                          fontSize="0.18"
+                          fill={valid ? "#247c93" : "#a34e27"}
+                        >
+                          待添加{openingNames[opening.kind]} · {opening.width} m
+                        </text>
+                      </g>
+                    );
+                  })()}
+                {document.layout.openings.map((opening, index) => {
+                  const wall = document.layout.walls.find(
+                    (w) => w.id === opening.wall_id,
+                  );
+                  if (!wall) return null;
+                  const [a, b] = openingPoints(opening, wall);
+                  const selectable =
+                    toolFor("openings", opening) === tool &&
+                    !drawing &&
+                    !openingKind &&
+                    !pickingWall;
+                  const color =
+                    opening.kind === "window"
+                      ? "#5b9bab"
+                      : opening.kind === "passage"
+                        ? "#b18943"
+                        : "#859888";
+                  return (
+                    <g
+                      key={index}
                       role="button"
-                      aria-label={`选择地板 ${room.name}`}
-                      tabIndex={tool === "rooms" ? 0 : -1}
+                      aria-label={`选择${openingNames[opening.kind]} ${index + 1}`}
+                      tabIndex={selectable ? 0 : -1}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") select("rooms", index);
-                      }}
-                      points={room.polygon
-                        .map((p) => `${p.x},${p.y}`)
-                        .join(" ")}
-                      fill={floorColor(
-                        room,
-                        floorColors[room.floor_finish || "default"],
-                      )}
-                      fillOpacity={room.floor_enabled === false ? 0.12 : 0.78}
-                      stroke={active("rooms", index) ? "#367e64" : "#b7c4b2"}
-                      strokeWidth={active("rooms", index) ? 0.05 : 0.015}
-                      style={{
-                        pointerEvents:
-                          tool === "rooms" && !drawing ? "auto" : "none",
-                        cursor: "move",
+                        if (placement) return;
+                        if (e.key === "Enter") select("openings", index);
                       }}
                       onPointerDown={
-                        tool === "rooms"
-                          ? (e) => begin(e, { type: "rooms", index })
+                        selectable
+                          ? (e) => begin(e, { type: "openings", index })
                           : undefined
                       }
-                    />
-                    <text
-                      x={p.x}
-                      y={p.y - 0.12}
-                      textAnchor="middle"
-                      className="room-plan-label"
+                      style={{
+                        pointerEvents: selectable ? "auto" : "none",
+                        cursor: "grab",
+                      }}
                     >
-                      {room.name}
-                    </text>
-                    <text
-                      x={p.x}
-                      y={p.y + 0.13}
-                      textAnchor="middle"
-                      className="room-area-label"
-                    >
-                      {polygonArea(room.polygon).toFixed(1)} ㎡
-                    </text>
-                  </g>
-                );
-              })}
-              {document.layout.walls.map((wall, index) => (
-                <g
-                  key={wall.id}
-                  role="button"
-                  aria-label={`${openingTool ? "选择安装墙体" : "选择墙体"} ${index + 1}`}
-                  tabIndex={tool === "walls" || openingTool ? 0 : -1}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !busy && !drawing) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (openingTool) chooseOpeningWall(wall.id);
-                      else select("walls", index);
-                    }
-                  }}
-                  onPointerDown={
-                    tool === "walls"
-                      ? (e) => begin(e, { type: "walls", index })
-                      : openingTool && !drawing
-                        ? (e) => {
-                            if (busy || e.button !== 0) return;
-                            e.preventDefault();
-                            e.stopPropagation();
-                            lastNavigationClick.current = false;
-                            svg.current.focus({ preventScroll: true });
-                            chooseOpeningWall(wall.id, pointAt(e));
-                          }
-                        : undefined
-                  }
-                  style={{
-                    pointerEvents:
-                      tool === "walls" || openingTool ? "auto" : "none",
-                    cursor: openingTool ? "pointer" : "move",
-                  }}
-                >
-                  <line
-                    x1={wall.start.x}
-                    y1={wall.start.y}
-                    x2={wall.end.x}
-                    y2={wall.end.y}
-                    stroke="transparent"
-                    strokeWidth={Math.max(0.22, wall.thickness + 0.12)}
-                  />
-                  <line
-                    x1={wall.start.x}
-                    y1={wall.start.y}
-                    x2={wall.end.x}
-                    y2={wall.end.y}
-                    stroke={
-                      active("walls", index) ||
-                      (openingTool && targetWallId === wall.id)
-                        ? "#318765"
-                        : resolveMaterial(wall.wall_material)?.color ||
-                          (wall.exterior ? "#445a55" : "#748880")
-                    }
-                    strokeWidth={
-                      wall.thickness +
-                      (openingTool && targetWallId === wall.id ? 0.04 : 0)
-                    }
-                    strokeLinecap="square"
-                  />
-                </g>
-              ))}
-              {openingKind &&
-                openingPreview &&
-                (() => {
-                  const { opening, valid } = openingPreview;
-                  const wall = document.layout.walls.find(
-                    (wall) => wall.id === opening.wall_id,
-                  );
-                  if (
-                    !wall ||
-                    ![opening.offset, opening.width].every(Number.isFinite)
-                  )
-                    return null;
-                  const [a, b] = openingPoints(opening, wall);
-                  return (
-                    <g pointerEvents="none" data-opening-preview="true">
                       <line
                         x1={a.x}
                         y1={a.y}
                         x2={b.x}
                         y2={b.y}
-                        stroke={valid ? "#247c93" : "#bb653a"}
-                        strokeWidth={wall.thickness + 0.08}
-                        strokeDasharray="0.12 0.08"
+                        stroke={
+                          active("openings", index) ? "#61b78a" : "#eaf0e8"
+                        }
+                        strokeWidth={wall.thickness + 0.09}
+                      />
+                      <line
+                        x1={a.x}
+                        y1={a.y}
+                        x2={b.x}
+                        y2={b.y}
+                        stroke={color}
+                        strokeWidth={opening.kind === "window" ? 0.045 : 0.028}
+                        strokeDasharray={
+                          opening.kind === "window" ? undefined : ".08 .045"
+                        }
+                      />
+                      <line
+                        x1={a.x}
+                        y1={a.y}
+                        x2={b.x}
+                        y2={b.y}
+                        stroke="transparent"
+                        strokeWidth=".3"
                       />
                       {opening.kind === "door" &&
                         opening.door_leaf !== false &&
-                        Number.isFinite(opening.angle) &&
                         (() => {
-                          const [hinge, tip] = doorLeafPoints(opening, wall);
+                          const [h, t] = doorLeafPoints(opening, wall);
                           return (
                             <line
-                              x1={hinge.x}
-                              y1={hinge.y}
-                              x2={tip.x}
-                              y2={tip.y}
-                              stroke={valid ? "#247c93" : "#bb653a"}
-                              strokeWidth="0.045"
-                              strokeDasharray="0.1 0.06"
+                              x1={h.x}
+                              y1={h.y}
+                              x2={t.x}
+                              y2={t.y}
+                              stroke="#9b704d"
+                              strokeWidth=".045"
                             />
                           );
                         })()}
-                      <circle
-                        cx={wall.start.x}
-                        cy={wall.start.y}
-                        r="0.07"
-                        fill="#fff"
-                        stroke="#247c93"
-                        strokeWidth="0.025"
-                      />
-                      <text
-                        x={wall.start.x}
-                        y={wall.start.y - 0.2}
-                        fontSize="0.16"
-                        fill="#264e48"
-                      >
-                        墙起点
-                      </text>
-                      <text
-                        x={(a.x + b.x) / 2}
-                        y={(a.y + b.y) / 2 + 0.32}
-                        textAnchor="middle"
-                        fontSize="0.18"
-                        fill={valid ? "#247c93" : "#a34e27"}
-                      >
-                        待添加{openingNames[opening.kind]} · {opening.width} m
-                      </text>
+                      {active("openings", index) && (
+                        <text
+                          x={(a.x + b.x) / 2}
+                          y={(a.y + b.y) / 2 - 0.25}
+                          className="dimension-label"
+                          textAnchor="middle"
+                        >
+                          {openingNames[opening.kind]} · {opening.width} m
+                        </text>
+                      )}
                     </g>
                   );
-                })()}
-              {document.layout.openings.map((opening, index) => {
-                const wall = document.layout.walls.find(
-                  (w) => w.id === opening.wall_id,
-                );
-                if (!wall) return null;
-                const [a, b] = openingPoints(opening, wall);
-                const selectable =
-                  toolFor("openings", opening) === tool &&
-                  !drawing &&
-                  !openingKind &&
-                  !pickingWall;
-                const color =
-                  opening.kind === "window"
-                    ? "#5b9bab"
-                    : opening.kind === "passage"
-                      ? "#b18943"
-                      : "#859888";
-                return (
+                })}
+                {!hideFurniture &&
+                  document.furniture.items.map(
+                    (f, index) =>
+                      !f.edit_hidden && (
+                        <g
+                          key={index}
+                          role="button"
+                          aria-label={`选择家具 ${f.name || furnitureNames[f.kind]} ${index + 1}`}
+                          tabIndex={tool === "furniture" ? 0 : -1}
+                          onKeyDown={(e) => {
+                            if (placement) return;
+                            if (e.key === "Enter") select("furniture", index);
+                          }}
+                          transform={`translate(${f.x} ${f.y}) rotate(${f.rotation})`}
+                          onPointerDown={
+                            tool === "furniture"
+                              ? (e) => begin(e, { type: "furniture", index })
+                              : undefined
+                          }
+                          style={{
+                            pointerEvents:
+                              tool === "furniture" ? "auto" : "none",
+                            cursor: "grab",
+                            opacity: tool === "furniture" ? 1 : 0.55,
+                          }}
+                        >
+                          <rect
+                            x={-f.width / 2}
+                            y={-f.depth / 2}
+                            width={f.width}
+                            height={f.depth}
+                            rx=".045"
+                            fill={
+                              active("furniture", index)
+                                ? "#acd9bd"
+                                : f.kind === "rug"
+                                  ? "#c7bc9f"
+                                  : "#d0b792"
+                            }
+                            fillOpacity={f.kind === "rug" ? 0.5 : 1}
+                            stroke={
+                              active("furniture", index) ? "#297957" : "#907c5e"
+                            }
+                            strokeWidth={
+                              active("furniture", index) ? 0.04 : 0.018
+                            }
+                            strokeDasharray={
+                              f.kind === "rug" ? ".06 .04" : undefined
+                            }
+                          />
+                          <line
+                            x1={-f.width * 0.32}
+                            y1={-f.depth * 0.34}
+                            x2={f.width * 0.32}
+                            y2={-f.depth * 0.34}
+                            stroke="#6e79676b"
+                            strokeWidth=".025"
+                          />
+                          <text
+                            className="furniture-plan-label"
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize={Math.min(
+                              0.16,
+                              f.width / 3.5,
+                              f.depth / 2.5,
+                            )}
+                          >
+                            {f.name || furnitureNames[f.kind]}
+                          </text>
+                        </g>
+                      ),
+                  )}
+                {(document.layout.lights || []).map((light, index) => (
                   <g
-                    key={index}
+                    key={light.id}
                     role="button"
-                    aria-label={`选择${openingNames[opening.kind]} ${index + 1}`}
-                    tabIndex={selectable ? 0 : -1}
+                    aria-label={`选择灯具 ${light.name}`}
+                    tabIndex={tool === "lights" ? 0 : -1}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") select("openings", index);
+                      if (placement) return;
+                      if (e.key === "Enter") select("lights", index);
                     }}
                     onPointerDown={
-                      selectable
-                        ? (e) => begin(e, { type: "openings", index })
+                      tool === "lights" && !drawing
+                        ? (e) => begin(e, { type: "lights", index })
                         : undefined
                     }
                     style={{
-                      pointerEvents: selectable ? "auto" : "none",
+                      pointerEvents:
+                        tool === "lights" && !drawing ? "auto" : "none",
                       cursor: "grab",
                     }}
                   >
-                    <line
-                      x1={a.x}
-                      y1={a.y}
-                      x2={b.x}
-                      y2={b.y}
-                      stroke={active("openings", index) ? "#61b78a" : "#eaf0e8"}
-                      strokeWidth={wall.thickness + 0.09}
-                    />
-                    <line
-                      x1={a.x}
-                      y1={a.y}
-                      x2={b.x}
-                      y2={b.y}
-                      stroke={color}
-                      strokeWidth={opening.kind === "window" ? 0.045 : 0.028}
-                      strokeDasharray={
-                        opening.kind === "window" ? undefined : ".08 .045"
-                      }
-                    />
-                    <line
-                      x1={a.x}
-                      y1={a.y}
-                      x2={b.x}
-                      y2={b.y}
-                      stroke="transparent"
-                      strokeWidth=".3"
-                    />
-                    {opening.kind === "door" &&
-                      opening.door_leaf !== false &&
-                      (() => {
-                        const [h, t] = doorLeafPoints(opening, wall);
-                        return (
-                          <line
-                            x1={h.x}
-                            y1={h.y}
-                            x2={t.x}
-                            y2={t.y}
-                            stroke="#9b704d"
-                            strokeWidth=".045"
-                          />
-                        );
-                      })()}
-                    {active("openings", index) && (
-                      <text
-                        x={(a.x + b.x) / 2}
-                        y={(a.y + b.y) / 2 - 0.25}
-                        className="dimension-label"
-                        textAnchor="middle"
-                      >
-                        {openingNames[opening.kind]} · {opening.width} m
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-              {!hideFurniture &&
-                document.furniture.items.map(
-                  (f, index) =>
-                    !f.edit_hidden && (
-                      <g
-                        key={index}
-                        role="button"
-                        aria-label={`选择家具 ${f.name || furnitureNames[f.kind]} ${index + 1}`}
-                        tabIndex={tool === "furniture" ? 0 : -1}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") select("furniture", index);
-                        }}
-                        transform={`translate(${f.x} ${f.y}) rotate(${f.rotation})`}
-                        onPointerDown={
-                          tool === "furniture"
-                            ? (e) => begin(e, { type: "furniture", index })
-                            : undefined
-                        }
-                        style={{
-                          pointerEvents: tool === "furniture" ? "auto" : "none",
-                          cursor: "grab",
-                          opacity: tool === "furniture" ? 1 : 0.55,
-                        }}
-                      >
-                        <rect
-                          x={-f.width / 2}
-                          y={-f.depth / 2}
-                          width={f.width}
-                          height={f.depth}
-                          rx=".045"
-                          fill={
-                            active("furniture", index)
-                              ? "#acd9bd"
-                              : f.kind === "rug"
-                                ? "#c7bc9f"
-                                : "#d0b792"
-                          }
-                          fillOpacity={f.kind === "rug" ? 0.5 : 1}
-                          stroke={
-                            active("furniture", index) ? "#297957" : "#907c5e"
-                          }
-                          strokeWidth={
-                            active("furniture", index) ? 0.04 : 0.018
-                          }
-                          strokeDasharray={
-                            f.kind === "rug" ? ".06 .04" : undefined
-                          }
-                        />
-                        <line
-                          x1={-f.width * 0.32}
-                          y1={-f.depth * 0.34}
-                          x2={f.width * 0.32}
-                          y2={-f.depth * 0.34}
-                          stroke="#6e79676b"
-                          strokeWidth=".025"
-                        />
-                        <text
-                          className="furniture-plan-label"
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fontSize={Math.min(
-                            0.16,
-                            f.width / 3.5,
-                            f.depth / 2.5,
-                          )}
-                        >
-                          {f.name || furnitureNames[f.kind]}
-                        </text>
-                      </g>
-                    ),
-                )}
-              {(document.layout.lights || []).map((light, index) => (
-                <g
-                  key={light.id}
-                  role="button"
-                  aria-label={`选择灯具 ${light.name}`}
-                  tabIndex={tool === "lights" ? 0 : -1}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") select("lights", index);
-                  }}
-                  onPointerDown={
-                    tool === "lights" && !drawing
-                      ? (e) => begin(e, { type: "lights", index })
-                      : undefined
-                  }
-                  style={{
-                    pointerEvents:
-                      tool === "lights" && !drawing ? "auto" : "none",
-                    cursor: "grab",
-                  }}
-                >
-                  <circle
-                    cx={light.x}
-                    cy={light.y}
-                    r=".2"
-                    fill={
-                      light.enabled ? lightColors[light.temperature] : "#abb0a4"
-                    }
-                    stroke={active("lights", index) ? "#297957" : "#ac8542"}
-                    strokeWidth=".035"
-                  />
-                  <text
-                    x={light.x}
-                    y={light.y + 0.055}
-                    textAnchor="middle"
-                    fontSize=".18"
-                    fill="#77591e"
-                    pointerEvents="none"
-                  >
-                    ☀
-                  </text>
-                  <text
-                    x={light.x}
-                    y={light.y - 0.28}
-                    className="dimension-label"
-                    textAnchor="middle"
-                  >
-                    {light.name}
-                  </text>
-                </g>
-              ))}
-              {item &&
-                selected.type === "walls" &&
-                ["start", "end"].map((key) => (
-                  <g key={key}>
                     <circle
-                      cx={item[key].x}
-                      cy={item[key].y}
-                      r=".09"
-                      fill="#fff"
-                      stroke="#297957"
+                      cx={light.x}
+                      cy={light.y}
+                      r=".2"
+                      fill={
+                        light.enabled
+                          ? lightColors[light.temperature]
+                          : "#abb0a4"
+                      }
+                      stroke={active("lights", index) ? "#297957" : "#ac8542"}
                       strokeWidth=".035"
-                      className="plan-handle"
-                      onPointerDown={(e) => begin(e, selected, key)}
-                      aria-label={`拖动墙体${key === "start" ? "起点" : "终点"}`}
                     />
                     <text
-                      x={item[key].x + 0.13}
-                      y={item[key].y - 0.13}
-                      className="dimension-label"
+                      x={light.x}
+                      y={light.y + 0.055}
+                      textAnchor="middle"
+                      fontSize=".18"
+                      fill="#77591e"
+                      pointerEvents="none"
                     >
-                      {key === "start" ? "起点" : "终点"}
+                      ☀
+                    </text>
+                    <text
+                      x={light.x}
+                      y={light.y - 0.28}
+                      className="dimension-label"
+                      textAnchor="middle"
+                    >
+                      {light.name}
                     </text>
                   </g>
                 ))}
-              {item &&
-                selected.type === "rooms" &&
-                item.polygon.map((p, index) => (
-                  <g key={index}>
-                    <circle
-                      cx={p.x}
-                      cy={p.y}
-                      r=".09"
-                      fill="#fff"
-                      stroke="#297957"
-                      strokeWidth=".035"
-                      className="plan-handle"
-                      onPointerDown={(e) => begin(e, selected, index)}
-                      aria-label={`拖动地板角点 ${index + 1}`}
-                    />
-                    <text
-                      x={p.x + 0.13}
-                      y={p.y - 0.1}
-                      className="dimension-label"
-                    >
-                      {index + 1}
-                    </text>
-                  </g>
-                ))}
-              {tool === "furniture" && item && !drawing && (
-                <g
-                  transform={`translate(${item.x} ${item.y}) rotate(${item.rotation})`}
-                >
-                  <line
-                    y1={-item.depth / 2}
-                    y2={-item.depth / 2 - 0.38}
-                    stroke="#297957"
-                    strokeWidth=".025"
-                    pointerEvents="none"
-                  />
-                  <circle
-                    cy={-item.depth / 2 - 0.38}
-                    r=".17"
-                    fill="#297957"
-                    stroke="#fff"
-                    strokeWidth=".03"
-                    pointerEvents="none"
-                  />
-                  <circle
-                    cy={-item.depth / 2 - 0.38}
-                    r=".34"
-                    fill="transparent"
-                    className="rotation-handle"
-                    role="button"
-                    tabIndex={0}
-                    aria-label="拖动旋转家具"
-                    onPointerDown={(e) => begin(e, selected, "rotate")}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        rotate(item.rotation + 15);
-                      }
-                    }}
-                  />
-                  <text
-                    y={-item.depth / 2 - 0.38}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill="#fff"
-                    fontSize=".19"
-                    pointerEvents="none"
-                  >
-                    ↻
-                  </text>
-                  <text
-                    y={-item.depth / 2 - 0.64}
-                    textAnchor="middle"
-                    className="dimension-label"
-                    transform={`rotate(${-item.rotation} 0 ${-item.depth / 2 - 0.64})`}
-                  >
-                    {normalizeRotation(item.rotation)}°
-                  </text>
-                </g>
-              )}
-              {drawing && (
-                <g pointerEvents="none">
-                  <polyline
-                    points={drawing.points
-                      .map((p) => `${p.x},${p.y}`)
-                      .join(" ")}
-                    fill="none"
-                    stroke="#db8736"
-                    strokeWidth=".05"
-                  />
-                  {drawing.points.map((p, i) => (
-                    <g key={i}>
-                      <circle cx={p.x} cy={p.y} r=".07" fill="#db8736" />
+                {item &&
+                  selected.type === "walls" &&
+                  ["start", "end"].map((key) => (
+                    <g key={key}>
+                      <circle
+                        cx={item[key].x}
+                        cy={item[key].y}
+                        r=".09"
+                        fill="#fff"
+                        stroke="#297957"
+                        strokeWidth=".035"
+                        className="plan-handle"
+                        onPointerDown={(e) => begin(e, selected, key)}
+                        aria-label={`拖动墙体${key === "start" ? "起点" : "终点"}`}
+                      />
                       <text
-                        x={p.x + 0.1}
-                        y={p.y - 0.1}
+                        x={item[key].x + 0.13}
+                        y={item[key].y - 0.13}
                         className="dimension-label"
                       >
-                        {i + 1}
+                        {key === "start" ? "起点" : "终点"}
                       </text>
                     </g>
                   ))}
-                </g>
-              )}
-              {selected?.type === "walls" &&
-                item &&
-                wallSides(item, document.layout.rooms).map((side) => (
-                  <text
-                    key={side.side}
-                    x={side.x}
-                    y={side.y}
-                    textAnchor="middle"
-                    fontSize=".16"
-                    fill="#175938"
-                    stroke="white"
-                    strokeWidth=".04"
-                    paintOrder="stroke"
-                    pointerEvents="none"
+                {item &&
+                  selected.type === "rooms" &&
+                  item.polygon.map((p, index) => (
+                    <g key={index}>
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r=".09"
+                        fill="#fff"
+                        stroke="#297957"
+                        strokeWidth=".035"
+                        className="plan-handle"
+                        onPointerDown={(e) => begin(e, selected, index)}
+                        aria-label={`拖动地板角点 ${index + 1}`}
+                      />
+                      <text
+                        x={p.x + 0.13}
+                        y={p.y - 0.1}
+                        className="dimension-label"
+                      >
+                        {index + 1}
+                      </text>
+                    </g>
+                  ))}
+                {tool === "furniture" && item && !drawing && (
+                  <g
+                    transform={`translate(${item.x} ${item.y}) rotate(${item.rotation})`}
                   >
-                    {side.label}
-                  </text>
-                ))}
-              {measure.length === 2 && (
-                <g pointerEvents="none">
-                  <line
-                    x1={measure[0].x}
-                    y1={measure[0].y}
-                    x2={measure[1].x}
-                    y2={measure[1].y}
-                    stroke="#b15819"
+                    <line
+                      y1={-item.depth / 2}
+                      y2={-item.depth / 2 - 0.38}
+                      stroke="#297957"
+                      strokeWidth=".025"
+                      pointerEvents="none"
+                    />
+                    <circle
+                      cy={-item.depth / 2 - 0.38}
+                      r=".17"
+                      fill="#297957"
+                      stroke="#fff"
+                      strokeWidth=".03"
+                      pointerEvents="none"
+                    />
+                    <circle
+                      cy={-item.depth / 2 - 0.38}
+                      r=".34"
+                      fill="transparent"
+                      className="rotation-handle"
+                      role="button"
+                      tabIndex={0}
+                      aria-label="拖动旋转家具"
+                      onPointerDown={(e) => begin(e, selected, "rotate")}
+                      onKeyDown={(e) => {
+                        if (placement) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          rotate(item.rotation + 15);
+                        }
+                      }}
+                    />
+                    <text
+                      y={-item.depth / 2 - 0.38}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="#fff"
+                      fontSize=".19"
+                      pointerEvents="none"
+                    >
+                      ↻
+                    </text>
+                    <text
+                      y={-item.depth / 2 - 0.64}
+                      textAnchor="middle"
+                      className="dimension-label"
+                      transform={`rotate(${-item.rotation} 0 ${-item.depth / 2 - 0.64})`}
+                    >
+                      {normalizeRotation(item.rotation)}°
+                    </text>
+                  </g>
+                )}
+                {drawing && (
+                  <g pointerEvents="none">
+                    <polyline
+                      points={drawing.points
+                        .map((p) => `${p.x},${p.y}`)
+                        .join(" ")}
+                      fill="none"
+                      stroke="#db8736"
+                      strokeWidth=".05"
+                    />
+                    {drawing.points.map((p, i) => (
+                      <g key={i}>
+                        <circle cx={p.x} cy={p.y} r=".07" fill="#db8736" />
+                        <text
+                          x={p.x + 0.1}
+                          y={p.y - 0.1}
+                          className="dimension-label"
+                        >
+                          {i + 1}
+                        </text>
+                      </g>
+                    ))}
+                  </g>
+                )}
+                {selected?.type === "walls" &&
+                  item &&
+                  wallSides(item, document.layout.rooms).map((side) => (
+                    <text
+                      key={side.side}
+                      x={side.x}
+                      y={side.y}
+                      textAnchor="middle"
+                      fontSize=".16"
+                      fill="#175938"
+                      stroke="white"
+                      strokeWidth=".04"
+                      paintOrder="stroke"
+                      pointerEvents="none"
+                    >
+                      {side.label}
+                    </text>
+                  ))}
+                {measure.length === 2 && (
+                  <g pointerEvents="none">
+                    <line
+                      x1={measure[0].x}
+                      y1={measure[0].y}
+                      x2={measure[1].x}
+                      y2={measure[1].y}
+                      stroke="#b15819"
+                      strokeWidth=".025"
+                      strokeDasharray=".08 .04"
+                    />
+                    <text
+                      x={(measure[0].x + measure[1].x) / 2}
+                      y={(measure[0].y + measure[1].y) / 2 - 0.1}
+                      fontSize=".18"
+                      fill="#73340b"
+                    >
+                      {Math.hypot(
+                        measure[1].x - measure[0].x,
+                        measure[1].y - measure[0].y,
+                      ).toFixed(2)}{" "}
+                      m
+                    </text>
+                  </g>
+                )}
+                {selectionBox && (
+                  <rect
+                    x={Math.min(selectionBox.start.x, selectionBox.end.x)}
+                    y={Math.min(selectionBox.start.y, selectionBox.end.y)}
+                    width={Math.abs(selectionBox.start.x - selectionBox.end.x)}
+                    height={Math.abs(selectionBox.start.y - selectionBox.end.y)}
+                    fill="#63987533"
+                    stroke="#28613b"
                     strokeWidth=".025"
-                    strokeDasharray=".08 .04"
+                    pointerEvents="none"
                   />
-                  <text
-                    x={(measure[0].x + measure[1].x) / 2}
-                    y={(measure[0].y + measure[1].y) / 2 - 0.1}
-                    fontSize=".18"
-                    fill="#73340b"
-                  >
-                    {Math.hypot(
-                      measure[1].x - measure[0].x,
-                      measure[1].y - measure[0].y,
-                    ).toFixed(2)}{" "}
-                    m
-                  </text>
-                </g>
-              )}
-              {selectionBox && (
-                <rect
-                  x={Math.min(selectionBox.start.x, selectionBox.end.x)}
-                  y={Math.min(selectionBox.start.y, selectionBox.end.y)}
-                  width={Math.abs(selectionBox.start.x - selectionBox.end.x)}
-                  height={Math.abs(selectionBox.start.y - selectionBox.end.y)}
-                  fill="#63987533"
-                  stroke="#28613b"
-                  strokeWidth=".025"
-                  pointerEvents="none"
-                />
-              )}
-              {overlay && (
-                <image
-                  transform={`translate(${box.x + box.width / 2 + registration.x} ${box.y + box.height / 2 + registration.y}) rotate(${registration.rotation}) scale(${registration.scale}) translate(${-box.x - box.width / 2} ${-box.y - box.height / 2})`}
-                  href={
-                    job.source_url || `/api/jobs/${job.id}/artifacts/source.png`
-                  }
-                  x={box.x}
-                  y={box.y}
-                  width={box.width}
-                  height={box.height}
-                  opacity={opacity}
-                  preserveAspectRatio="xMidYMid meet"
-                  pointerEvents="none"
-                />
-              )}
-            </svg>
-            <div className="plan-navigation">
-              <p
-                className="plan-navigation-hint"
-                id={`plan-navigation-${job.id}`}
-              >
-                滚轮缩放 · 拖空白平移 · 空格拖动
-              </p>
-              <div className="plan-zoom">
-                <div
-                  className="plan-navigation-modes"
-                  role="group"
-                  aria-label="画布操作模式"
+                )}
+                {overlay && (
+                  <image
+                    transform={`translate(${box.x + box.width / 2 + registration.x} ${box.y + box.height / 2 + registration.y}) rotate(${registration.rotation}) scale(${registration.scale}) translate(${-box.x - box.width / 2} ${-box.y - box.height / 2})`}
+                    href={
+                      job.source_url ||
+                      `/api/jobs/${job.id}/artifacts/source.png`
+                    }
+                    x={box.x}
+                    y={box.y}
+                    width={box.width}
+                    height={box.height}
+                    opacity={opacity}
+                    preserveAspectRatio="xMidYMid meet"
+                    pointerEvents="none"
+                  />
+                )}
+                {placementResult && (
+                  <g pointerEvents="none">
+                    <polygon
+                      points={furnitureCorners(placementResult.item)
+                        .map((p) => `${p.x},${p.y}`)
+                        .join(" ")}
+                      fill={placementResult.valid ? "#10b98133" : "#ef444433"}
+                      stroke={placementResult.valid ? "#047857" : "#dc2626"}
+                      strokeWidth=".045"
+                      strokeDasharray=".12 .06"
+                    />
+                    <text
+                      x={placementResult.item.x}
+                      y={placementResult.item.y}
+                      textAnchor="middle"
+                      fontSize=".18"
+                      fill={placementResult.valid ? "#065f46" : "#991b1b"}
+                    >
+                      待放置
+                    </text>
+                  </g>
+                )}
+              </svg>
+              <div className="plan-navigation">
+                <p
+                  className="plan-navigation-hint"
+                  id={`plan-navigation-${job.id}`}
                 >
-                  <button
-                    aria-label="选择并编辑"
-                    title="选择／编辑：选择对象，拖动修改布局"
-                    aria-pressed={!navigation.panMode}
-                    onClick={() => navigation.setPanMode(false)}
+                  滚轮缩放 · 拖空白平移 · 空格拖动
+                </p>
+                <div className="plan-zoom">
+                  <div
+                    className="plan-navigation-modes"
+                    role="group"
+                    aria-label="画布操作模式"
                   >
-                    <MousePointer2 size={15} />
+                    <button
+                      aria-label="选择并编辑"
+                      title="选择／编辑：选择对象，拖动修改布局"
+                      aria-pressed={!navigation.panMode}
+                      onClick={() => navigation.setPanMode(false)}
+                    >
+                      <MousePointer2 size={15} />
+                    </button>
+                    <button
+                      aria-label="平移画布"
+                      title="平移：在任意位置拖动画布"
+                      aria-pressed={navigation.panMode}
+                      onClick={() => navigation.setPanMode(true)}
+                    >
+                      <Hand size={15} />
+                    </button>
+                  </div>
+                  <button
+                    aria-label="缩小平面图"
+                    onClick={() => navigation.zoomBy(1 / 1.2)}
+                  >
+                    <Minus size={15} />
+                  </button>
+                  <span className="plan-zoom-value">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <button
+                    aria-label="放大平面图"
+                    onClick={() => navigation.zoomBy(1.2)}
+                  >
+                    <Plus size={15} />
                   </button>
                   <button
-                    aria-label="平移画布"
-                    title="平移：在任意位置拖动画布"
-                    aria-pressed={navigation.panMode}
-                    onClick={() => navigation.setPanMode(true)}
+                    aria-label="适配平面图"
+                    title="适配全图（双击空白处或按 0）"
+                    onClick={navigation.reset}
                   >
-                    <Hand size={15} />
+                    <Focus size={15} />
                   </button>
                 </div>
-                <button
-                  aria-label="缩小平面图"
-                  onClick={() => navigation.zoomBy(1 / 1.2)}
-                >
-                  <Minus size={15} />
-                </button>
-                <span className="plan-zoom-value">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <button
-                  aria-label="放大平面图"
-                  onClick={() => navigation.zoomBy(1.2)}
-                >
-                  <Plus size={15} />
-                </button>
-                <button
-                  aria-label="适配平面图"
-                  title="适配全图（双击空白处或按 0）"
-                  onClick={navigation.reset}
-                >
-                  <Focus size={15} />
-                </button>
               </div>
-            </div>
-            <div className="plan-legend">
-              <span>
-                <i />
-                墙体
-              </span>
-              <span>
-                <i className="window" />
-                窗户
-              </span>
-              <span>
-                <i className="passage" />
-                开放通道
-              </span>
-              <span>方向键微移 · Shift 加速</span>
-            </div>
-          </section>
-          <aside
-            className="edit-properties edit-inspector"
-            aria-label="对象属性"
-          >
-            <div className="inspector-heading">
-              <span>对象属性</span>
-              <strong>
-                {openingKind
-                  ? `新增${openingNames[openingKind]}`
-                  : selectedName}
-              </strong>
-              <small>
-                {item ? "修改即时反映在平面图" : "从对象库或平面图选择对象"}
-              </small>
-            </div>
-            {item && (
-              <button
-                className="text-button"
-                onClick={() => {
-                  const key = `${selected.type}:${selected.index}`;
-                  toggleLock();
-                }}
-              >
-                {locked.includes(`${selected.type}:${selected.index}`)
-                  ? "解锁对象"
-                  : "锁定对象"}
-              </button>
-            )}
-            <fieldset
-              disabled={
-                busy ||
-                !!drawing ||
-                locked.includes(`${selected?.type}:${selected?.index}`)
-              }
+              <div className="plan-legend">
+                <span>
+                  <i />
+                  墙体
+                </span>
+                <span>
+                  <i className="window" />
+                  窗户
+                </span>
+                <span>
+                  <i className="passage" />
+                  开放通道
+                </span>
+                <span>方向键微移 · Shift 加速</span>
+              </div>
+            </section>
+          )}
+          <LiveParameterContext.Provider value={isScene && !busy && !drawing}>
+            <aside
+              key={`${editorView}:${selected?.type}:${item?.edit_id || item?.id || selected?.index}`}
+              className="edit-properties edit-inspector"
+              aria-label="对象属性"
             >
-              {item && ["rooms", "walls"].includes(selected?.type) && (
-                <LocalReview
-                  key={`${selected.type}:${item.id}`}
-                  job={job}
-                  document={draft.document}
-                  selected={selected}
-                  onApply={(next) => draft.commit(next, false)}
-                  onLocate={(type, id) => {
-                    const index = objects(document, type).findIndex(
-                      (x) => x.id === id,
-                    );
-                    if (index >= 0) {
-                      select(type, index);
-                      const object = objects(document, type)[index];
-                      navigation.focus(
-                        type === "rooms"
-                          ? center(object.polygon)
-                          : {
-                              x: (object.start.x + object.end.x) / 2,
-                              y: (object.start.y + object.end.y) / 2,
-                            },
-                        Math.max(1.5, navigation.zoom),
-                      );
-                    }
-                  }}
-                />
-              )}
-              {openingKind && (
-                <OpeningComposer
-                  key={`${openingKind}-${openingSequence}`}
-                  layout={document.layout}
-                  wallId={targetWallId}
-                  kind={openingKind}
-                  anchor={openingAnchor}
-                  onPreview={setOpeningPreview}
-                  onAdd={commitOpening}
-                  onCancel={cancelOpening}
-                />
-              )}
+              <div className="inspector-heading">
+                <span>对象属性</span>
+                <strong>
+                  {openingKind
+                    ? `新增${openingNames[openingKind]}`
+                    : selectedName}
+                </strong>
+                <small>
+                  {isScene
+                    ? item
+                      ? "参数停输后自动更新 · Enter 立即应用"
+                      : "从对象库或三维模型选择对象"
+                    : item
+                      ? "修改即时反映在平面图"
+                      : "从对象库或平面图选择对象"}
+                </small>
+              </div>
               {item && (
-                <div
-                  className="edit-section"
-                  key={`${selected.type}-${selected.index}-${item.id || item.kind || ""}`}
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    const key = `${selected.type}:${selected.index}`;
+                    toggleLock();
+                  }}
                 >
-                  {selected.type === "lights" && (
-                    <>
-                      <label className="edit-label">
-                        灯具名称
-                        <input
-                          aria-label="灯具名称"
-                          maxLength={60}
-                          value={item.name}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.name = e.target.value;
-                            })
-                          }
-                        />
-                      </label>
-                      <label className="edit-label">
-                        灯具类型
-                        <select
-                          aria-label="灯具类型"
-                          value={item.kind}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.kind = e.target.value;
-                            })
-                          }
-                        >
-                          {Object.entries(lightNames).map(([id, name]) => (
-                            <option key={id} value={id}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="edit-number-grid">
-                        {number("左右位置", "x", -60, 60)}
-                        {number("上下位置", "y", -60, 60)}
-                        {number("发光点高度", "elevation", 0.3, 4.5)}
-                        {number("灯具亮度", "lumens", 0, 3000, "lm")}
-                      </div>
-                      <label className="edit-label">
-                        灯光色温
-                        <select
-                          aria-label="灯光色温"
-                          value={item.temperature}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.temperature = Number(e.target.value);
-                            })
-                          }
-                        >
-                          <option value={2700}>2700K 暖黄光</option>
-                          <option value={3000}>3000K 暖白光</option>
-                          <option value={4000}>4000K 自然光</option>
-                          <option value={6500}>6500K 冷白光</option>
-                        </select>
-                      </label>
-                      <label className="edit-label">
-                        灯具开关
-                        <select
-                          aria-label="灯具开关"
-                          value={item.enabled ? "on" : "off"}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.enabled = e.target.value === "on";
-                            })
-                          }
-                        >
-                          <option value="on">夜晚开启</option>
-                          <option value="off">关闭</option>
-                        </select>
-                      </label>
-                      <p className="field-note">
-                        白天关闭人工灯光；夜晚按已保存的开关、亮度和色温照明。
-                      </p>
-                      <LightGroupControls
-                        document={document}
-                        index={selected.index}
-                        onCommit={draft.commit}
-                      />
-                    </>
-                  )}
-                  {selected.type === "furniture" && (
-                    <>
-                      {showerKinds.includes(item.kind) && (
+                  {locked.includes(`${selected.type}:${selected.index}`)
+                    ? "解锁对象"
+                    : "锁定对象"}
+                </button>
+              )}
+              <fieldset
+                disabled={
+                  busy ||
+                  !!drawing ||
+                  locked.includes(`${selected?.type}:${selected?.index}`)
+                }
+              >
+                {item && ["rooms", "walls"].includes(selected?.type) && (
+                  <LocalReview
+                    key={`${selected.type}:${item.id}`}
+                    job={job}
+                    document={draft.document}
+                    selected={selected}
+                    onApply={(next) => draft.commit(next, false)}
+                    onLocate={(type, id) => {
+                      const index = objects(document, type).findIndex(
+                        (x) => x.id === id,
+                      );
+                      if (index >= 0) {
+                        select(type, index);
+                        const object = objects(document, type)[index];
+                        navigation.focus(
+                          type === "rooms"
+                            ? center(object.polygon)
+                            : {
+                                x: (object.start.x + object.end.x) / 2,
+                                y: (object.start.y + object.end.y) / 2,
+                              },
+                          Math.max(1.5, navigation.zoom),
+                        );
+                      }
+                    }}
+                  />
+                )}
+                {openingKind && (
+                  <OpeningComposer
+                    key={`${openingKind}-${openingSequence}`}
+                    layout={document.layout}
+                    wallId={targetWallId}
+                    kind={openingKind}
+                    anchor={openingAnchor}
+                    onPreview={setOpeningPreview}
+                    onAdd={commitOpening}
+                    onCancel={cancelOpening}
+                  />
+                )}
+                {item && (
+                  <div
+                    className="edit-section"
+                    key={`${selected.type}-${selected.index}-${item.id || item.kind || ""}`}
+                  >
+                    {selected.type === "lights" && (
+                      <>
                         <label className="edit-label">
-                          淋浴形式
-                          <select
-                            aria-label="淋浴形式"
-                            value={item.kind}
-                            onChange={(e) =>
-                              patch((_, target) => {
-                                target.kind = e.target.value;
-                                target.name = furnitureNames[e.target.value];
-                                target.asset_id = null;
-                              })
-                            }
-                          >
-                            <option value="shower">
-                              独立淋浴房 · 带实体背板
-                            </option>
-                            <option value="shower_walk_in">
-                              步入式 · 单片玻璃隔断
-                            </option>
-                            <option value="shower_open">
-                              开放式 · 花洒与地漏
-                            </option>
-                          </select>
-                          <span className="field-note">
-                            步入式和开放式借用房间原有墙面，不新增房间。0°
-                            时花洒朝上方墙面、入口朝下方；旋转可调整方向。请避开窗户并预留至少
-                            0.55 米入口空间。
-                            开放式需结合实际防水、排水和挡水设计。切换形式保留位置与尺寸，保存后更新三维。
-                          </span>
-                        </label>
-                      )}
-                      {item.kind === "custom" && (
-                        <button
-                          className="diy-library-trigger"
-                          onClick={() =>
-                            setDiyOpen({ mode: "edit", index: selected.index })
-                          }
-                        >
-                          <Sparkles size={14} />
-                          编辑 DIY 部件
-                        </button>
-                      )}
-                      <RotationControl
-                        value={item.rotation}
-                        onChange={rotate}
-                      />
-                      <h3 className="property-group-title">位置与尺寸</h3>
-                      <div className="edit-number-grid">
-                        {number("左右位置", "x", -60, 60)}
-                        {number("上下位置", "y", -60, 60)}
-                        {number("家具宽度", "width", 0.1, 6)}
-                        {number("家具进深", "depth", 0.1, 6)}
-                        {number("家具高度", "height", 0.02, 3)}
-                        {number(
-                          "底部离地高度",
-                          "elevation",
-                          0,
-                          Math.min(3, 4.5 - item.height),
-                        )}
-                      </div>
-                      <p className="field-note">
-                        坐标为家具中心，尺寸为旋转前的本体尺寸。跨空间移动后自动匹配能完整容纳家具的空间。
-                        {item.kind === "wall_television" &&
-                          "壁挂电视建议底部离地 1.05 米，可放在低电视柜上方；安装高度保存后反映在三维模型中。"}
-                      </p>
-                      <details className="edit-vertices">
-                        <summary>名称、类型与所属空间</summary>
-                        <label className="edit-label">
-                          家具名称
+                          灯具名称
                           <input
-                            aria-label="家具名称"
-                            value={item.name || ""}
+                            aria-label="灯具名称"
                             maxLength={60}
-                            placeholder={furnitureNames[item.kind]}
+                            value={item.name}
                             onChange={(e) =>
                               patch((_, target) => {
                                 target.name = e.target.value;
@@ -2656,10 +2991,9 @@ export default function ManualEditor({
                           />
                         </label>
                         <label className="edit-label">
-                          家具类型
+                          灯具类型
                           <select
-                            aria-label="家具类型"
-                            disabled={item.kind === "custom" || !!item.asset_id}
+                            aria-label="灯具类型"
                             value={item.kind}
                             onChange={(e) =>
                               patch((_, target) => {
@@ -2667,625 +3001,839 @@ export default function ManualEditor({
                               })
                             }
                           >
-                            {item.kind === "custom" && (
-                              <option value="custom">DIY 自定义素材</option>
-                            )}
-                            {item.kind === "model" && (
-                              <option value="model">GLB 素材</option>
-                            )}
-                            {Object.entries(furnitureNames)
-                              .filter(
-                                ([id]) => !["custom", "model"].includes(id),
-                              )
-                              .map(([id, name]) => (
-                                <option key={id} value={id}>
-                                  {name}
-                                </option>
-                              ))}
+                            {Object.entries(lightNames).map(([id, name]) => (
+                              <option key={id} value={id}>
+                                {name}
+                              </option>
+                            ))}
                           </select>
                         </label>
+                        <div className="edit-number-grid">
+                          {number("发光点高度", "elevation", 0.3, 4.5)}
+                          {number("灯具亮度", "lumens", 0, 3000, "lm")}
+                        </div>
                         <label className="edit-label">
-                          所属空间
+                          灯光色温
                           <select
-                            value={item.room_id}
+                            aria-label="灯光色温"
+                            value={item.temperature}
                             onChange={(e) =>
                               patch((_, target) => {
-                                target.room_id = e.target.value;
+                                target.temperature = Number(e.target.value);
                               })
                             }
                           >
-                            {document.layout.rooms.map((room) => (
-                              <option key={room.id} value={room.id}>
-                                {room.name}
-                              </option>
-                            ))}
+                            <option value={2700}>2700K 暖黄光</option>
+                            <option value={3000}>3000K 暖白光</option>
+                            <option value={4000}>4000K 自然光</option>
+                            <option value={6500}>6500K 冷白光</option>
                           </select>
                         </label>
-                      </details>
-                    </>
-                  )}
-                  {selected.type === "walls" && (
-                    <>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={!!item.load_bearing}
-                          onChange={(e) =>
-                            patch((_, w) => {
-                              w.load_bearing = e.target.checked;
-                            })
-                          }
-                        />{" "}
-                        已核实为承重墙
-                      </label>
-                      {item.load_bearing && (
-                        <p className="workspace-note">
-                          已标记承重结构，改动前需专业人员核实。
-                        </p>
-                      )}
-                      <details className="edit-advanced">
-                        <summary>按此墙长度校准平面尺寸</summary>
-                        <p>
-                          当前长 {wallLength(item).toFixed(3)}{" "}
-                          m；校准会等比调整全屋平面，墙高与家具高度保持不变，可撤销。
-                        </p>
-                        <NumberField
-                          label="墙体实际长度"
-                          value={actualLength}
-                          min={0.1}
-                          max={60}
-                          onCommit={setActualLength}
-                        />
-                        <button
-                          onClick={() => {
-                            try {
-                              draft.commit(
-                                calibrate(
-                                  draft.document,
-                                  wallLength(item),
-                                  actualLength,
-                                ),
-                                false,
-                              );
-                            } catch (e) {
-                              setError(e.message);
-                            }
-                          }}
-                        >
-                          应用尺寸校准
-                        </button>
-                      </details>
-                      <WallElevation
-                        wall={item}
-                        openings={document.layout.openings}
-                        onChange={(regions) =>
-                          patch((_, w) => {
-                            w.finish_regions = regions;
-                          })
-                        }
-                      />
-                      <label className="edit-label">
-                        装修哪一侧
-                        <select
-                          aria-label="墙面装修侧"
-                          value={wallSide}
-                          onChange={(e) => setWallSide(e.target.value)}
-                        >
-                          <option value="both">整段墙体 · 两侧统一</option>
-                          <option value="left">
-                            A 面 ·{" "}
-                            {wallSides(item, document.layout.rooms)[0]?.room}
-                          </option>
-                          <option value="right">
-                            B 面 ·{" "}
-                            {wallSides(item, document.layout.rooms)[1]?.room}
-                          </option>
-                        </select>
-                      </label>
-                      <SurfaceFinishPicker
-                        category="walls"
-                        hint={
-                          wallSide === "both"
-                            ? "统一此墙两侧材质，并清除两侧单独设置。"
-                            : `仅修改 ${wallSide === "left" ? "A" : "B"} 面，另一侧保持原样。`
-                        }
-                        value={
-                          wallSide === "both"
-                            ? item.wall_material
-                            : item[`material_${wallSide}`] || item.wall_material
-                        }
-                        onChange={(id) =>
-                          patch((_, target) => {
-                            if (wallSide === "both") {
-                              target.wall_material = id;
-                              target.material_left = null;
-                              target.material_right = null;
-                            } else target[`material_${wallSide}`] = id;
-                          })
-                        }
-                      />
-                      <p className="field-note">
-                        当前选择：墙体 {selected.index + 1} ·
-                        保存后同步到三维模型。
-                      </p>
-                      <SurfaceTransfer
-                        document={document}
-                        type="walls"
-                        index={selected.index}
-                        side={wallSide}
-                        onCommit={draft.commit}
-                      />
-                      <label className="edit-label">
-                        墙体类型
-                        <select
-                          aria-label="墙体类型"
-                          value={item.exterior ? "exterior" : "interior"}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.exterior = e.target.value === "exterior";
-                            })
-                          }
-                        >
-                          <option value="interior">隔墙</option>
-                          <option value="exterior">外墙</option>
-                        </select>
-                      </label>
-                      <div className="edit-number-grid">
-                        {number("墙体厚度", "thickness", 0.06, 0.6)}
-                        {number("墙体高度", "height", 1.8, 4.5)}
-                        {["start", "end"].flatMap((key) =>
-                          ["x", "y"].map((axis) => (
-                            <NumberField
-                              key={key + axis}
-                              label={`${key === "start" ? "起点" : "终点"} ${axis.toUpperCase()}`}
-                              value={item[key][axis]}
-                              onCommit={(value) =>
-                                changeWallPoint(key, axis, value)
-                              }
-                            />
-                          )),
-                        )}
-                      </div>
-                      <p className="field-note">
-                        墙长 {wallLength(item).toFixed(2)} m ·
-                        拖动墙线会联动相连边界
-                      </p>
-                      <label className="edit-label">
-                        基础墙面饰面
-                        <select
-                          value={item.finish || "default"}
-                          aria-label="基础墙面饰面"
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.finish = e.target.value;
-                              target.wall_material = null;
-                            })
-                          }
-                        >
-                          {Object.entries(wallFinishes).map(([id, name]) => (
-                            <option key={id} value={id}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <p className="field-note">
-                        附着对象：门窗在「门窗」页管理，开放通道在「通道」页管理。
-                      </p>
-                      <div className="edit-opening-add">
-                        {Object.entries({
-                          door: "添加门",
-                          window: "添加窗户",
-                        }).map(([kind, name]) => (
-                          <button
-                            key={kind}
-                            disabled={!document.layout.walls.length}
-                            onClick={() => addOpening(kind, item.id)}
-                          >
-                            <Plus size={12} />
-                            {name}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {selected.type === "rooms" && (
-                    <>
-                      <label className="edit-label">
-                        地板铺设
-                        <select
-                          aria-label="地板铺设"
-                          value={item.floor_enabled === false ? "off" : "on"}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.floor_enabled = e.target.value === "on";
-                            })
-                          }
-                        >
-                          <option value="on">铺设地板</option>
-                          <option value="off">移除地板，保留空间</option>
-                        </select>
-                      </label>
-                      <SurfaceFinishPicker
-                        category="floor"
-                        value={item.floor_material}
-                        disabled={item.floor_enabled === false}
-                        onChange={(id) =>
-                          patch((_, target) => {
-                            target.floor_material = id;
-                          })
-                        }
-                      />
-                      <SurfaceTransfer
-                        document={document}
-                        type="rooms"
-                        index={selected.index}
-                        onCommit={draft.commit}
-                      />
-                      <label className="edit-label">
-                        空间名称
-                        <input
-                          aria-label="空间名称"
-                          value={item.name}
-                          maxLength={60}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.name = e.target.value;
-                            })
-                          }
-                        />
-                      </label>
-                      <label className="edit-label">
-                        空间用途
-                        <select
-                          value={item.kind}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.kind = e.target.value;
-                            })
-                          }
-                        >
-                          {Object.entries(roomNames).map(([id, name]) => (
-                            <option key={id} value={id}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="edit-label">
-                        基础地板材质
-                        <select
-                          aria-label="地板材质"
-                          value={
-                            item.floor_material
-                              ? `material:${item.floor_material}`
-                              : item.floor_finish || "default"
-                          }
-                          disabled={item.floor_enabled === false}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              if (e.target.value.startsWith("material:"))
-                                target.floor_material = e.target.value.slice(9);
-                              else {
-                                target.floor_finish = e.target.value;
-                                target.floor_material = null;
-                              }
-                            })
-                          }
-                        >
-                          {Object.entries(floorFinishes).map(([id, name]) => (
-                            <option key={id} value={id}>
-                              {name}
-                            </option>
-                          ))}
-                          <optgroup label="素材库 · 地板配色">
-                            {item.floor_material &&
-                              !materialCategories.floor.includes(
-                                item.floor_material,
-                              ) &&
-                              resolveMaterial(item.floor_material) && (
-                                <option
-                                  value={`material:${item.floor_material}`}
-                                >
-                                  已保存 ·{" "}
-                                  {resolveMaterial(item.floor_material).name}
-                                </option>
-                              )}
-                            {materialCategories.floor.map((id) => (
-                              <option key={id} value={`material:${id}`}>
-                                {materials.find((m) => m.id === id).name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
-                      </label>
-                      <button
-                        className="secondary-button"
-                        disabled={item.floor_enabled === false}
-                        onClick={() => setLibraryOpen("materials")}
-                      >
-                        从素材库选择地板
-                      </button>
-                      <div className="edit-number-grid">
-                        <NumberField
-                          label="铺贴方向"
-                          value={item.floor_rotation || 0}
-                          min={-180}
-                          max={180}
-                          unit="°"
-                          onCommit={(v) =>
-                            patch((_, r) => {
-                              r.floor_rotation = v;
-                            })
-                          }
-                        />
-                        <NumberField
-                          label="纹理比例"
-                          value={item.floor_scale || 1}
-                          min={0.1}
-                          max={10}
-                          step={0.1}
-                          unit="倍"
-                          onCommit={(v) =>
-                            patch((_, r) => {
-                              r.floor_scale = v;
-                            })
-                          }
-                        />
-                      </div>
-                      <p className="field-note">
-                        当前地板面积 {polygonArea(item.polygon).toFixed(2)}{" "}
-                        ㎡。拖动圆点调整范围；地板单独调整不会移动墙体。
-                      </p>
-                      <FloorTiling
-                        room={item}
-                        onChange={(key, value) =>
-                          patch((_, r) => {
-                            r[key] = value;
-                          })
-                        }
-                      />
-                      <PolygonFields
-                        points={item.polygon}
-                        onChange={(points) =>
-                          patch((_, target) => {
-                            target.polygon = points;
-                          })
-                        }
-                      />
-                      <details className="edit-vertices">
-                        <summary>拆分空间</summary>
-                        <p className="field-note">
-                          按坐标切成两个空间，家具自动归属。拆分不添加墙体。
-                        </p>
                         <label className="edit-label">
-                          拆分方向
+                          灯具开关
                           <select
-                            aria-label="拆分方向"
-                            value={splitAxis}
-                            onChange={(e) => setSplitAxis(e.target.value)}
+                            aria-label="灯具开关"
+                            value={item.enabled ? "on" : "off"}
+                            onChange={(e) =>
+                              patch((_, target) => {
+                                target.enabled = e.target.value === "on";
+                              })
+                            }
                           >
-                            <option value="x">左右拆分（X 坐标）</option>
-                            <option value="y">上下拆分（Y 坐标）</option>
+                            <option value="on">夜晚开启</option>
+                            <option value="off">关闭</option>
                           </select>
                         </label>
-                        <NumberField
-                          label="拆分坐标"
-                          value={splitAt}
-                          onCommit={setSplitAt}
+                        <p className="field-note">
+                          白天关闭人工灯光；夜晚按已保存的开关、亮度和色温照明。
+                        </p>
+                        <LightGroupControls
+                          document={document}
+                          index={selected.index}
+                          onCommit={draft.commit}
                         />
-                        <button
-                          className="secondary-button full-width"
-                          onClick={() => {
-                            try {
-                              const next = splitRoom(
-                                draft.document,
-                                selected.index,
-                                splitAxis,
-                                splitAt,
-                                `room_${crypto.randomUUID().slice(0, 12)}`,
-                              );
-                              draft.commit(next);
-                              setError("");
-                            } catch (e) {
-                              setError(e.message);
-                            }
-                          }}
-                        >
-                          拆分为两个空间
-                        </button>
-                      </details>
-                    </>
-                  )}
-                  {selected.type === "openings" && (
-                    <>
-                      <label className="edit-label">
-                        类型
-                        <select
-                          value={item.kind}
-                          onChange={(e) =>
-                            patch((_, target) => {
-                              target.kind = e.target.value;
-                              if (target.kind !== "window") target.bottom = 0;
-                            })
-                          }
-                        >
-                          {Object.entries(openingChoices).map(([id, name]) => (
-                            <option key={id} value={id}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="edit-label">
-                        所在墙体
-                        <select
-                          value={item.wall_id}
-                          onChange={(e) => {
-                            patch((next, target) => {
-                              target.wall_id = e.target.value;
-                              target.offset = 0;
-                            });
-                            setWallId(e.target.value);
-                          }}
-                        >
-                          {document.layout.walls.map((w, index) => (
-                            <option value={w.id} key={w.id}>
-                              {labelFor(w, "walls", index)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="edit-number-grid">
-                        {number(
-                          "距墙起点",
-                          "offset",
-                          0,
-                          wall ? wallLength(wall) : 60,
-                        )}
-                        {number("开口宽度", "width", 0.1, 60)}
-                        {number("开口高度", "height", 0.1, 4.5)}
-                        {item.kind === "window" &&
-                          number("窗台离地", "bottom", 0, 3)}
-                      </div>
-                      {item.kind === "door" && (
-                        <>
+                      </>
+                    )}
+                    {selected.type === "furniture" && (
+                      <>
+                        {showerKinds.includes(item.kind) && (
                           <label className="edit-label">
-                            门扇
+                            淋浴形式
                             <select
-                              aria-label="门扇"
-                              value={item.door_leaf === false ? "off" : "on"}
+                              aria-label="淋浴形式"
+                              value={item.kind}
                               onChange={(e) =>
                                 patch((_, target) => {
-                                  target.door_leaf = e.target.value === "on";
+                                  target.kind = e.target.value;
+                                  target.name = furnitureNames[e.target.value];
+                                  target.asset_id = null;
                                 })
                               }
                             >
-                              <option value="on">安装门扇</option>
-                              <option value="off">仅保留门洞</option>
+                              <option value="shower">
+                                独立淋浴房 · 带实体背板
+                              </option>
+                              <option value="shower_walk_in">
+                                步入式 · 单片玻璃隔断
+                              </option>
+                              <option value="shower_open">
+                                开放式 · 花洒与地漏
+                              </option>
                             </select>
+                            <span className="field-note">
+                              步入式和开放式借用房间原有墙面，不新增房间。0°
+                              时花洒朝上方墙面、入口朝下方；旋转可调整方向。请避开窗户并预留至少
+                              0.55 米入口空间。
+                              开放式需结合实际防水、排水和挡水设计。切换形式保留位置与尺寸，并同步三维预览。
+                            </span>
                           </label>
-                          {item.door_leaf !== false && (
-                            <>
-                              <label className="edit-label">
-                                铰链位置
-                                <select
-                                  aria-label="铰链位置"
-                                  value={item.hinge || "start"}
-                                  onChange={(e) =>
-                                    patch((_, target) => {
-                                      target.hinge = e.target.value;
-                                    })
-                                  }
-                                >
-                                  <option value="start">靠墙起点侧</option>
-                                  <option value="end">靠墙终点侧</option>
-                                </select>
-                              </label>
-                              <label className="edit-label">
-                                开启方向
-                                <select
-                                  aria-label="开启方向"
-                                  value={item.swing || "left"}
-                                  onChange={(e) =>
-                                    patch((_, target) => {
-                                      target.swing = e.target.value;
-                                    })
-                                  }
-                                >
-                                  <option value="left">逆时针</option>
-                                  <option value="right">顺时针</option>
-                                </select>
-                              </label>
-                              <NumberField
-                                label="开启角度"
-                                min={0}
-                                max={110}
-                                unit="°"
-                                value={item.angle ?? 90}
-                                onCommit={(v) =>
-                                  patch((_, target) => {
-                                    target.angle = v;
-                                  })
-                                }
-                              />
-                            </>
-                          )}
-                        </>
-                      )}
-                      <p className="field-note">
-                        {item.kind === "passage"
-                          ? "开放通道只开洞，不安装窗框或门扇。"
-                          : "门窗会跟随所在墙体一起移动。"}
-                      </p>
-                    </>
-                  )}
-                  {selected.type !== "outline" && (
-                    <>
-                      <div className="nudge-pad">
-                        <span>微移 {Math.round(step * 100)} cm</span>
-                        <button
-                          aria-label="向左微移"
-                          onClick={() => move(-step, 0)}
-                        >
-                          <ArrowLeft size={14} />
-                        </button>
-                        <button
-                          aria-label="向上微移"
-                          onClick={() => move(0, -step)}
-                        >
-                          <ArrowUp size={14} />
-                        </button>
-                        <button
-                          aria-label="向下微移"
-                          onClick={() => move(0, step)}
-                        >
-                          <ArrowDown size={14} />
-                        </button>
-                        <button
-                          aria-label="向右微移"
-                          onClick={() => move(step, 0)}
-                        >
-                          <ArrowRight size={14} />
-                        </button>
-                      </div>
-                      <div className="edit-delete-row">
-                        {selected.type === "furniture" && (
+                        )}
+                        {item.kind === "custom" && (
                           <button
-                            onClick={() => {
-                              if (document.furniture.items.length >= 90) return;
-                              const next = clone(document);
-                              next.furniture.items.push({
-                                ...item,
-                                x: round(item.x + step),
-                                y: round(item.y + step),
-                              });
-                              draft.commit(next);
-                              select(
-                                "furniture",
-                                next.furniture.items.length - 1,
-                              );
-                            }}
+                            className="diy-library-trigger"
+                            onClick={() =>
+                              setDiyOpen({
+                                mode: "edit",
+                                index: selected.index,
+                              })
+                            }
                           >
-                            <Copy size={12} />
-                            复制家具
+                            <Sparkles size={14} />
+                            编辑 DIY 部件
                           </button>
                         )}
-                        <button onClick={remove}>
-                          <Trash2 size={12} />
-                          {selected.type === "walls"
-                            ? "删除墙体及附着对象"
-                            : selected.type === "rooms"
-                              ? "删除空间及地板"
-                              : "删除选中对象"}
+                        <details
+                          className="inspector-group"
+                          open={isScene ? undefined : true}
+                        >
+                          <summary>旋转与朝向</summary>
+                          <RotationControl
+                            key={item.edit_id || selected.index}
+                            onPreview={previewRotation}
+                            onFinish={finishRotation}
+                            onCancel={cancelRotation}
+                            scene={isScene}
+                            value={item.rotation}
+                            onChange={rotate}
+                          />
+                        </details>
+                        <details className="inspector-group" open>
+                          <summary>尺寸</summary>
+                          <div className="edit-number-grid">
+                            {number("家具宽度", "width", 0.1, 6)}
+                            {number("家具进深", "depth", 0.1, 6)}
+                            {number("家具高度", "height", 0.02, 3)}
+                          </div>
+                        </details>
+                        <details className="inspector-group">
+                          <summary>位置与离地高度</summary>
+                          <div className="edit-number-grid">
+                            {number("左右位置", "x", -60, 60)}
+                            {number("上下位置", "y", -60, 60)}
+                            {number(
+                              "底部离地高度",
+                              "elevation",
+                              0,
+                              Math.min(3, 4.5 - item.height),
+                            )}
+                          </div>
+                          <p className="field-note">
+                            坐标为家具中心，尺寸为旋转前的本体尺寸。跨空间移动后自动匹配能完整容纳家具的空间。
+                            {item.kind === "wall_television" &&
+                              "壁挂电视建议底部离地 1.05 米，可放在低电视柜上方；安装高度保存后反映在三维模型中。"}
+                          </p>
+                        </details>
+                        <details className="edit-vertices">
+                          <summary>名称、类型与所属空间</summary>
+                          <label className="edit-label">
+                            家具名称
+                            <input
+                              aria-label="家具名称"
+                              value={item.name || ""}
+                              maxLength={60}
+                              placeholder={furnitureNames[item.kind]}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.name = e.target.value;
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="edit-label">
+                            家具类型
+                            <select
+                              aria-label="家具类型"
+                              disabled={
+                                item.kind === "custom" || !!item.asset_id
+                              }
+                              value={item.kind}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.kind = e.target.value;
+                                })
+                              }
+                            >
+                              {item.kind === "custom" && (
+                                <option value="custom">DIY 自定义素材</option>
+                              )}
+                              {item.kind === "model" && (
+                                <option value="model">GLB 素材</option>
+                              )}
+                              {Object.entries(furnitureNames)
+                                .filter(
+                                  ([id]) => !["custom", "model"].includes(id),
+                                )
+                                .map(([id, name]) => (
+                                  <option key={id} value={id}>
+                                    {name}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          <label className="edit-label">
+                            所属空间
+                            <select
+                              value={item.room_id}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.room_id = e.target.value;
+                                })
+                              }
+                            >
+                              {document.layout.rooms.map((room) => (
+                                <option key={room.id} value={room.id}>
+                                  {room.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </details>
+                      </>
+                    )}
+                    {selected.type === "walls" && (
+                      <>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={!!item.load_bearing}
+                            onChange={(e) =>
+                              patch((_, w) => {
+                                w.load_bearing = e.target.checked;
+                              })
+                            }
+                          />{" "}
+                          已核实为承重墙
+                        </label>
+                        {item.load_bearing && (
+                          <p className="workspace-note">
+                            已标记承重结构，改动前需专业人员核实。
+                          </p>
+                        )}
+                        <details className="edit-advanced">
+                          <summary>按此墙长度校准平面尺寸</summary>
+                          <p>
+                            当前长 {wallLength(item).toFixed(3)}{" "}
+                            m；校准会等比调整全屋平面，墙高与家具高度保持不变，可撤销。
+                          </p>
+                          <NumberField
+                            label="墙体实际长度"
+                            value={actualLength}
+                            min={0.1}
+                            max={60}
+                            onCommit={setActualLength}
+                          />
+                          <button
+                            onClick={() => {
+                              try {
+                                draft.commit(
+                                  calibrate(
+                                    draft.document,
+                                    wallLength(item),
+                                    actualLength,
+                                  ),
+                                  false,
+                                );
+                              } catch (e) {
+                                setError(e.message);
+                              }
+                            }}
+                          >
+                            应用尺寸校准
+                          </button>
+                        </details>
+                        <WallElevation
+                          wall={item}
+                          openings={document.layout.openings}
+                          onChange={(regions) =>
+                            patch((_, w) => {
+                              w.finish_regions = regions;
+                            })
+                          }
+                        />
+                        <label className="edit-label">
+                          装修哪一侧
+                          <select
+                            aria-label="墙面装修侧"
+                            value={wallSide}
+                            onChange={(e) => setWallSide(e.target.value)}
+                          >
+                            <option value="both">整段墙体 · 两侧统一</option>
+                            <option value="left">
+                              A 面 ·{" "}
+                              {wallSides(item, document.layout.rooms)[0]?.room}
+                            </option>
+                            <option value="right">
+                              B 面 ·{" "}
+                              {wallSides(item, document.layout.rooms)[1]?.room}
+                            </option>
+                          </select>
+                        </label>
+                        <SurfaceFinishPicker
+                          category="walls"
+                          hint={
+                            wallSide === "both"
+                              ? "统一此墙两侧材质，并清除两侧单独设置。"
+                              : `仅修改 ${wallSide === "left" ? "A" : "B"} 面，另一侧保持原样。`
+                          }
+                          value={
+                            wallSide === "both"
+                              ? item.wall_material
+                              : item[`material_${wallSide}`] ||
+                                item.wall_material
+                          }
+                          onChange={(id) =>
+                            patch((_, target) => {
+                              if (wallSide === "both") {
+                                target.wall_material = id;
+                                target.material_left = null;
+                                target.material_right = null;
+                              } else target[`material_${wallSide}`] = id;
+                            })
+                          }
+                        />
+                        <p className="field-note">
+                          当前选择：墙体 {selected.index + 1} ·
+                          修改后同步三维预览，保存可生成独立版本。
+                        </p>
+                        <SurfaceTransfer
+                          document={document}
+                          type="walls"
+                          index={selected.index}
+                          side={wallSide}
+                          onCommit={draft.commit}
+                        />
+                        <label className="edit-label">
+                          墙体类型
+                          <select
+                            aria-label="墙体类型"
+                            value={item.exterior ? "exterior" : "interior"}
+                            onChange={(e) =>
+                              patch((_, target) => {
+                                target.exterior = e.target.value === "exterior";
+                              })
+                            }
+                          >
+                            <option value="interior">隔墙</option>
+                            <option value="exterior">外墙</option>
+                          </select>
+                        </label>
+                        <div className="edit-number-grid">
+                          {number("墙体厚度", "thickness", 0.06, 0.6)}
+                          {number("墙体高度", "height", 1.8, 4.5)}
+                          {["start", "end"].flatMap((key) =>
+                            ["x", "y"].map((axis) => (
+                              <NumberField
+                                key={key + axis}
+                                label={`${key === "start" ? "起点" : "终点"} ${axis.toUpperCase()}`}
+                                value={item[key][axis]}
+                                onCommit={(value) =>
+                                  changeWallPoint(key, axis, value)
+                                }
+                              />
+                            )),
+                          )}
+                        </div>
+                        <p className="field-note">
+                          墙长 {wallLength(item).toFixed(2)} m ·
+                          拖动墙线会联动相连边界
+                        </p>
+                        <label className="edit-label">
+                          基础墙面饰面
+                          <select
+                            value={item.finish || "default"}
+                            aria-label="基础墙面饰面"
+                            onChange={(e) =>
+                              patch((_, target) => {
+                                target.finish = e.target.value;
+                                target.wall_material = null;
+                              })
+                            }
+                          >
+                            {Object.entries(wallFinishes).map(([id, name]) => (
+                              <option key={id} value={id}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="field-note">
+                          附着对象：门窗在「门窗」页管理，开放通道在「通道」页管理。
+                        </p>
+                        <div className="edit-opening-add">
+                          {Object.entries({
+                            door: "添加门",
+                            window: "添加窗户",
+                          }).map(([kind, name]) => (
+                            <button
+                              key={kind}
+                              disabled={!document.layout.walls.length}
+                              onClick={() => addOpening(kind, item.id)}
+                            >
+                              <Plus size={12} />
+                              {name}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {selected.type === "rooms" && (
+                      <>
+                        <label className="edit-label">
+                          地板铺设
+                          <select
+                            aria-label="地板铺设"
+                            value={item.floor_enabled === false ? "off" : "on"}
+                            onChange={(e) =>
+                              patch((_, target) => {
+                                target.floor_enabled = e.target.value === "on";
+                              })
+                            }
+                          >
+                            <option value="on">铺设地板</option>
+                            <option value="off">移除地板，保留空间</option>
+                          </select>
+                        </label>
+                        <SurfaceFinishPicker
+                          category="floor"
+                          value={item.floor_material}
+                          disabled={item.floor_enabled === false}
+                          onChange={(id) =>
+                            patch((_, target) => {
+                              target.floor_material = id;
+                            })
+                          }
+                        />
+                        <SurfaceTransfer
+                          document={document}
+                          type="rooms"
+                          index={selected.index}
+                          onCommit={draft.commit}
+                        />
+                        <label className="edit-label">
+                          空间名称
+                          <input
+                            aria-label="空间名称"
+                            value={item.name}
+                            maxLength={60}
+                            onChange={(e) =>
+                              patch((_, target) => {
+                                target.name = e.target.value;
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="edit-label">
+                          空间用途
+                          <select
+                            value={item.kind}
+                            onChange={(e) =>
+                              patch((_, target) => {
+                                target.kind = e.target.value;
+                              })
+                            }
+                          >
+                            {Object.entries(roomNames).map(([id, name]) => (
+                              <option key={id} value={id}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="edit-label">
+                          基础地板材质
+                          <select
+                            aria-label="地板材质"
+                            value={
+                              item.floor_material
+                                ? `material:${item.floor_material}`
+                                : item.floor_finish || "default"
+                            }
+                            disabled={item.floor_enabled === false}
+                            onChange={(e) =>
+                              patch((_, target) => {
+                                if (e.target.value.startsWith("material:"))
+                                  target.floor_material =
+                                    e.target.value.slice(9);
+                                else {
+                                  target.floor_finish = e.target.value;
+                                  target.floor_material = null;
+                                }
+                              })
+                            }
+                          >
+                            {Object.entries(floorFinishes).map(([id, name]) => (
+                              <option key={id} value={id}>
+                                {name}
+                              </option>
+                            ))}
+                            <optgroup label="素材库 · 地板配色">
+                              {item.floor_material &&
+                                !materialCategories.floor.includes(
+                                  item.floor_material,
+                                ) &&
+                                resolveMaterial(item.floor_material) && (
+                                  <option
+                                    value={`material:${item.floor_material}`}
+                                  >
+                                    已保存 ·{" "}
+                                    {resolveMaterial(item.floor_material).name}
+                                  </option>
+                                )}
+                              {materialCategories.floor.map((id) => (
+                                <option key={id} value={`material:${id}`}>
+                                  {materials.find((m) => m.id === id).name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                        </label>
+                        <button
+                          className="secondary-button"
+                          disabled={item.floor_enabled === false}
+                          onClick={() => setLibraryOpen("materials")}
+                        >
+                          从素材库选择地板
                         </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </fieldset>
-          </aside>
+                        <div className="edit-number-grid">
+                          <NumberField
+                            label="铺贴方向"
+                            value={item.floor_rotation || 0}
+                            min={-180}
+                            max={180}
+                            unit="°"
+                            onCommit={(v) =>
+                              patch((_, r) => {
+                                r.floor_rotation = v;
+                              })
+                            }
+                          />
+                          <NumberField
+                            label="纹理比例"
+                            value={item.floor_scale || 1}
+                            min={0.1}
+                            max={10}
+                            step={0.1}
+                            unit="倍"
+                            onCommit={(v) =>
+                              patch((_, r) => {
+                                r.floor_scale = v;
+                              })
+                            }
+                          />
+                        </div>
+                        <p className="field-note">
+                          当前地板面积 {polygonArea(item.polygon).toFixed(2)}{" "}
+                          ㎡。拖动圆点调整范围；地板单独调整不会移动墙体。
+                        </p>
+                        <FloorTiling
+                          room={item}
+                          onChange={(key, value) =>
+                            patch((_, r) => {
+                              r[key] = value;
+                            })
+                          }
+                        />
+                        <PolygonFields
+                          points={item.polygon}
+                          onChange={(points) =>
+                            patch((_, target) => {
+                              target.polygon = points;
+                            })
+                          }
+                        />
+                        <details className="edit-vertices">
+                          <summary>拆分空间</summary>
+                          <p className="field-note">
+                            按坐标切成两个空间，家具自动归属。拆分不添加墙体。
+                          </p>
+                          <label className="edit-label">
+                            拆分方向
+                            <select
+                              aria-label="拆分方向"
+                              value={splitAxis}
+                              onChange={(e) => setSplitAxis(e.target.value)}
+                            >
+                              <option value="x">左右拆分（X 坐标）</option>
+                              <option value="y">上下拆分（Y 坐标）</option>
+                            </select>
+                          </label>
+                          <NumberField
+                            label="拆分坐标"
+                            value={splitAt}
+                            onCommit={setSplitAt}
+                          />
+                          <button
+                            className="secondary-button full-width"
+                            onClick={() => {
+                              try {
+                                const next = splitRoom(
+                                  draft.document,
+                                  selected.index,
+                                  splitAxis,
+                                  splitAt,
+                                  `room_${crypto.randomUUID().slice(0, 12)}`,
+                                );
+                                draft.commit(next);
+                                setError("");
+                              } catch (e) {
+                                setError(e.message);
+                              }
+                            }}
+                          >
+                            拆分为两个空间
+                          </button>
+                        </details>
+                      </>
+                    )}
+                    {selected.type === "openings" && (
+                      <>
+                        <label className="edit-label">
+                          类型
+                          <select
+                            value={item.kind}
+                            onChange={(e) =>
+                              patch((_, target) => {
+                                target.kind = e.target.value;
+                                if (target.kind !== "window") target.bottom = 0;
+                              })
+                            }
+                          >
+                            {Object.entries(openingChoices).map(
+                              ([id, name]) => (
+                                <option key={id} value={id}>
+                                  {name}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </label>
+                        <label className="edit-label">
+                          所在墙体
+                          <select
+                            value={item.wall_id}
+                            onChange={(e) => {
+                              patch((next, target) => {
+                                target.wall_id = e.target.value;
+                                target.offset = 0;
+                              });
+                              setWallId(e.target.value);
+                            }}
+                          >
+                            {document.layout.walls.map((w, index) => (
+                              <option value={w.id} key={w.id}>
+                                {labelFor(w, "walls", index)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="edit-number-grid">
+                          {number(
+                            "距墙起点",
+                            "offset",
+                            0,
+                            wall
+                              ? Math.max(0, wallLength(wall) - item.width)
+                              : 60,
+                          )}
+                          {number(
+                            "开口宽度",
+                            "width",
+                            0.1,
+                            wall
+                              ? Math.max(0.1, wallLength(wall) - item.offset)
+                              : 60,
+                          )}
+                          {number(
+                            "开口高度",
+                            "height",
+                            0.1,
+                            wall
+                              ? Math.max(0.1, wall.height - (item.bottom || 0))
+                              : 4.5,
+                          )}
+                          {item.kind === "window" &&
+                            number(
+                              "窗台离地",
+                              "bottom",
+                              0,
+                              wall ? Math.max(0, wall.height - item.height) : 3,
+                            )}
+                        </div>
+                        {item.kind === "door" && (
+                          <>
+                            <label className="edit-label">
+                              门扇
+                              <select
+                                aria-label="门扇"
+                                value={item.door_leaf === false ? "off" : "on"}
+                                onChange={(e) =>
+                                  patch((_, target) => {
+                                    target.door_leaf = e.target.value === "on";
+                                  })
+                                }
+                              >
+                                <option value="on">安装门扇</option>
+                                <option value="off">仅保留门洞</option>
+                              </select>
+                            </label>
+                            {item.door_leaf !== false && (
+                              <>
+                                <label className="edit-label">
+                                  铰链位置
+                                  <select
+                                    aria-label="铰链位置"
+                                    value={item.hinge || "start"}
+                                    onChange={(e) =>
+                                      patch((_, target) => {
+                                        target.hinge = e.target.value;
+                                      })
+                                    }
+                                  >
+                                    <option value="start">靠墙起点侧</option>
+                                    <option value="end">靠墙终点侧</option>
+                                  </select>
+                                </label>
+                                <label className="edit-label">
+                                  开启方向
+                                  <select
+                                    aria-label="开启方向"
+                                    value={item.swing || "left"}
+                                    onChange={(e) =>
+                                      patch((_, target) => {
+                                        target.swing = e.target.value;
+                                      })
+                                    }
+                                  >
+                                    <option value="left">逆时针</option>
+                                    <option value="right">顺时针</option>
+                                  </select>
+                                </label>
+                                <NumberField
+                                  label="开启角度"
+                                  min={0}
+                                  max={110}
+                                  unit="°"
+                                  value={item.angle ?? 90}
+                                  onCommit={(v) =>
+                                    patch((_, target) => {
+                                      target.angle = v;
+                                    })
+                                  }
+                                />
+                              </>
+                            )}
+                          </>
+                        )}
+                        <p className="field-note">
+                          {item.kind === "passage"
+                            ? "开放通道只开洞，不安装窗框或门扇。"
+                            : "门窗会跟随所在墙体一起移动。"}
+                        </p>
+                      </>
+                    )}
+                    {selected.type !== "outline" && (
+                      <>
+                        <details className="inspector-group">
+                          <summary>精确微移</summary>
+                          <label className="edit-label">
+                            移动步长
+                            <select
+                              aria-label="精确微移步长"
+                              value={step}
+                              onChange={(e) => setStep(Number(e.target.value))}
+                            >
+                              <option value={0.1}>10 厘米</option>
+                              <option value={0.05}>5 厘米</option>
+                              <option value={0.01}>1 厘米</option>
+                            </select>
+                          </label>
+                          <div className="nudge-pad">
+                            <span>微移 {Math.round(step * 100)} cm</span>
+                            <button
+                              aria-label="向左微移"
+                              onClick={() => move(-step, 0)}
+                            >
+                              <ArrowLeft size={14} />
+                            </button>
+                            <button
+                              aria-label="向上微移"
+                              onClick={() => move(0, -step)}
+                            >
+                              <ArrowUp size={14} />
+                            </button>
+                            <button
+                              aria-label="向下微移"
+                              onClick={() => move(0, step)}
+                            >
+                              <ArrowDown size={14} />
+                            </button>
+                            <button
+                              aria-label="向右微移"
+                              onClick={() => move(step, 0)}
+                            >
+                              <ArrowRight size={14} />
+                            </button>
+                          </div>
+                        </details>
+                        <div className="edit-delete-row">
+                          {selected.type === "furniture" && (
+                            <button
+                              onClick={() => {
+                                if (document.furniture.items.length >= 90)
+                                  return;
+                                const next = clone(document);
+                                next.furniture.items.push({
+                                  ...item,
+                                  x: round(item.x + step),
+                                  y: round(item.y + step),
+                                });
+                                draft.commit(next);
+                                select(
+                                  "furniture",
+                                  next.furniture.items.length - 1,
+                                );
+                              }}
+                            >
+                              <Copy size={12} />
+                              复制家具
+                            </button>
+                          )}
+                          <button onClick={remove}>
+                            <Trash2 size={12} />
+                            {selected.type === "walls"
+                              ? "删除墙体及附着对象"
+                              : selected.type === "rooms"
+                                ? "删除空间及地板"
+                                : "删除选中对象"}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </fieldset>
+            </aside>
+          </LiveParameterContext.Provider>
         </div>
         {pendingDelete && (
           <div className="edit-delete-confirm" role="alert">
@@ -3316,50 +3864,6 @@ export default function ManualEditor({
               取消
             </button>
           </div>
-        )}
-        {livePreview && !reviewing && (
-          <LivePreview
-            onClose={() => setLivePreview(false)}
-            document={draft.document}
-            jobId={job.id}
-            onSelect={(data) => {
-              if (data.furniture_index != null)
-                select("furniture", data.furniture_index);
-              else if (data.wall_id || data.wall_ids?.length) {
-                let candidates = document.layout.walls
-                  .map((w, index) => ({ w, index }))
-                  .filter(({ w }) =>
-                    data.wall_id
-                      ? w.id === data.wall_id
-                      : data.wall_ids.includes(w.id),
-                  );
-                if (data.point) {
-                  const xs = document.layout.outline.map((p) => p.x),
-                    ys = document.layout.outline.map((p) => p.y);
-                  data.point = {
-                    x: data.point.x + (Math.min(...xs) + Math.max(...xs)) / 2,
-                    y: data.point.y + (Math.min(...ys) + Math.max(...ys)) / 2,
-                  };
-                }
-                if (data.point)
-                  candidates.sort(
-                    (a, b) =>
-                      wallDistance(a.w, data.point) -
-                      wallDistance(b.w, data.point),
-                  );
-                if (
-                  candidates.length &&
-                  (data.point || candidates.length === 1)
-                )
-                  select("walls", candidates[0].index);
-              } else if (data.room_id) {
-                const index = document.layout.rooms.findIndex(
-                  (r) => r.id === data.room_id,
-                );
-                if (index >= 0) select("rooms", index);
-              }
-            }}
-          />
         )}
         <div className="edit-feedback">
           <div
@@ -3403,6 +3907,17 @@ export default function ManualEditor({
                 {draft.storageError && (
                   <div>
                     <p>{draft.storageError}</p>
+                    {draft.restoreConflict && (
+                      <div>
+                        <button onClick={() => draft.resolveRestore(true)}>
+                          保留本地修改并同步
+                        </button>
+                        <button onClick={() => draft.resolveRestore(false)}>
+                          使用服务端草稿
+                        </button>
+                        <small>选择前会备份两份草稿，避免丢失修改。</small>
+                      </div>
+                    )}
                     <button
                       onClick={() => {
                         const blob = new Blob(
@@ -3450,7 +3965,9 @@ export default function ManualEditor({
             <small>
               {reviewing
                 ? "修改后请再次对照原图确认结构"
-                : "拖动或输入尺寸 → 检查布局 → 保存新的三维版本"}
+                : isScene
+                  ? "三维拖动或输入尺寸 → 热更新 → 保存为独立版本"
+                  : "平面绘制或输入尺寸 → 检查布局 → 保存为独立版本"}
             </small>
             {reviewing && (
               <a
@@ -3474,19 +3991,22 @@ export default function ManualEditor({
               我已核对修改后的墙体和门窗
             </label>
           ) : (
-            <label>
-              版本名称
-              <input
-                aria-label="设计版本名称"
-                value={name}
-                maxLength={120}
-                disabled={busy}
-                onChange={(e) => {
-                  nameEdited.current = true;
-                  setName(e.target.value);
-                }}
-              />
-            </label>
+            <details className="editor-version">
+              <summary>版本设置</summary>
+              <label>
+                版本名称
+                <input
+                  aria-label="设计版本名称"
+                  value={name}
+                  maxLength={120}
+                  disabled={busy}
+                  onChange={(e) => {
+                    nameEdited.current = true;
+                    setName(e.target.value);
+                  }}
+                />
+              </label>
+            </details>
           )}
           <button
             className="primary-button"
@@ -3497,7 +4017,8 @@ export default function ManualEditor({
               !name.trim() ||
               !!drawing ||
               !!pendingDelete ||
-              !!openingKind
+              !!openingKind ||
+              !!placement
             }
             onClick={save}
           >
@@ -3506,7 +4027,11 @@ export default function ManualEditor({
             ) : (
               <Save size={15} />
             )}
-            {reviewing ? "确认修改并继续生成" : "保存并生成三维"}
+            {placement
+              ? "请先放置或取消家具"
+              : reviewing
+                ? "确认修改并继续生成"
+                : "保存并生成三维"}
           </button>
         </div>
       </div>

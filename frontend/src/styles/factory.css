@@ -1680,6 +1680,34 @@ input[type="checkbox"] {
   font-weight: 400;
   white-space: nowrap;
 }
+
+.style-choice.custom {
+  grid-column: 1 / -1;
+}
+.style-choice.custom .style-palette {
+  display: none;
+}
+.custom-style-field {
+  margin-top: 12px;
+}
+.custom-style-field textarea {
+  margin-top: 6px;
+  width: 100%;
+}
+.custom-style-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.custom-style-examples button {
+  padding: 5px 10px;
+  border: 1px solid #aebea5;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+}
 .style-choice small {
   display: block;
   font-size: 8px;

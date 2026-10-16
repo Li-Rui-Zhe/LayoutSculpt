@@ -1,75 +1,204 @@
 import { useEffect, useRef, useState } from "react";
+import RotationControl from "./RotationControl.jsx";
 import DiyPreview from "../diy/DiyPreview.jsx";
+import { createPreviewQueue } from "./previewQueue.js";
+import { selectionFromHit, liveObjects } from "./liveModel.js";
+import { apiErrorMessage } from "../apiErrors.js";
 
-export default function LivePreview({ document, jobId, onSelect, onClose }) {
-  const [night, setNight] = useState(false);
-  const [url, setUrl] = useState(null),
-    [status, setStatus] = useState("正在准备三维校对…");
-  const currentUrl = useRef(null);
+export default function LivePreview({
+  document,
+  committedDocument,
+  jobId,
+  selected,
+  active = true,
+  busy,
+  editError,
+  onSelect,
+  onGesture,
+  onRotate,
+  onRotationPreview,
+  onRotationFinish,
+  onRotationCancel,
+  placement,
+  onPlacementMove,
+  onPlacementConfirm,
+}) {
+  const [night, setNight] = useState(false),
+    [cutaway, setCutaway] = useState(true);
+  const [rotationOpen, setRotationOpen] = useState(false);
+  useEffect(
+    () => setRotationOpen(false),
+    [selected?.type, selected?.index, jobId],
+  );
+  const [hasVisibleModel, setHasVisibleModel] = useState(false);
+  const [model, setModel] = useState(null),
+    [state, setState] = useState({ phase: "pending" }),
+    [retry, setRetry] = useState(0);
+  const queue = useRef(null),
+    currentUrl = useRef(null),
+    revision = useRef(0),
+    latest = useRef(null);
+  latest.current = { document, onSelect, onGesture };
+  const input = committedDocument || document;
+  const signature = JSON.stringify(input);
   useEffect(() => {
-    const controller = new AbortController();
-    let alive = true;
-    setStatus("正在构建当前草稿的三维校对…");
-    const timer = setTimeout(async () => {
-      try {
+    if (!active) return;
+    queue.current = createPreviewQueue({
+      report: (value) => {
+        revision.current = value.revision;
+        setState(value);
+      },
+      build: async (snapshot, signal) => {
         const response = await fetch(`/api/jobs/${jobId}/preview`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...document, name: "实时校对" }),
-          signal: controller.signal,
+          body: JSON.stringify({ ...snapshot, name: "三维实时设计" }),
+          signal,
         });
         if (!response.ok) {
-          const value = await response.json();
-          throw Error(
-            typeof value.detail === "string"
-              ? value.detail
-              : "请先修正平面图中的无效尺寸",
-          );
+          const value = await response.json().catch(() => ({}));
+          throw Error(apiErrorMessage(value.detail, response.status));
         }
-        const blob = await response.blob();
-        if (!alive) return;
-        const next = URL.createObjectURL(blob);
+        return response.blob();
+      },
+      publish: ({ result, document: snapshot, revision: value }) => {
+        const url = URL.createObjectURL(result);
         if (currentUrl.current) URL.revokeObjectURL(currentUrl.current);
-        currentUrl.current = next;
-        setUrl(next);
-        setStatus("三维已同步 · 点击对象返回属性");
-      } catch (e) {
-        if (alive) setStatus(e.message);
-      }
-    }, 900);
+        currentUrl.current = url;
+        setModel({ url, document: snapshot, revision: value });
+        setState({ phase: "loading", revision: value });
+      },
+    });
     return () => {
-      alive = false;
-      clearTimeout(timer);
-      controller.abort();
+      queue.current?.close();
+      queue.current = null;
     };
-  }, [document, jobId]);
+  }, [jobId, active]);
+  useEffect(() => {
+    if (active) queue.current?.submit(JSON.parse(signature));
+  }, [signature, jobId, active, retry]);
   useEffect(
     () => () => {
       if (currentUrl.current) URL.revokeObjectURL(currentUrl.current);
     },
     [],
   );
+  const item = selected && liveObjects(document, selected.type)[selected.index];
+  const itemLabel =
+    item?.name ||
+    (selected
+      ? `${{ furniture: "家具", walls: "墙体", rooms: "地板 / 空间", lights: "灯具", openings: item?.kind === "window" ? "窗户" : item?.kind === "door" ? "门" : "通道" }[selected.type]} ${selected.index + 1}`
+      : "点击模型选择对象");
+  const dragging = document !== input;
+  const status =
+    state.phase === "error"
+      ? `精细模型更新失败：${state.message}。${hasVisibleModel ? "当前模型已保留，可继续修改或重试。" : "请重试加载；设计草稿已保留。"}`
+      : dragging
+        ? "正在直接修改三维 · 松手完成，Esc 取消"
+        : state.phase === "ready"
+          ? "三维已同步 · 直接拖动物体摆放，右侧参数精调"
+          : !hasVisibleModel
+            ? "正在加载精细三维模型…"
+            : "正在后台同步精细模型 · 可继续编辑";
   return (
-    <section className="live-plan-preview">
-      <p role="status">{status}</p>
-      <div className="live-preview-light">
-        <button aria-pressed={!night} onClick={() => setNight(false)}>
-          白天
-        </button>
-        <button aria-pressed={night} onClick={() => setNight(true)}>
-          夜晚
-        </button>
-        <button style={{ marginLeft: "auto" }} onClick={onClose}>
-          关闭三维校对
-        </button>
+    <section className="scene-editor-canvas" aria-label="三维设计画布">
+      <div className="scene-topbar">
+        <div className="live-preview-heading">
+          <strong>{placement ? "选择落点" : itemLabel}</strong>
+          <span className="scene-sync" title={status} role="status">
+            {state.phase === "error"
+              ? "同步失败"
+              : dragging
+                ? "调整中"
+                : state.phase === "ready"
+                  ? "已同步"
+                  : "同步中…"}
+          </span>
+        </div>
+        <div className="live-preview-light">
+          {!placement &&
+            selected?.type === "furniture" &&
+            item &&
+            !item.edit_hidden && (
+              <button
+                aria-expanded={rotationOpen}
+                onClick={() => setRotationOpen(!rotationOpen)}
+              >
+                {rotationOpen ? "收起旋转" : "旋转家具"}
+              </button>
+            )}
+          <button aria-pressed={night} onClick={() => setNight(!night)}>
+            {night ? "夜晚" : "白天"}
+          </button>
+          <button aria-pressed={!cutaway} onClick={() => setCutaway(!cutaway)}>
+            {cutaway ? "剖切墙体" : "完整墙体"}
+          </button>
+        </div>
       </div>
-      {url && (
+      {(editError || state.phase === "error") && (
+        <div className="scene-error" role="alert">
+          {editError ? `修改未应用：${editError}` : status}
+          {state.phase === "error" && (
+            <button onClick={() => setRetry((n) => n + 1)}>重新同步</button>
+          )}
+        </div>
+      )}
+      {rotationOpen &&
+        !placement &&
+        selected?.type === "furniture" &&
+        item &&
+        !item.edit_hidden && (
+          <div className="scene-rotation-tools">
+            <RotationControl
+              key={item.edit_id || selected.index}
+              compact
+              scene
+              value={item.rotation}
+              disabled={busy || item.edit_locked || !hasVisibleModel}
+              onChange={onRotate}
+              onPreview={onRotationPreview}
+              onFinish={onRotationFinish}
+              onCancel={onRotationCancel}
+            />
+          </div>
+        )}
+      {model ? (
         <DiyPreview
           night={night}
-          modelUrl={url}
-          cutaway
-          onObjectSelect={onSelect}
+          cutaway={cutaway}
+          modelUrl={model.url}
+          modelDocument={model.document}
+          liveDocument={document}
+          liveSelection={selected}
+          liveEditable={!busy && active && hasVisibleModel && !placement}
+          placement={active && !busy && hasVisibleModel ? placement : null}
+          onPlacementMove={onPlacementMove}
+          onPlacementConfirm={onPlacementConfirm}
+          onSceneGesture={onGesture}
+          onModelReady={(url) => {
+            if (url === currentUrl.current) setHasVisibleModel(true);
+            if (
+              url === currentUrl.current &&
+              model?.revision === revision.current
+            )
+              setState({ phase: "ready", revision: model.revision });
+          }}
+          onModelError={(message) => setState({ phase: "error", message })}
+          onObjectSelect={(data, visibleSnapshot) => {
+            const selection = selectionFromHit(
+              data,
+              visibleSnapshot || model.document,
+              latest.current.document,
+            );
+            if (selection) latest.current.onSelect(selection);
+          }}
         />
+      ) : (
+        <div className="live-preview-wait" role="status">
+          {state.phase === "error"
+            ? "精细模型加载失败，请点击重新同步。"
+            : "正在加载精细三维模型…"}
+        </div>
       )}
     </section>
   );

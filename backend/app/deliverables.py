@@ -6,7 +6,7 @@ import html
 import io
 import json
 import math
-import zipfile
+from .archive_limits import PortableArchive
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -121,7 +121,7 @@ def install_delivery_routes(app, store, settings):
 
         def pack():
             output = SpooledTemporaryFile(max_size=8 * 1024 * 1024)
-            with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+            with PortableArchive(output) as archive:
                 for filename in [
                     "model.glb",
                     "model.blend",
@@ -191,7 +191,10 @@ def install_delivery_routes(app, store, settings):
             output.seek(0)
             return output
 
-        output = await asyncio.to_thread(pack)
+        try:
+            output = await asyncio.to_thread(pack)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from exc
 
         def chunks():
             while chunk := output.read(1024 * 1024):

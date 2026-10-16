@@ -9,15 +9,31 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from .public_errors import public_message
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import ValidationError
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .architecture import validate_generated_structure
 from .codex import CodexClient
 from .config import ROOT, Settings
+from .consistency import source_hash, structure_hash
+from .deliverables import install_delivery_routes
+from .diy import DiyService, install_diy_routes
+from .generation_errors import generation_validation_message
+from .idempotency import install_idempotency
+from .instance_lock import instance_lock
+from .library import LibraryService, install_library_routes
+from .local_review import install_local_review_routes
+from .project_transfer import install_transfer_routes
+from .recovery import REVIEW_TIMEOUT_WARNING, recoverable_recognition
+from .request_limits import RequestLimits
 from .schemas import (
     Furnishing,
     JobOptions,
@@ -28,21 +44,11 @@ from .schemas import (
     validate_furnishing,
 )
 from .skills import SkillRegistry
-from .store import TERMINAL, Store
-from .workflow import JobRunner, create_graph
-from .architecture import validate_generated_structure
-from .consistency import structure_hash, source_hash
-from .store import now
+from .store import TERMINAL, Store, now
+from .surface_ai import SurfaceGenerationService, install_surface_creation_routes
 from .texture_assets import install_texture_routes
-from .idempotency import install_idempotency
-from .project_transfer import install_transfer_routes
-from .deliverables import install_delivery_routes
+from .workflow import JobRunner, create_graph
 from .workspace import initialize_workspace, install_workspace_routes
-from .local_review import install_local_review_routes
-from .recovery import recoverable_recognition, REVIEW_TIMEOUT_WARNING
-from .diy import DiyService, install_diy_routes
-from .library import LibraryService, install_library_routes
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 ALLOWED_ORIGINS = {
     "http://127.0.0.1:5173",
@@ -76,7 +82,9 @@ def normalize_image(content: bytes) -> bytes:
                 if image.width * image.height > 40_000_000:
                     raise ValueError("图片像素过大，请缩小至 4000 万像素以内")
                 image.load()
-                image = ImageOps.exif_transpose(image).convert("RGB")
+                image = ImageOps.exif_transpose(image).convert("RGBA")
+                background = Image.new("RGBA", image.size, "white")
+                image = Image.alpha_composite(background, image).convert("RGB")
                 image.thumbnail((4096, 4096))
                 out = BytesIO()
                 image.save(out, format="PNG")
@@ -97,11 +105,15 @@ def create_app(settings=None, *, client=None, model_builder=None):
     registry = SkillRegistry(settings.skills_dir)
     diy = DiyService(settings, store, codex, registry)
     library = LibraryService(settings, store, diy)
+    surfaces = SurfaceGenerationService(
+        settings, store, client=codex, registry=registry
+    )
     confirmation_lock = asyncio.Lock()
 
     @asynccontextmanager
-    async def lifespan(app):
+    async def service_lifespan(app):
         await store.initialize()
+        await surfaces.initialize()
         await initialize_workspace(store)
         await diy.initialize()
         interrupted_jobs = await store.recover()
@@ -119,15 +131,44 @@ def create_app(settings=None, *, client=None, model_builder=None):
             try:
                 yield
             finally:
+                await surfaces.close()
                 await app.state.runner.close()
                 await diy.close()
                 await codex.stop()
 
-    app = FastAPI(title="造个家户型工作台", version="2.0.0", lifespan=lifespan)
+    @asynccontextmanager
+    async def lifespan(app):
+        with instance_lock(settings.data_dir):
+            async with service_lifespan(app):
+                yield
+
+    app = FastAPI(title="造个家户型工作台", version="2.1.0", lifespan=lifespan)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request, exc):
+        if request.method == "POST" and request.url.path == "/api/jobs":
+            return JSONResponse(
+                {"detail": generation_validation_message(exc.errors())}, status_code=422
+            )
+        return JSONResponse({"detail": generation_validation_message(exc.errors())}, status_code=422)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request, exc):
+        detail = public_message(exc.detail) if isinstance(exc.detail, str) else "请求参数无效，请检查后重试。"
+        return JSONResponse({"detail": detail}, status_code=exc.status_code, headers=exc.headers)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request, exc):
+        import logging
+        logging.getLogger(__name__).error("请求失败 %s %s (%s)", request.method, request.url.path, type(exc).__name__)
+        return JSONResponse({"detail": "本地服务暂时无法完成此操作，请稍后重试；当前设计已保留。"}, status_code=500)
+
     app.state.store = store
     app.state.settings = settings
     app.state.diy = diy
-    install_idempotency(app, store)
+    app.state.surface_generations = surfaces
+    install_idempotency(app, store, lambda job: public(job))
+    app.add_middleware(RequestLimits)
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=["127.0.0.1", "localhost", "[::1]"]
@@ -160,9 +201,18 @@ def create_app(settings=None, *, client=None, model_builder=None):
 
     def public(job):
         seed = settings.workspace(job["id"]) / "rebuild-seed.json"
-        origin = json.loads(seed.read_text(encoding="utf-8")) if seed.exists() else {}
+        warning = None
+        try:
+            origin = json.loads(seed.read_text(encoding="utf-8")) if seed.exists() else {}
+            if not isinstance(origin, dict):
+                raise ValueError("invalid seed")
+        except (OSError, ValueError):
+            origin = {}
+            warning = "此任务的版本关联记录损坏，原图和成果仍保留，请从成果包恢复为独立项目。"
         return {
             **job,
+            "error": public_message(job["error"]) if job.get("error") else None,
+            "record_warning": warning,
             "source_url": f"/api/jobs/{job['id']}/artifacts/source.png",
             "rebuild_of": origin.get("rebuild_of"),
             "edited_of": origin.get("edited_of"),
@@ -203,6 +253,8 @@ def create_app(settings=None, *, client=None, model_builder=None):
             asset_status = {"available": False}
         return {
             "status": "ok",
+            "api_version": "2.1.0",
+            "capabilities": ["custom_style", "project_restore", "atomic_creation", "surface_model_selection"],
             "codex": {
                 "available": bool(
                     shutil.which(settings.codex_command)
@@ -253,7 +305,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 item.get("unavailable_reason") or "所选模型当前不可用，请选择其他模型",
             )
         if require_image and item["supports_image"] is False:
-            raise HTTPException(422, "所选模型不支持图片，请选择支持户型图识别的模型")
+            raise HTTPException(422, "所选模型不支持图片，请选择支持图片理解的模型")
         options.model = selected
         if options.reasoning_effort and options.reasoning_effort not in item["efforts"]:
             raise HTTPException(
@@ -268,10 +320,15 @@ def create_app(settings=None, *, client=None, model_builder=None):
     install_workspace_routes(app, store, settings, library)
     install_local_review_routes(app, store, settings, codex, registry, resolve_model)
     install_texture_routes(app, settings)
+    install_surface_creation_routes(app, settings, surfaces, resolve_model)
     install_delivery_routes(app, store, settings)
     install_transfer_routes(app, store, settings, public, normalize_image)
     install_diy_routes(app, diy, resolve_model)
     install_library_routes(app, library)
+    from .asset_management import install_asset_management_routes
+    install_asset_management_routes(app, library)
+    from .job_pages import install_job_pages
+    install_job_pages(app, store, public)
 
     @app.get("/api/jobs/changes")
     async def changed_jobs(cursor: str = ""):
@@ -307,23 +364,43 @@ def create_app(settings=None, *, client=None, model_builder=None):
         file: Annotated[UploadFile, File()],
         name: str = Form("", max_length=120),
         style: str = Form("natural"),
+        style_description: str = Form("", max_length=1000),
         notes: str = Form(""),
         collaboration: bool = Form(True),
         model: str = Form(""),
         reasoning_effort: str = Form(""),
         furniture_mode: str = Form("library"),
+        wall_material: str = Form(""),
+        floor_material: str = Form(""),
     ):
         try:
             options = JobOptions(
                 style=style,
+                style_description=style_description,
                 notes=notes,
                 collaboration=collaboration,
                 model=model.strip() or None,
                 reasoning_effort=reasoning_effort.strip() or None,
                 furniture_mode=furniture_mode,
+                wall_material=wall_material or None,
+                floor_material=floor_material or None,
             )
         except ValidationError as exc:
-            raise HTTPException(422, str(exc)) from exc
+            raise HTTPException(422, generation_validation_message(exc.errors())) from exc
+        from .texture_assets import texture_info
+
+        for category, ref in [
+            ("walls", options.wall_material),
+            ("floor", options.floor_material),
+        ]:
+            if ref and ref.startswith("texture:"):
+                path = settings.data_dir / "materials" / f"{ref[8:]}.json"
+                if not path.is_file() or not path.with_suffix(".png").is_file():
+                    raise HTTPException(422, "所选 DIY 材质不存在，请重新选择")
+                if category not in texture_info(path).get(
+                    "categories", ["walls", "floor"]
+                ):
+                    raise HTTPException(422, "所选 DIY 材质用途不匹配")
         content = bytearray()
         try:
             while chunk := await file.read(1024 * 1024):
@@ -540,6 +617,8 @@ def create_app(settings=None, *, client=None, model_builder=None):
         seed = {
             "layout": layout.model_dump(),
             "furniture": furniture.model_dump(),
+            "render_style": previous["result"].get("render_style"),
+            "style_scheme": previous["result"].get("style_scheme", {}),
             "rebuild_of": previous["id"],
         }
         inherited = previous["result"].get("consistency", {}).get("confirmation")
@@ -598,6 +677,8 @@ def create_app(settings=None, *, client=None, model_builder=None):
         workspace.mkdir(parents=True)
         await asyncio.to_thread(shutil.copyfile, source, workspace / "source.png")
         seed = {
+            "render_style": previous["result"].get("render_style"),
+            "style_scheme": previous["result"].get("style_scheme", {}),
             "layout": document.layout.model_dump(),
             "furniture": document.furniture.model_dump(),
             "rebuild_of": previous["id"],

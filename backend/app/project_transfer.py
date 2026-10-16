@@ -11,16 +11,19 @@ from uuid import uuid4
 from fastapi import File, HTTPException, Request, UploadFile
 from pydantic import ValidationError
 
-from .schemas import Layout, Furnishing, JobOptions, ManualEditRequest, signed_area
 from .config import ROOT
+from .archive_limits import MAX_ENTRIES, MAX_COMPRESSED, MAX_UNCOMPRESSED
 from .library_models import load_glb
+from .schemas import Furnishing, JobOptions, Layout, ManualEditRequest, signed_area
 
 
 def read_project_archive(content):
+    if len(content) > MAX_COMPRESSED:
+        raise ValueError("项目包不能超过 200 MB")
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
             infos = archive.infolist()
-            if len(infos) > 200 or sum(i.file_size for i in infos) > 400 * 1024 * 1024:
+            if len(infos) > MAX_ENTRIES or sum(i.file_size for i in infos) > MAX_UNCOMPRESSED:
                 raise ValueError("项目包解压后过大")
             if len({i.filename for i in infos}) != len(infos):
                 raise ValueError("项目包含重复文件")
@@ -91,7 +94,9 @@ def read_project_archive(content):
                     image.verify()
                 textures[digest] = raw
             options = JobOptions(
-                style=data.get("style", "natural"),
+                style=data.get("style_choice", data.get("style", "natural")),
+                style_description=data.get("style_description", ""),
+                render_style=data.get("style", "natural"),
                 furniture_mode=data.get("furniture_mode", "library"),
             )
             return (
@@ -109,9 +114,11 @@ def read_project_archive(content):
 def install_transfer_routes(app, store, settings, public, normalize_image):
     @app.post("/api/projects/sample", status_code=201)
     async def copy_sample():
-        from scripts.build_showcase import document
-        from PIL import Image, ImageDraw
         import shutil
+
+        from PIL import Image, ImageDraw
+
+        from scripts.build_showcase import document
 
         data = document()
         layout = Layout.model_validate(
@@ -197,7 +204,7 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
         try:
             while chunk := await file.read(1024 * 1024):
                 content.extend(chunk)
-                if len(content) > 200 * 1024 * 1024:
+                if len(content) > MAX_COMPRESSED:
                     raise HTTPException(413, "项目包不能超过 200 MB")
         finally:
             await file.close()
@@ -234,7 +241,13 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
             temporary.replace(library / f"{digest}.glb")
         (workspace / "rebuild-seed.json").write_text(
             json.dumps(
-                {"layout": layout.model_dump(), "furniture": furniture.model_dump()},
+                {
+                    "layout": layout.model_dump(),
+                    "furniture": furniture.model_dump(),
+                    "imported_project": True,
+                    "preserve_design": True,
+                    "render_style": options.render_style,
+                },
                 ensure_ascii=False,
             ),
             encoding="utf-8",

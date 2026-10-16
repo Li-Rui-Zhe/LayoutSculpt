@@ -4,10 +4,10 @@ import math
 
 import numpy as np
 import trimesh
-
-from .diy_schema import DiyDesign, design_bounds
-from .surface_materials import MATERIALS, ROOT
 from PIL import Image
+
+from .diy_schema import DIY_MATERIALS, DiyDesign, design_bounds
+from .surface_materials import ROOT
 
 
 def design_meshes(design: DiyDesign, dimensions=None):
@@ -60,7 +60,11 @@ def design_meshes(design: DiyDesign, dimensions=None):
             metallicFactor=part.metallic,
         )
         if part.material_id:
-            item = MATERIALS[part.material_id]
+            item = DIY_MATERIALS[part.material_id]
+            if item.get("opacity", 1) < 1:
+                material.baseColorFactor = [*color[:3], round(item["opacity"] * 255)]
+                material.alphaMode = "BLEND"
+                material.doubleSided = True
             surface = item.get("surface") or {
                 "wood": "planks",
                 "stone": "stone",

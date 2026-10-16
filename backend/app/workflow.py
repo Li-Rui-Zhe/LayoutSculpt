@@ -16,17 +16,25 @@ from .ai_contracts import (
     LayoutExtraction,
     LayoutReviewPatch,
     apply_review_patch,
-    pack_layout,
     unpack_layout,
 )
+from .ai_failures import ai_failure_message, classify_ai_error
+from .ai_requests import asset_input, furnishing_schema, layout_input, review_schema
 from .architecture import structure_issues, validate_generated_structure
 from .codex import CodexChatModel, CodexClient, CodexError
-from .consistency import source_hash, structure_hash, matches_confirmation
+from .consistency import matches_confirmation, source_hash, structure_hash
 from .modeling import build_model
+from .public_errors import public_message
 from .quality import finish_design, prepare_generated_furnishing
 from .recovery import REVIEW_TIMEOUT_WARNING
 from .resilience import transient_ai_error
-from .schemas import Furnishing, Layout, signed_area, validate_furnishing
+from .schemas import (
+    CustomStyleFurnishing,
+    Furnishing,
+    Layout,
+    signed_area,
+    validate_furnishing,
+)
 
 
 class State(TypedDict, total=False):
@@ -41,6 +49,7 @@ class State(TypedDict, total=False):
     refine_of: str
     restructure_of: str
     preserve_design: bool
+    imported_project: bool
     confirmed_structure: bool
     awaiting_review: bool
     confirmation: dict
@@ -48,15 +57,29 @@ class State(TypedDict, total=False):
     recovered_structure_of: str
     source_sha256: str
     furnishing_status: str
+    style_scheme: dict
+    render_style: str
 
 
 def create_graph(
-    settings, store, client, registry, checkpointer, model_builder=build_model, library=None
+    settings,
+    store,
+    client,
+    registry,
+    checkpointer,
+    model_builder=build_model,
+    library=None,
 ):
     cache = StageCache(settings.data_dir / "ai-cache")
 
     async def run_agent(
-        state, role, skill, output_type, payload, post_validate=None, artifact=None,
+        state,
+        role,
+        skill,
+        output_type,
+        payload,
+        post_validate=None,
+        artifact=None,
         transform=None,
     ):
         job_id = state["job_id"]
@@ -77,12 +100,34 @@ def create_graph(
             "status": "running",
         }
         started_at = time.perf_counter()
+        if role == "recognition":
+            from .recognition_contract import RecognitionContract
+
+            response_schema = RecognitionContract.model_json_schema()
+        elif role == "furnishing":
+            response_schema = furnishing_schema(
+                output_type,
+                library=state["options"].get("furniture_mode", "library") == "library",
+                surface_catalog=payload.get("surface_catalog"),
+            )
+        elif role == "review":
+            response_schema = review_schema()
+        else:
+            response_schema = output_type.model_json_schema()
+        trace["schema_chars"] = len(compact_json(response_schema))
+        notified_recovery = set()
 
         async def on_event(event):
             if event["type"] == "thread":
                 trace["threads"].append(event["thread_id"])
                 if event.get("model"):
                     trace["model"] = event["model"]
+            elif event["type"] == "analysis_started":
+                await store.update(
+                    job_id,
+                    agent=role,
+                    message="AI 已接收图片和本阶段要求，正在分析；进度将在阶段校验完成后更新",
+                )
             elif event["type"] == "output_started":
                 trace.setdefault(
                     "first_output_seconds", round(time.perf_counter() - started_at, 3)
@@ -90,13 +135,29 @@ def create_graph(
                 await store.update(
                     job_id, agent=role, message="AI 正在返回分析结果，完成后将自动校验"
                 )
+            elif event["type"] == "service_error":
+                diagnostic = {
+                    key: event[key]
+                    for key in ("code", "retryable", "will_retry", "http_status")
+                    if key in event
+                }
+                trace.setdefault("service_events", []).append(diagnostic)
+                trace["service_events"] = trace["service_events"][-20:]
+                notice_key = (len(trace["threads"]), event.get("code"))
+                if event.get("will_retry") and notice_key not in notified_recovery:
+                    notified_recovery.add(notice_key)
+                    await store.update(
+                        job_id,
+                        agent=role,
+                        message="AI 服务正在恢复本次响应，请稍候；已完成步骤保留",
+                    )
 
         llm = CodexChatModel(
             client=client,
             workspace=workspace,
             image=workspace / "source.png",
             instructions=instructions,
-            response_schema=output_type.model_json_schema(),
+            response_schema=response_schema,
             event_callback=on_event,
             model_name=state["options"].get("model"),
             reasoning_effort=state["options"].get("reasoning_effort"),
@@ -120,7 +181,7 @@ def create_graph(
             source_sha256=input_digest,
             instructions=instructions,
             prompt=prompt.format(**variables),
-            schema=output_type.model_json_schema(),
+            schema=response_schema,
             model=trace["model"],
             effort=trace["reasoning_effort"],
             role=role,
@@ -172,21 +233,39 @@ def create_graph(
                         )
                         return save(output)
                 chain = prompt | llm | PydanticOutputParser(pydantic_object=output_type)
+
                 async def invoke_model():
                     while True:
                         try:
+                            trace["requests"] = trace.get("requests", 0) + 1
                             return await chain.ainvoke(variables)
                         except (CodexError, ConnectionError, TimeoutError) as exc:
                             temporary = transient_ai_error(exc) or (
                                 role == "recognition" and isinstance(exc, TimeoutError)
                             )
-                            remaining = settings.codex_timeout - (time.perf_counter() - started_at)
-                            if not temporary or trace.get("connection_retries", 0) >= 1 or remaining < 15:
+                            remaining = settings.codex_timeout - (
+                                time.perf_counter() - started_at
+                            )
+                            if (
+                                not temporary
+                                or trace.get("connection_retries", 0) >= 1
+                                or remaining < 15
+                            ):
                                 raise
                             trace["connection_retries"] = 1
-                            await store.update(job_id, agent=role,
-                                message="AI 连接暂时中断，正在自动重连一次；已完成步骤保留")
-                            await asyncio.sleep(0.25)
+                            failure = classify_ai_error(exc)
+                            trace.setdefault("retries", []).append(failure)
+                            delay = 5 if failure["code"] == "rate_limited" else 1
+                            await store.update(
+                                job_id,
+                                agent=role,
+                                message=(
+                                    "AI 未返回有效结果，正在重新请求一次；已完成步骤保留"
+                                    if failure["code"] == "empty_response"
+                                    else "AI 服务暂时不可用，稍后自动重试一次；已完成步骤保留"
+                                ),
+                            )
+                            await asyncio.sleep(delay)
 
                 for attempt in range(2):
                     output = None
@@ -209,6 +288,11 @@ def create_graph(
                             not isinstance(exc, (ValueError, OutputParserException))
                             or attempt
                         ):
+                            if isinstance(exc, (ValueError, OutputParserException)):
+                                trace["failure"] = {
+                                    "code": "invalid_result",
+                                    "retryable": False,
+                                }
                             raise
                         (workspace / f"{role}-validation.txt").write_text(
                             str(exc)
@@ -234,6 +318,19 @@ def create_graph(
             raise
         except Exception as exc:
             trace["status"] = "timed_out" if isinstance(exc, TimeoutError) else "failed"
+            trace.setdefault("failure", classify_ai_error(exc))
+            # 限定为阶段名和安全分类；详细上游响应不写入公开任务数据。
+            if trace["failure"]["code"] == "invalid_result":
+                from .ai_failures import MESSAGES
+
+                label = {
+                    "recognition": "户型识别",
+                    "review": "结构复核",
+                    "furnishing": "家具规划",
+                }.get(role, "AI 生成")
+                raise ValueError(
+                    f"{label}：{MESSAGES['invalid_result']}原图和已完成步骤已保留。"
+                ) from exc
             raise
         finally:
             trace["elapsed_seconds"] = round(time.perf_counter() - started_at, 3)
@@ -283,7 +380,7 @@ def create_graph(
         candidate = Layout.model_validate(state["layout"])
         payload = {
             "base_revision": structure_hash(candidate),
-            "layout": pack_layout(candidate),
+            "layout": layout_input(candidate),
             "local_findings": structure_issues(candidate),
         }
         try:
@@ -300,7 +397,9 @@ def create_graph(
                     artifact="review-patch",
                 )
         except (TimeoutError, ValueError, CodexError, ConnectionError) as exc:
-            if isinstance(exc, (CodexError, ConnectionError)) and not transient_ai_error(exc):
+            if isinstance(
+                exc, (CodexError, ConnectionError)
+            ) and not transient_ai_error(exc):
                 raise
             # No partial review output is accepted. Human confirmation remains mandatory.
             validate_generated_structure(candidate)
@@ -354,41 +453,119 @@ def create_graph(
             ]
             if library:
                 asset_items = await library.catalog()
-        allowed_assets = {item["asset_id"]: item for item in asset_items if "asset_id" in item}
+        allowed_assets = {
+            item["asset_id"]: item for item in asset_items if "asset_id" in item
+        }
+        custom_style = state["options"].get("style") == "custom"
+        style_context = {}
+        if custom_style:
+            from .surface_materials import FLOOR_MATERIALS, MATERIALS, WALL_MATERIALS
+            from .texture_assets import available_textures
+
+            textures = (await asyncio.to_thread(available_textures, settings))["items"]
+            surface_catalog = {
+                "walls": [MATERIALS[key] for key in WALL_MATERIALS],
+                "floor": [MATERIALS[key] for key in FLOOR_MATERIALS],
+            }
+            for item in textures:
+                for category in item.get("categories", ["walls", "floor"]):
+                    if category in surface_catalog:
+                        surface_catalog[category].append(
+                            {
+                                "id": item["id"],
+                                "name": item["name"],
+                                "family": item["family"],
+                                "finish": item["finish"],
+                            }
+                        )
+
+            style_context = {
+                "style_description": state["options"]["style_description"],
+                "surface_catalog": surface_catalog,
+                "selected_wall_material": state["options"].get("wall_material"),
+                "selected_floor_material": state["options"].get("floor_material"),
+            }
 
         def validate_plan(plan):
             validate_furnishing(plan, layout)
+            if custom_style:
+                for field, category in [
+                    ("wall_material", "walls"),
+                    ("floor_material", "floor"),
+                ]:
+                    if getattr(plan, field) not in {
+                        entry["id"] for entry in surface_catalog[category]
+                    }:
+                        raise ValueError(
+                            "饰面不在本次用途对应的材质目录中，请从提供的目录选择"
+                        )
             for item in plan.items:
-                if item.asset_id and (item.asset_id not in allowed_assets or item.kind != allowed_assets[item.asset_id]["kind"]):
-                    raise ValueError("家具素材 ID 或类型不在本次目录中，请使用目录提供的 asset_id 和 kind")
+                if item.asset_id and (
+                    item.asset_id not in allowed_assets
+                    or item.kind != allowed_assets[item.asset_id]["kind"]
+                ):
+                    raise ValueError(
+                        "家具素材 ID 或类型不在本次目录中，请使用目录提供的 asset_id 和 kind"
+                    )
+
         try:
             furniture, trace = await run_agent(
                 state,
                 "furnishing",
                 "furniture-planning",
-                Furnishing,
+                CustomStyleFurnishing if custom_style else Furnishing,
                 {
-                    "layout": pack_layout(layout),
+                    "layout": layout_input(layout),
                     "style": state["options"]["style"],
-                    "furniture_assets": asset_items,
+                    "furniture_assets": asset_input(asset_items),
+                    **style_context,
                 },
                 validate_plan,
                 transform=lambda plan: prepare_generated_furnishing(plan, layout),
             )
         except (TimeoutError, ValueError, CodexError, ConnectionError) as exc:
-            if isinstance(exc, (CodexError, ConnectionError)) and not transient_ai_error(exc):
+            if isinstance(
+                exc, (CodexError, ConnectionError)
+            ) and not transient_ai_error(exc):
                 raise
-            reason = "超时" if isinstance(exc, TimeoutError) else "连接暂时不可用" if transient_ai_error(exc) else "结果无法读取"
+            reason = (
+                "超时"
+                if isinstance(exc, TimeoutError)
+                else "连接暂时不可用"
+                if transient_ai_error(exc)
+                else "结果无法读取"
+            )
             warning = f"家具规划{reason}，已先生成确认的房屋结构；家具尚未完成，可手动布置或重新规划家具。"
+            if custom_style:
+                warning += "自定义风格搭配尚未完成，已保留风格描述供重新规划使用。"
             await store.update(state["job_id"], agent="家具规划", message=warning)
-            return {"furniture": {"items": [], "notes": [warning]}, "furnishing_status": "incomplete"}
+            return {
+                "furniture": {"items": [], "notes": [warning]},
+                "furnishing_status": "incomplete",
+                "style_scheme": {},
+            }
+        style_scheme = (
+            {
+                key: furniture.pop(key)
+                for key in ("render_style", "wall_material", "floor_material")
+            }
+            if custom_style
+            else {}
+        )
         if library:
             furniture = (await library.resolve_furnishing(furniture)).model_dump()
             validate_furnishing(Furnishing.model_validate(furniture), layout)
         if not furniture["items"]:
-            furniture["notes"] = ["本次方案未包含可放置的家具，已保留完整房屋结构，可手动补充或重新规划家具。", *furniture["notes"]][:20]
-        return {"furniture": furniture, "agents": [trace],
-                "furnishing_status": "completed" if furniture["items"] else "incomplete"}
+            furniture["notes"] = [
+                "本次方案未包含可放置的家具，已保留完整房屋结构，可手动补充或重新规划家具。",
+                *furniture["notes"],
+            ][:20]
+        return {
+            "furniture": furniture,
+            "agents": [trace],
+            "style_scheme": style_scheme,
+            "furnishing_status": "completed" if furniture["items"] else "incomplete",
+        }
 
     async def prepare_review(state):
         workspace = settings.workspace(state["job_id"])
@@ -448,6 +625,27 @@ def create_graph(
             Furnishing.model_validate(state["furniture"]),
             automatic=not bool(state.get("edited_of") or state.get("preserve_design")),
         )
+        if not (state.get("edited_of") or state.get("preserve_design")):
+            from .surface_design import apply_generation_surfaces
+
+            scheme = state.get("style_scheme", {})
+            layout = apply_generation_surfaces(
+                layout,
+                {
+                    "wall_material": state["options"].get("wall_material")
+                    or scheme.get("wall_material"),
+                    "floor_material": state["options"].get("floor_material")
+                    or scheme.get("floor_material"),
+                },
+            )
+        render_style = state["options"]["style"]
+        if render_style == "custom":
+            render_style = (
+                state.get("style_scheme", {}).get("render_style")
+                or state.get("render_style")
+                or state["options"].get("render_style")
+                or "natural"
+            )
         confirmation = state.get("confirmation")
         if confirmation and (
             not matches_confirmation(layout, confirmation, snapshot=state["layout"])
@@ -455,9 +653,11 @@ def create_graph(
         ):
             raise ValueError("生成前结构或原图发生变化，请重新确认户型结构")
         if confirmation and confirmation["structure_hash"] != structure_hash(layout):
-            confirmation = {**confirmation,
-                            "legacy_structure_hash": confirmation["structure_hash"],
-                            "structure_hash": structure_hash(layout)}
+            confirmation = {
+                **confirmation,
+                "legacy_structure_hash": confirmation["structure_hash"],
+                "structure_hash": structure_hash(layout),
+            }
         quality["furnishing_complete"] = state.get("furnishing_status") != "incomplete"
         (workspace / "quality-report.json").write_text(
             json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -467,7 +667,7 @@ def create_graph(
             workspace,
             layout,
             furniture,
-            state["options"]["style"],
+            render_style,
             furniture_mode=state["options"].get("furniture_mode", "library"),
         )
         if confirmation and confirmation["source_sha256"] != source_hash(
@@ -485,6 +685,9 @@ def create_graph(
         )
         base = f"/api/jobs/{state['job_id']}/artifacts"
         result = {
+            "render_style": render_style,
+            "style_scheme": state.get("style_scheme", {}),
+            "style_description": state["options"].get("style_description", ""),
             "title": layout.title,
             "area": round(abs(signed_area(layout.outline)), 1),
             "room_count": len(layout.rooms),
@@ -492,8 +695,12 @@ def create_graph(
             "scale_note": layout.scale_note,
             "warnings": layout.warnings + furniture.notes + quality["issues"],
             "quality": quality,
-            "delivery_notice": furniture.notes[0] if not quality["furnishing_complete"] else None,
-            "delivery_status": "ready" if quality["furnishing_complete"] else "structure_ready",
+            "delivery_notice": furniture.notes[0]
+            if not quality["furnishing_complete"]
+            else None,
+            "delivery_status": "ready"
+            if quality["furnishing_complete"]
+            else "structure_ready",
             "generation_policy_version": "resilient-generation-v3",
             "consistency": {
                 **furniture_report.get("consistency", {}),
@@ -529,6 +736,17 @@ def create_graph(
         (workspace / "manifest.json").write_text(
             json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        # 成果包保留自定义要求；style 继续存实际建模基调，兼容旧 GLB 构建器。
+        layout_path = workspace / "layout.json"
+        if layout_path.is_file():
+            document = json.loads(layout_path.read_text(encoding="utf-8"))
+            document.update(
+                style_choice=state["options"]["style"],
+                style_description=state["options"].get("style_description", ""),
+            )
+            layout_path.write_text(
+                json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         return {"result": result}
 
     graph = StateGraph(State)
@@ -553,7 +771,7 @@ def create_graph(
             else "furnish"
             if state.get("refine_of")
             else "build"
-            if state.get("rebuild_of")
+            if state.get("rebuild_of") or state.get("imported_project")
             else "recognize"
         ),
     )
@@ -621,35 +839,42 @@ class JobRunner:
                     return
                 job = await self.store.get(job_id)
                 graph_input = {
-                        **seed,
-                        "job_id": job_id,
-                        "options": job["options"],
-                        "agents": seed.get("agents", []),
-                        "source_sha256": seed.get("source_sha256")
-                        or (seed.get("confirmation") or {}).get("source_sha256")
-                        or (
-                            source_hash(self.settings.workspace(job_id) / "source.png")
-                            if self.settings
-                            else None
-                        ),
-                    }
+                    **seed,
+                    "job_id": job_id,
+                    "options": job["options"],
+                    "agents": seed.get("agents", []),
+                    "source_sha256": seed.get("source_sha256")
+                    or (seed.get("confirmation") or {}).get("source_sha256")
+                    or (
+                        source_hash(self.settings.workspace(job_id) / "source.png")
+                        if self.settings
+                        else None
+                    ),
+                }
                 config = {
-                        "configurable": {
-                            "thread_id": f"{job_id}:confirmed"
-                            if seed.get("confirmed_structure")
-                            else job_id
-                        },
-                        "recursion_limit": 12,
-                    }
+                    "configurable": {
+                        "thread_id": f"{job_id}:confirmed"
+                        if seed.get("confirmed_structure")
+                        else job_id
+                    },
+                    "recursion_limit": 12,
+                }
                 if resume:
                     checkpoint = await self.graph.aget_state(config)
                     if checkpoint.values:
                         saved = checkpoint.values
-                        if (saved.get("job_id") != job_id
+                        if (
+                            saved.get("job_id") != job_id
                             or saved.get("options") != job["options"]
-                            or saved.get("source_sha256") != source_hash(self.settings.workspace(job_id) / "source.png")
-                            or saved.get("confirmation") != seed.get("confirmation")):
-                            raise ValueError("恢复记录与当前原图、结构确认或参数不一致，请重新核对任务")
+                            or saved.get("source_sha256")
+                            != source_hash(
+                                self.settings.workspace(job_id) / "source.png"
+                            )
+                            or saved.get("confirmation") != seed.get("confirmation")
+                        ):
+                            raise ValueError(
+                                "恢复记录与当前原图、结构确认或参数不一致，请重新核对任务"
+                            )
                         # Resume only the pending node. An unconfirmed layout
                         # still ends at prepare_review, never at model building.
                         graph_input = None
@@ -680,15 +905,15 @@ class JobRunner:
                 job_id,
                 status="queued" if self.closing else "cancelled",
                 stage="等待服务恢复后继续" if self.closing else "已取消",
-                message="已保存已完成的步骤，服务恢复后继续处理" if self.closing else "任务已停止，原始图片已保留",
+                message="已保存已完成的步骤，服务恢复后继续处理"
+                if self.closing
+                else "任务已停止，原始图片已保留",
             )
             raise
         except Exception as exc:  # noqa: BLE001 - persist every terminal worker failure
             current = await self.store.get(job_id)
-            message = (
-                f"{current['stage']}超时，未在等待上限内返回结果。已保留原图和已完成的中间结果，可重试。"
-                if isinstance(exc, TimeoutError)
-                else str(exc)[:1800]
+            message = ai_failure_message(exc, current["stage"]) or public_message(
+                exc, f"{current['stage']}未完成，请重试；原图和已完成步骤已保留。"
             )
             await self.store.update(
                 job_id,

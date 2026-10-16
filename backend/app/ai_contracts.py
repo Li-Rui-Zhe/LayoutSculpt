@@ -174,7 +174,19 @@ def apply_review_patch(layout, patch):
             else:
                 if change.value is None or change.value.id != change.id:
                     raise ValueError("修改对象 ID 与替换值不一致")
-                objects[change.id] = convert(change.value)
+                replacement = convert(change.value)
+                if change.action == "update":
+                    # 结构复核只修正建筑信息，不能用模型的默认值覆盖人工装修和编辑属性。
+                    geometry_keys = (
+                        ("id", "name", "kind", "polygon")
+                        if key == "rooms"
+                        else ("id", "start", "end", "thickness", "height", "exterior")
+                    )
+                    replacement = {
+                        **objects[change.id],
+                        **{k: replacement[k] for k in geometry_keys},
+                    }
+                objects[change.id] = replacement
         data[key] = list(objects.values())
     if patch.outline:
         if not patch.outline.evidence.strip():

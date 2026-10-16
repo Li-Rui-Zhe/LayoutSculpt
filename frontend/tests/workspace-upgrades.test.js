@@ -55,7 +55,7 @@ test("草稿遇到修订冲突后停止自动覆盖", async () => {
     0,
     async () => {
       calls++;
-      throw Error("冲突");
+      throw Object.assign(Error("冲突"), { status: 409 });
     },
     (v) => statuses.push(v),
     10000,

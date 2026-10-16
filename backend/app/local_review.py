@@ -21,6 +21,7 @@ from .ai_contracts import (
     pack_layout,
 )
 from .architecture import validate_generated_structure
+from .disconnect import while_connected
 from .codex import CodexChatModel, CodexError
 from .consistency import source_hash, structure_hash
 from .schemas import StrictModel, Layout, JobOptions, Furnishing, ManualEditRequest
@@ -229,7 +230,7 @@ def install_local_review_routes(app, store, settings, client, registry, resolve_
             async with asyncio.timeout(min(settings.codex_timeout, 180)), gate:
                 if await request.is_disconnected():
                     raise HTTPException(499, "局部复核已取消")
-                result = await graph.compile().ainvoke({})
+                result = await while_connected(request, graph.compile().ainvoke({}))
             return {**result["result"], "skills": skills, "model": options.model}
         except TimeoutError as exc:
             raise HTTPException(504, "局部复核超时，当前设计未修改，请重试") from exc

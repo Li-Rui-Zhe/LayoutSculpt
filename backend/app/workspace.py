@@ -51,46 +51,75 @@ async def initialize_workspace(store):
 
 def install_workspace_routes(app, store, settings=None, library=None):
     import asyncio
+    import hashlib
+    from time import perf_counter
+    from .preview_cache import PreviewCache
 
     preview_limit = asyncio.Semaphore(1)
+    preview_cache = PreviewCache()
 
     @app.post("/api/jobs/{job_id}/preview")
     async def preview(job_id: UUID, body: ManualEditRequest, request: Request):
         if settings is None:
             raise HTTPException(503, "未配置模型预览")
         job = await store.get(job_id.hex)
-        if not job or job["status"] != "succeeded":
-            raise HTTPException(409, "请选择已完成的户型")
+        if not job or job["status"] not in {"succeeded", "awaiting_review"}:
+            raise HTTPException(409, "请选择已生成或等待核对的户型")
         if library is not None:
             body.furniture = await library.resolve_furnishing(body.furniture)
-        from .glb_builder import Builder
-        from fastapi.responses import Response
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        def build():
-            document = {
-                **body.layout.model_dump(),
-                "furniture": body.furniture.model_dump()["items"],
-                "style": job["options"].get("style", "natural"),
-                "furniture_mode": job["options"].get("furniture_mode", "library"),
-            }
+        from fastapi.responses import Response
+
+        from .modeling import build_model
+        from .disconnect import while_connected
+
+        started = perf_counter()
+        document = {
+            **body.layout.model_dump(),
+            "furniture": body.furniture.model_dump()["items"],
+            "style": (
+                (job.get("result") or {}).get("render_style")
+                or job["options"].get("render_style")
+                or "natural"
+            )
+            if job["options"].get("style") == "custom"
+            else job["options"].get("style", "natural"),
+            "furniture_mode": job["options"].get("furniture_mode", "library"),
+        }
+        key = hashlib.sha256(json.dumps({
+            "job": job_id.hex,
+            "document": document,
+            "catalog": settings.furniture_catalog.stat().st_mtime_ns,
+        }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+        async def build():
             with TemporaryDirectory(prefix="layout-preview-") as folder:
-                Builder(
-                    document, settings.furniture_catalog, settings.data_dir / "library"
-                ).build(Path(folder))
+                await build_model(settings, Path(folder), body.layout, body.furniture, document["style"], document["furniture_mode"])
                 return (Path(folder) / "model.glb").read_bytes()
 
-        async with preview_limit:
-            if await request.is_disconnected():
-                raise HTTPException(499, "预览请求已取消")
-            task = asyncio.create_task(asyncio.to_thread(build))
-            try:
-                result = await asyncio.shield(task)
-            except asyncio.CancelledError:
-                await task
-                raise
-            return Response(result, media_type="model/gltf-binary")
+        async def bounded_build():
+            async with asyncio.timeout(settings.model_timeout), preview_limit:
+                # 等待其他请求时，同一份草稿可能已完成构建。
+                cached = preview_cache.get(key)
+                if cached is not None:
+                    return cached, "hit"
+                result = await build()
+                preview_cache.put(key, result)
+                return result, "miss"
+        try:
+            result = preview_cache.get(key)
+            cache_status = "hit"
+            if result is None:
+                result, cache_status = await while_connected(request, bounded_build())
+        except TimeoutError as exc:
+            raise HTTPException(504, "预览等待或生成超时，请稍后重试或减少对象复杂度；当前设计已保留") from exc
+        return Response(result, media_type="model/gltf-binary", headers={
+            "Cache-Control": "no-store",
+            "X-Preview-Cache": cache_status,
+            "Server-Timing": f"preview;dur={(perf_counter() - started) * 1000:.1f}",
+        })
 
     def draft_key(key):
         import re
@@ -121,9 +150,12 @@ def install_workspace_routes(app, store, settings=None, library=None):
     @app.post("/api/drafts/{key}")
     async def save_draft(key: str, body: DraftWrite):
         key = draft_key(key)
-        encoded = json.dumps(
-            body.document, ensure_ascii=False, allow_nan=False, sort_keys=True
-        )
+        try:
+            encoded = json.dumps(
+                body.document, ensure_ascii=False, allow_nan=False, sort_keys=True
+            )
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(422, "草稿包含无效数值，请检查尺寸、位置等属性") from exc
         if len(encoded.encode("utf-8")) > 2 * 1024 * 1024:
             raise HTTPException(413, "草稿超过 2 MB，请减少对象数量")
         db = await store.connect()

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { api } from "../api.js";
 import { toDraft, clone, restorableDraft } from "./geometry.js";
 import {
@@ -8,6 +8,7 @@ import {
 } from "./objectIdentity.js";
 import { fitOutline } from "./autoOutline.js";
 import { useDraftSync } from "../hooks/useDraftSync.js";
+import { restoreDraft } from "../hooks/restoreDraft.js";
 
 export function useEditDraft(jobId, reviewing = false) {
   const key = `habitat-edit:${jobId}${reviewing ? ":structure" : ""}`;
@@ -19,18 +20,31 @@ export function useEditDraft(jobId, reviewing = false) {
   const [revision, setRevision] = useState(0);
   const [serverRevision, setServerRevision] = useState(null);
   const [loadedKey, setLoadedKey] = useState(null);
+  const [restoreConflict, setRestoreConflict] = useState(null);
+  const syncBase = useRef(null);
   const serverKey = `${reviewing ? "structure" : "edit"}:${jobId}`;
   const sync = useDraftSync(
     serverKey,
     history?.present,
-    loadedKey === serverKey ? serverRevision : null,
+    loadedKey === serverKey && !restoreConflict ? serverRevision : null,
     (merged) => setHistory({ past: [], present: merged, future: [] }),
+    {
+      baseDocument: syncBase.current,
+      onSaved: (document, syncedRevision) => {
+        syncBase.current = document;
+        try {
+          const saved = JSON.parse(localStorage.getItem(key));
+          if (saved) localStorage.setItem(key, JSON.stringify({ ...saved, baseDocument: document, syncedRevision }));
+        } catch { /* 最新编辑仍由下面的本地保存 effect 保留。 */ }
+      },
+    },
   );
   useEffect(() => {
     let alive = true;
     setError("");
     setLoadedKey(null);
     setServerRevision(null);
+    setRestoreConflict(null);
     Promise.all([
       api(
         `/jobs/${jobId}/artifacts/${reviewing ? "structure" : "layout"}.json`,
@@ -40,21 +54,19 @@ export function useEditDraft(jobId, reviewing = false) {
       .then(([data, server]) => {
         if (!alive) return;
         const original = identifyObjects(toDraft(data), true);
-        let restored = original;
+        let local = null;
         try {
           const saved = JSON.parse(localStorage.getItem(key));
-          if (
-            !server?.document &&
-            saved?.version === 1 &&
-            restorableDraft(saved.document)
-          )
-            restored = saved.document;
-          restored.layout.lights ||= [];
+          if (saved?.version === 1 && restorableDraft(saved.document)) local = saved;
         } catch {
           /* 损坏的本地草稿回退至原始数据。 */
         }
-        if (server?.document && restorableDraft(server.document))
-          restored = server.document;
+        const remote = server?.document && restorableDraft(server.document) ? server : null;
+        const choice = restoreDraft(local, remote, original);
+        let restored = choice.document;
+        restored.layout.lights ||= [];
+        syncBase.current = remote?.document || local?.baseDocument || original;
+        if (choice.conflict) setRestoreConflict(remote);
         setLoadedKey(serverKey);
         restored = identifyObjects(restored, true);
         setBase(original);
@@ -77,7 +89,7 @@ export function useEditDraft(jobId, reviewing = false) {
     try {
       localStorage.setItem(
         key,
-        JSON.stringify({ version: 1, document: history.present }),
+        JSON.stringify({ version: 1, document: history.present, baseDocument: syncBase.current }),
       );
       if (serverRevision !== null) setStorageError("");
     } catch {
@@ -128,11 +140,25 @@ export function useEditDraft(jobId, reviewing = false) {
           },
     );
   return {
+    restoreConflict: !!restoreConflict,
+    resolveRestore: (useLocal) => {
+      if (!restoreConflict) return;
+      try {
+        localStorage.setItem(`${key}:recovery-backup`, JSON.stringify({ local: history.present, remote: restoreConflict.document, savedAt: new Date().toISOString() }));
+      } catch {
+        setStorageError("无法备份冲突草稿，请先保存为独立三维版本，再选择要恢复的草稿。");
+        return;
+      }
+      syncBase.current = restoreConflict.document;
+      if (!useLocal) setHistory({ past: [], present: identifyObjects(restoreConflict.document, true), future: [] });
+      setServerRevision(restoreConflict.revision);
+      setRestoreConflict(null);
+    },
     base,
     constraintError,
     document: history?.present,
     error,
-    storageError: sync.error || storageError,
+    storageError: restoreConflict ? "本地修改与服务端草稿存在冲突，已保留本地内容，请选择恢复版本。" : sync.error || storageError,
     syncStatus: sync.message,
     dirty:
       !!base &&

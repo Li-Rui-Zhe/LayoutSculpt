@@ -2,9 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { createDraftSession } from "./draftSession.js";
 
-export function useDraftSync(key, document, initialRevision, onMerge) {
+export function useDraftSync(
+  key,
+  document,
+  initialRevision,
+  onMerge,
+  options = {},
+) {
   const mergeCallback = useRef(onMerge);
   mergeCallback.current = onMerge;
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
   const session = useRef(null);
   const [status, setStatus] = useState({ message: "正在读取草稿", error: "" });
   useEffect(() => {
@@ -20,17 +28,25 @@ export function useDraftSync(key, document, initialRevision, onMerge) {
         }),
       (value) => {
         if (session.current === current) {
+          if (value.syncedDocument)
+            optionsRef.current.onSaved?.(
+              value.syncedDocument,
+              value.syncedRevision,
+            );
           if (value.document) mergeCallback.current?.(value.document);
           setStatus(value);
         }
       },
       650,
-      onMerge ? { read: (key) => api(`/drafts/${key}`) } : {},
+      {
+        ...(onMerge ? { read: (key) => api(`/drafts/${key}`) } : {}),
+        baseDocument: optionsRef.current.baseDocument,
+      },
     );
     session.current = current;
     return () => {
       session.current = null;
-      void current.flush();
+      void current.close();
     };
   }, [key, initialRevision]);
   useEffect(() => {
@@ -43,8 +59,14 @@ export function useDraftSync(key, document, initialRevision, onMerge) {
         void session.current?.flush();
     };
     globalThis.document.addEventListener("visibilitychange", flush);
-    return () =>
+    const online = () => {
+      void session.current?.flush();
+    };
+    globalThis.addEventListener?.("online", online);
+    return () => {
       globalThis.document.removeEventListener("visibilitychange", flush);
+      globalThis.removeEventListener?.("online", online);
+    };
   }, []);
   return status;
 }

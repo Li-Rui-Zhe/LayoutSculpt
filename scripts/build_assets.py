@@ -68,4 +68,5 @@ if __name__ == "__main__":
             raise SystemExit(f"Blender 未完成产物：{output.name}")
         load_glb(output.read_bytes())
     subprocess.run([sys.executable, str(ROOT / "scripts/render_asset_thumbnails.py")], check=True)
-    raise SystemExit(subprocess.call([sys.executable, str(ROOT / "scripts/build_extra_assets.py")]))
+    subprocess.run([sys.executable, str(ROOT / "scripts/build_extra_assets.py")], check=True)
+    raise SystemExit(subprocess.call([sys.executable, str(ROOT / "scripts/build_home_collection.py")]))

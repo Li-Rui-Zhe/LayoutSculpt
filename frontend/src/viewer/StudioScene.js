@@ -14,6 +14,7 @@ import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { installCutaway, updateCutaway } from "./cutaway.js";
+import { repairLegacyWallMaterials } from "./materialCompatibility.js";
 import { installFixtureLights, updateFixtureLights } from "./fixtureLights.js";
 import { presets, showcase } from "../catalog.js";
 import { resolveMaterial } from "../materials/custom.js";
@@ -21,6 +22,11 @@ import { isolateSoftSurfaces, surfaceProfile } from "../materials/surfaces.js";
 import { frameBounds, visualCenter, perspectiveCenter } from "./viewFraming.js";
 import { isolateRoomFloors } from "./roomMaterials.js";
 import { selectedFloor } from "../materials/assignments.js";
+import {
+  applyOptics,
+  opticalProfile,
+  upgradeSurfaceMaterials,
+} from "../materials/optics.js";
 import {
   setRoomIsolation,
   prepareIsolationMaterials,
@@ -346,7 +352,9 @@ export class StudioScene {
     const roomCatalog = isolateRoomFloors(this.model);
     this.callbacks.onRooms?.(roomCatalog);
     if (!entry.originals) {
+      repairLegacyWallMaterials(this.model);
       isolateSoftSurfaces(this.model);
+      upgradeSurfaceMaterials(this.model);
       installCutaway(this.model);
       prepareIsolationMaterials(this.model);
       installFixtureLights(this.model, {
@@ -368,6 +376,9 @@ export class StudioScene {
         )
           obj.castShadow = false;
         obj.receiveShadow = true;
+        obj.userData.surfaceOriginalShadow = obj.castShadow;
+        if ([obj.material].flat().some((m) => m.transmission > 0.4))
+          obj.castShadow = false;
         [obj.material].flat().forEach((m) => {
           for (const texture of [m.map, m.normalMap]) {
             if (texture)
@@ -385,6 +396,7 @@ export class StudioScene {
               normalScale: m.normalScale?.clone(),
               roughness: m.roughness,
               metalness: m.metalness,
+              optics: opticalProfile(m),
             });
         });
       });
@@ -558,10 +570,18 @@ export class StudioScene {
           : null;
         material.normalScale?.setScalar(profile.normalStrength);
         material.roughness = profile.roughness;
-        material.metalness = 0;
+        applyOptics(material, profile.optics);
         material.needsUpdate = true;
       }
     }
+    this.model?.traverse((obj) => {
+      if (!obj.isMesh) return;
+      if (obj.userData.surfaceOriginalShadow === undefined)
+        obj.userData.surfaceOriginalShadow = obj.castShadow;
+      obj.castShadow = [obj.material].flat().some((m) => m.transmission > 0.4)
+        ? false
+        : obj.userData.surfaceOriginalShadow;
+    });
     this.light(state.preset);
     this.dirty = true;
     this.thumbnailsDue = performance.now() + 400;
@@ -579,6 +599,11 @@ export class StudioScene {
       if (original.normalScale) material.normalScale.copy(original.normalScale);
       material.roughness = original.roughness;
       material.metalness = original.metalness;
+      if (material.isMeshPhysicalMaterial)
+        applyOptics(
+          material,
+          original.optics ?? { metalness: original.metalness },
+        );
       if (changed) material.needsUpdate = true;
     }
   }

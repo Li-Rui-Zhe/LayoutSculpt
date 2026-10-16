@@ -1,0 +1,383 @@
+/* 人工设计：常用操作常驻，辅助参数按需展开。 */
+.manual-editor .editor-page-nav {
+  padding: 4px 0 10px;
+}
+.manual-editor .edit-toolbar {
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+}
+.manual-editor .edit-history {
+  gap: 8px;
+}
+.manual-editor .edit-history > button {
+  white-space: nowrap;
+}
+.editor-more,
+.editor-version,
+.scene-view-more {
+  position: relative;
+  font-size: 12px;
+}
+.editor-more > summary,
+.editor-version > summary,
+.scene-view-more > summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  border: 1px solid #d9e3dd;
+  border-radius: 7px;
+  background: #fff;
+  color: #486055;
+  list-style: none;
+}
+.editor-more > div,
+.editor-version > label,
+.scene-view-more > div {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  min-width: 170px;
+  padding: 12px;
+  background: white;
+  border: 1px solid #d9e3dd;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px #213b2d18;
+}
+.editor-more > div {
+  top: calc(100% + 6px);
+}
+.editor-version > label,
+.scene-view-more > div {
+  bottom: calc(100% + 6px);
+}
+.editor-version > label {
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.editor-version input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.editor-sidebar-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px;
+  border-bottom: 1px solid #e4ebe6;
+  flex: none;
+}
+.editor-sidebar-tabs button {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  min-height: 35px;
+  color: #65786a;
+  cursor: pointer;
+  font-size: 12px;
+}
+.editor-sidebar-tabs button[aria-pressed="true"] {
+  color: #224d3c;
+  background: #e9f2eb;
+  font-weight: 600;
+}
+.editor-sidebar-tabs small {
+  font-size: 11px;
+  opacity: 0.65;
+}
+.manual-editor .edit-library {
+  display: flex;
+  flex-direction: column;
+}
+.manual-editor .edit-library fieldset {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  overflow: auto;
+}
+.manual-editor .edit-library .edit-section[hidden] {
+  display: none;
+}
+.manual-editor .edit-library .object-browser {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.manual-editor .edit-library .object-browser .section-heading {
+  display: none;
+}
+.manual-editor .edit-library .object-adder {
+  overflow: auto;
+}
+.manual-editor .edit-library .edit-object-list {
+  max-height: none;
+}
+.manual-editor .edit-object-list button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f6f8f5;
+  padding: 10px;
+  margin-bottom: 4px;
+}
+.manual-editor .edit-object-list button[aria-pressed="true"] {
+  border-color: #aacdb6;
+  background: #e6f0e7;
+}
+.manual-editor .edit-inspector .inspector-heading {
+  background: #f2f6f2;
+  color: #214638;
+}
+.inspector-group {
+  border-bottom: 1px solid #e2e9e1;
+  padding: 10px 0;
+}
+.inspector-group > summary {
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #45604d;
+  padding: 5px 0;
+}
+.inspector-group[open] > summary {
+  margin-bottom: 10px;
+}
+.manual-editor .edit-inspector .field-note {
+  font-size: 11px;
+  line-height: 1.7;
+}
+.editor-tools-disclosure {
+  flex: none;
+  margin: 0 0 8px;
+  font-size: 12px;
+  border: 1px solid #dce5de;
+  border-radius: 8px;
+  background: #fff;
+}
+.editor-tools-disclosure > summary {
+  cursor: pointer;
+  padding: 9px 12px;
+  color: #5d7165;
+}
+.editor-tools-disclosure .edit-intro {
+  margin: 0;
+  padding: 10px;
+}
+.manual-editor .scene-editor-canvas {
+  padding: 0;
+  background: #edf1eb;
+  border: 1px solid #d4dfd5;
+  border-radius: 14px;
+}
+.scene-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  z-index: 2;
+  flex: none;
+}
+.scene-topbar .live-preview-heading {
+  min-width: 0;
+  padding: 0;
+  gap: 8px;
+}
+.scene-topbar .live-preview-heading strong {
+  font-size: 12px;
+  font-weight: 500;
+  max-width: 220px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.scene-topbar .scene-sync {
+  font-size: 10px;
+  color: #809183;
+  flex-shrink: 0;
+}
+.scene-topbar .live-preview-light {
+  margin: 0;
+  flex-wrap: nowrap;
+  display: flex;
+  gap: 5px;
+}
+.scene-topbar .live-preview-light button {
+  font-size: 11px;
+  white-space: nowrap;
+  border-radius: 6px;
+  background: #ffffffbb;
+  padding: 5px 9px;
+  border: 1px solid #d4e0d4;
+  color: #4a6350;
+}
+.scene-error {
+  z-index: 3;
+  padding: 8px 12px;
+  font-size: 12px;
+  background: #fff0e4;
+  color: #984a24;
+}
+.manual-editor .scene-rotation-tools {
+  position: absolute;
+  z-index: 5;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(470px, calc(100% - 40px));
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px;
+  background: #fffffff2;
+  box-shadow: 0 4px 20px #2c4f3810;
+  border-radius: 12px;
+}
+.manual-editor .rotation-compact {
+  gap: 10px;
+}
+.manual-editor .rotation-compact .rotation-presets {
+  flex: 0 0 240px;
+  gap: 4px;
+}
+.manual-editor .rotation-compact .rotation-presets button {
+  min-height: 32px;
+  font-size: 11px;
+}
+.manual-editor .scene-editor-canvas .diy-view-toolbar {
+  left: 50%;
+  right: auto;
+  bottom: 29px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 20px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #d8e2d8;
+  border-radius: 10px;
+  background: #fffffff2;
+}
+.scene-toolbar-select {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: #7c897d;
+  font-size: 10px;
+}
+.scene-toolbar-select select {
+  max-width: 105px;
+  border: 0;
+  background: transparent;
+  color: #354f3d;
+  font-size: 12px;
+  padding: 4px 0;
+  outline-offset: 3px;
+}
+.manual-editor .scene-editor-canvas .diy-preview-hint {
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 10px;
+  color: #7f9082;
+  bottom: 8px;
+}
+.manual-editor .scene-view-more summary {
+  border: 0;
+  padding: 4px 6px;
+  background: transparent;
+  font-size: 11px;
+}
+.manual-editor .edit-save-bar {
+  padding-top: 10px;
+  gap: 12px;
+}
+.manual-editor .edit-save-bar > div {
+  flex: 1;
+}
+.manual-editor .edit-save-bar small {
+  display: none;
+}
+.manual-editor .edit-check-summary {
+  padding: 7px 12px;
+  min-height: 0;
+  border-radius: 8px;
+}
+@media (min-width: 981px) {
+  .manual-editor .edit-columns {
+    grid-template-columns: 210px minmax(0, 1fr) 260px;
+    gap: 12px;
+  }
+  .manual-editor.canvas-focused .edit-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .manual-editor.canvas-focused .edit-library,
+  .manual-editor.canvas-focused .edit-inspector {
+    display: none;
+  }
+}
+@media (max-width: 980px) {
+  .manual-editor.canvas-focused .edit-library,
+  .manual-editor.canvas-focused .edit-inspector {
+    display: none;
+  }
+  .manual-editor.canvas-focused .edit-columns {
+    display: block;
+  }
+  .manual-editor .edit-library .object-browser {
+    max-height: 320px;
+  }
+  .manual-editor .edit-history {
+    flex-wrap: wrap;
+  }
+  .scene-topbar {
+    padding: 8px;
+  }
+}
+@media (max-width: 600px) {
+  .manual-editor .rotation-compact {
+    flex-direction: row;
+  }
+  .manual-editor .rotation-compact .rotation-presets {
+    flex-basis: 200px;
+  }
+  .manual-editor .rotation-compact .rotation-slider {
+    min-width: 65px;
+  }
+  .scene-topbar .live-preview-heading strong {
+    max-width: 120px;
+  }
+  .scene-topbar .scene-sync {
+    display: none;
+  }
+}
+
+.manual-editor .inspector-heading strong {
+  color: #264c38;
+}
+.manual-editor .inspector-heading > span {
+  color: #7b8e80;
+}
+.manual-editor .inspector-heading {
+  padding: 14px;
+  border-bottom: 1px solid #dfe8df;
+}
+.manual-editor .inspector-group .edit-number-grid {
+  margin-top: 0;
+}
+.manual-editor .scene-rotation-tools .rotation-slider {
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .scene-topbar { flex-wrap: wrap; }
+  .manual-editor .rotation-compact .rotation-presets { flex-basis: 180px; }
+  .manual-editor .rotation-compact .rotation-slider { min-width: 50px; }
+}

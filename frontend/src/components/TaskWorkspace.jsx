@@ -45,7 +45,7 @@ const ManualEditor = lazy(() => import("../editor/ManualEditor.jsx"));
 import StructureReview from "./StructureReview.jsx";
 import RetryDialog from "./RetryDialog.jsx";
 import { generationError } from "../hooks/modelSelection.js";
-import { useUrlContext } from "../hooks/urlContext.js";
+import { useUrlContext, writeContext } from "../hooks/urlContext.js";
 import { materialSelection } from "../materials/assignments.js";
 
 const lightIcons = {
@@ -595,17 +595,25 @@ export default function TaskWorkspace({
       </div>
       {job?.status === "succeeded" && (
         <div className="project-actions">
-          {tab !== "edit" && (
-            <button
-              type="button"
-              className="primary-button layout-edit-button"
-              title="手动调整墙体、门窗、家具和灯具"
-              onClick={() => setTab("edit")}
-            >
-              <PencilRuler size={16} />
-              <span>人工设计</span>
-            </button>
-          )}
+          {tab !== "edit" &&
+            [
+              ["plan", "平面设计"],
+              ["scene", "三维设计"],
+            ].map(([view, label]) => (
+              <button
+                key={view}
+                type="button"
+                className="primary-button layout-edit-button"
+                title="手动调整墙体、门窗、家具和灯具"
+                onClick={() => {
+                  writeContext({ editorView: view });
+                  setTab("edit");
+                }}
+              >
+                <PencilRuler size={16} />
+                <span>{label}</span>
+              </button>
+            ))}
           <button
             className="secondary-button export-button"
             onClick={() => setTab("assets")}
@@ -628,6 +636,11 @@ export default function TaskWorkspace({
       {storageError && (
         <p className="connection-alert" role="status">
           {storageError}
+        </p>
+      )}
+      {job?.record_warning && (
+        <p className="connection-alert" role="alert">
+          {job.record_warning}
         </p>
       )}
       {tab === "edit" && job && (
@@ -1504,8 +1517,14 @@ export default function TaskWorkspace({
                               natural: "自然原木",
                               cream: "奶油简约",
                               modern: "现代雅致",
+                              custom: "自定义风格",
                             }[job.options.style]
                           }
+                          {job.options.style === "custom" && (
+                            <p className="field-note">
+                              {job.options.style_description}
+                            </p>
+                          )}
                         </dd>
                         <dt>AI 结构复核</dt>
                         <dd>

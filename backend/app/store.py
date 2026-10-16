@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
+from fastapi import HTTPException
+from .idempotency import creation_context
+from .public_errors import public_message
 
 TERMINAL = {"succeeded", "failed", "cancelled"}
 
@@ -39,6 +42,16 @@ class Store:
                     payload TEXT NOT NULL, created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS events_job_id ON events(job_id,id);
+                CREATE INDEX IF NOT EXISTS jobs_updated_id ON jobs(updated_at,id);
+                CREATE INDEX IF NOT EXISTS jobs_created_id ON jobs(created_at,id);
+                CREATE TABLE IF NOT EXISTS creation_requests (
+                    key TEXT PRIMARY KEY, route TEXT NOT NULL, fingerprint TEXT NOT NULL,
+                    status INTEGER NOT NULL, body BLOB NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS creation_jobs (
+                    key TEXT PRIMARY KEY, route TEXT NOT NULL, fingerprint TEXT NOT NULL,
+                    job_id TEXT NOT NULL REFERENCES jobs(id)
+                );
             """)
             await db.commit()
         finally:
@@ -59,6 +72,10 @@ class Store:
     ):
         db = await self.connect()
         try:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")
+            if (await cursor.fetchone())[0] >= 64:
+                raise HTTPException(429, "生成队列已满，请等待或取消部分任务后再提交")
             await db.execute(
                 "INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (
@@ -74,6 +91,12 @@ class Store:
                     now(),
                 ),
             )
+            context = creation_context.get()
+            if context and context["store"] == str(self.path):
+                await db.execute(
+                    "INSERT INTO creation_jobs VALUES(?,?,?,?)",
+                    (context["key"], context["route"], context["fingerprint"], job_id),
+                )
             await db.commit()
         finally:
             await db.close()
@@ -171,7 +194,7 @@ class Store:
                 "SELECT * FROM events WHERE job_id=? AND id>? ORDER BY id LIMIT 100",
                 (job_id, after),
             ) as cursor:
-                return [
+                result = [
                     {
                         "id": r["id"],
                         **json.loads(r["payload"]),
@@ -179,6 +202,11 @@ class Store:
                     }
                     for r in await cursor.fetchall()
                 ]
+                for item in result:
+                    if item.get("error"):
+                        item["error"] = public_message(item["error"])
+                        item["message"] = public_message(item.get("message", ""))
+                return result
         finally:
             await db.close()
 

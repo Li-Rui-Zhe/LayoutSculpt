@@ -10,15 +10,26 @@ import {
   ImagePlus,
 } from "lucide-react";
 import { useModels } from "../hooks/useModels.js";
-import { api } from "../api.js";
 import ImagePreparation from "./ImagePreparation.jsx";
+import { materials, materialCategories } from "../catalog.js";
+import { useCustomTextures } from "../materials/customTextures.js";
+import MaterialSample from "./MaterialSample.jsx";
 import ModelFields from "./ModelFields.jsx";
+import {
+  readGenerationDraft,
+  saveGenerationDraft,
+  clearGenerationDraft,
+} from "../hooks/generationDraft.js";
 
 export default function GenerationForm({ projects, onCancel, onCreated }) {
+  const textureStatus = useCustomTextures();
+  const [finishes, setFinishes] = useState({ walls: "", floor: "" });
   const models = useModels();
   const picker = useRef(null);
   const backupPicker = useRef(null);
   const submitLock = useRef(false);
+  const submitted = useRef(false);
+  const draftTimer = useRef(null);
   const [preparing, setPreparing] = useState(false);
   const [file, setFile] = useState(null);
   const [image, setImage] = useState("");
@@ -42,11 +53,80 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
   }, [file]);
   const [name, setName] = useState("");
   const [style, setStyle] = useState("natural");
+  const [styleDescription, setStyleDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [collaboration, setCollaboration] = useState(true);
   const [furnitureMode, setFurnitureMode] = useState("library");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [recovery, setRecovery] = useState(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  useEffect(() => {
+    let live = true;
+    readGenerationDraft()
+      .then((value) => {
+        if (live && value?.version === 1) setRecovery(value);
+      })
+      .catch(() => {
+        if (live) setDraftError("浏览器草稿存储不可用，请在离开前提交任务。");
+      })
+      .finally(() => {
+        if (live) setDraftLoaded(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (
+      !draftLoaded ||
+      recovery ||
+      !(file || name || notes || styleDescription)
+    )
+      return;
+    const persist = () => {
+      clearTimeout(draftTimer.current);
+      if (submitted.current) return;
+      saveGenerationDraft({
+        version: 1,
+        file,
+        name,
+        style,
+        styleDescription,
+        notes,
+        finishes,
+        collaboration,
+        furnitureMode,
+      })
+        .then(() => setDraftError(""))
+        .catch(() => setDraftError("生成草稿未能保存到浏览器，请勿关闭页面。"));
+    };
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") persist();
+    };
+    draftTimer.current = setTimeout(persist, 300);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      clearTimeout(draftTimer.current);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
+  }, [
+    draftLoaded,
+    recovery,
+    file,
+    name,
+    style,
+    styleDescription,
+    notes,
+    finishes,
+    collaboration,
+    furnitureMode,
+  ]);
+  const styleUnsupported =
+    style === "custom" &&
+    projects.health &&
+    !projects.health.capabilities?.includes("custom_style");
   useEffect(() => {
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -70,6 +150,16 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
   const submit = async (event) => {
     event.preventDefault();
     if (!file || !models.ready || busy || submitLock.current) return;
+    if (styleUnsupported) {
+      setError(
+        "当前后端尚未更新，请重启本项目服务后再使用自定义风格；填写内容已保留。",
+      );
+      return;
+    }
+    if (style === "custom" && !styleDescription.trim()) {
+      setError("请填写自定义空间风格。");
+      return;
+    }
     submitLock.current = true;
     setBusy(true);
     setError("");
@@ -79,14 +169,20 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
         file,
         name,
         style,
+        style_description: style === "custom" ? styleDescription.trim() : "",
         notes,
         collaboration: String(collaboration),
         model: models.model,
         reasoning_effort: models.effort,
         furniture_mode: furnitureMode,
+        wall_material: finishes.walls,
+        floor_material: finishes.floor,
       }))
         form.append(key, value);
       await projects.create(form);
+      submitted.current = true;
+      clearTimeout(draftTimer.current);
+      await clearGenerationDraft().catch(() => {});
       onCreated();
     } catch (e) {
       setError(e.message);
@@ -97,6 +193,38 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
   };
   return (
     <div className="new-task-page">
+      {recovery && (
+        <div className="creation-note" role="status">
+          <span>发现上次未提交的户型生成草稿。</span>
+          <button
+            type="button"
+            onClick={() => {
+              setFile(recovery.file || null);
+              setName(recovery.name || "");
+              setStyle(recovery.style || "natural");
+              setStyleDescription(recovery.styleDescription || "");
+              setNotes(recovery.notes || "");
+              setFinishes(recovery.finishes || { walls: "", floor: "" });
+              setCollaboration(recovery.collaboration ?? true);
+              setFurnitureMode(recovery.furnitureMode || "library");
+              setRecovery(null);
+            }}
+          >
+            恢复草稿
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              clearGenerationDraft()
+                .then(() => setRecovery(null))
+                .catch(() => setDraftError("清理草稿失败，请重试"));
+            }}
+          >
+            放弃旧草稿
+          </button>
+        </div>
+      )}
+      {draftError && <p role="alert">{draftError}</p>}
       <header className="page-heading">
         <div>
           <span className="eyebrow">开启一个新的空间</span>
@@ -116,12 +244,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               try {
                 const form = new FormData();
                 form.append("file", f);
-                const job = await api("/projects/import", {
-                  method: "POST",
-                  body: form,
-                });
-                await projects.refresh();
-                projects.select(job);
+                await projects.importProject(form);
                 onCreated();
               } catch (e) {
                 setError(e.message);
@@ -278,6 +401,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                   ["natural", "自然原木", "温润 · 松弛"],
                   ["cream", "奶油简约", "柔和 · 纯净"],
                   ["modern", "现代雅致", "克制 · 利落"],
+                  ["custom", "自定义风格", "按你的想法设计"],
                 ].map(([id, title, desc]) => (
                   <button
                     key={id}
@@ -296,6 +420,48 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                   </button>
                 ))}
               </div>
+              {style === "custom" && (
+                <div className="custom-style-field">
+                  <label htmlFor="custom-space-style">描述你的空间风格</label>
+                  <textarea
+                    id="custom-space-style"
+                    required
+                    maxLength={1000}
+                    value={styleDescription}
+                    onChange={(e) => setStyleDescription(e.target.value)}
+                    placeholder="例如：中古风，胡桃木搭配米白墙面，深绿色点缀，家具线条简洁，避免大面积亮面金属。"
+                    aria-describedby="custom-style-help"
+                  />
+                  <div className="custom-style-examples">
+                    {[
+                      "中古风，胡桃木与米白，深绿色点缀",
+                      "侘寂风，微水泥、浅木色，低矮家具",
+                      "现代工业风，灰色墙面、深木地板、黑色金属",
+                    ].map((text) => (
+                      <button
+                        key={text}
+                        type="button"
+                        onClick={() => setStyleDescription(text)}
+                      >
+                        {text.split("，")[0]}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="field-note" id="custom-style-help">
+                    用于家具选型与墙地面搭配；下方手动选择的材质优先。
+                    {styleDescription.length}/1000
+                  </p>
+                  <p className="field-note">
+                    将从现有素材中搭配接近的效果；特定家具或纹理可先在 DIY
+                    中制作。
+                  </p>
+                  {styleUnsupported && (
+                    <p role="alert">
+                      当前后端尚未更新，请重启本项目服务后再使用自定义风格。
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="field">
               <label htmlFor="furniture-mode">家具方案</label>
@@ -307,6 +473,52 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 <option value="library">精细家具 · 实木、织物与软包细节</option>
                 <option value="basic">基础几何 · 快速查看空间布局</option>
               </select>
+            </div>
+            <div className="field">
+              <h3>墙面与地板选材</h3>
+              {textureStatus.error && (
+                <p role="alert">
+                  自定义材质暂未同步，请在素材库重试。已有选择已保留。
+                </p>
+              )}
+              <p className="field-note">
+                可选择内置样板或在 DIY
+                页面保存的材质。生成后可按房间、单面墙继续修改。
+              </p>
+              {[
+                ["walls", "墙面"],
+                ["floor", "地板"],
+              ].map(([category, label]) => (
+                <label key={category}>
+                  {label}
+                  <select
+                    aria-label={`生成${label}材质`}
+                    value={finishes[category]}
+                    onChange={(e) =>
+                      setFinishes((v) => ({ ...v, [category]: e.target.value }))
+                    }
+                  >
+                    <option value="">按空间风格自动搭配</option>
+                    {materialCategories[category]
+                      .map((id) => materials.find((m) => m.id === id))
+                      .filter(Boolean)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.recipe ? "DIY · " : ""}
+                          {m.name}
+                        </option>
+                      ))}
+                  </select>
+                  {finishes[category] && (
+                    <MaterialSample
+                      material={materials.find(
+                        (m) => m.id === finishes[category],
+                      )}
+                      className="chip"
+                    />
+                  )}
+                </label>
+              ))}
             </div>
             <div className="field">
               <label htmlFor="project-notes">
@@ -375,8 +587,10 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               className="primary-button"
               disabled={
                 busy ||
+                styleUnsupported ||
                 !file ||
                 !models.ready ||
+                (style === "custom" && !styleDescription.trim()) ||
                 (furnitureMode === "library" &&
                   !projects.health?.furniture_library?.available)
               }

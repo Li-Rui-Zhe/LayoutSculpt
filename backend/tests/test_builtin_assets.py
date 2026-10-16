@@ -13,17 +13,19 @@ from backend.app.quality import furnishing_issues
 from backend.tests.test_workflow import FakeCodex, app_for, layout_data
 
 CATALOG = Settings().furniture_catalog
-KINDS = "sofa bed cabinet table chair desk counter rug plant sink toilet bathtub shower shower_walk_in shower_open refrigerator television wall_television tv_console coffee_table side_table nightstand bookshelf shoe_cabinet washing_machine dishwasher oven armchair bench".split()
+CATALOG_DATA = json.loads(CATALOG.read_text(encoding="utf-8"))
+KINDS = [entry["kind"] for entry in CATALOG_DATA["items"]]
 
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_builtin_geometry_and_thumbnail(kind):
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    assert catalog["version"] == "2.2.0"
+    assert catalog["version"] == "3.1.0"
     assert {e["kind"] for e in catalog["items"]} == set(KINDS)
     entry = next(e for e in catalog["items"] if e["kind"] == kind)
     w, d, h = entry["dimensions"]
-    Furniture(kind=kind, room_id="living", x=2, y=2, width=w, depth=d, height=h, rotation=90)
+    Furniture(kind=entry.get("furniture_kind",kind), asset_id="snapshot:"+"a"*64,
+              room_id="living", x=2, y=2, width=w, depth=d, height=h, rotation=90)
     data = (CATALOG.parent / "glb" / f"{kind}.glb").read_bytes()
     scene = load_glb(data)
     assert scene.extents == pytest.approx([w, h, d], abs=1e-4)

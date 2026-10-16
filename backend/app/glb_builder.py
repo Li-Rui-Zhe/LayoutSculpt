@@ -12,6 +12,7 @@ import trimesh
 from backend.app.surface_materials import (
     floor_material,
     wall_material,
+    apply_surface_optics,
     MATERIALS as SURFACE_MATERIALS,
 )
 from PIL import Image
@@ -451,10 +452,12 @@ class Builder:
                     },
                 )
             self.part_transform = placement
+            self.part_metadata = {"furniture_index": number - 1, "room_id": item["room_id"]}
             try:
                 kitchen_details(self, item)
             finally:
                 self.part_transform = None
+                self.part_metadata = None
             self.instances.append(
                 {
                     "asset_id": entry["id"],
@@ -476,6 +479,7 @@ class Builder:
             [item["width"], item["height"], item["depth"]],
             "wood",
             -math.radians(item["rotation"]),
+            metadata={"furniture_index": number - 1, "room_id": item["room_id"]},
         )
 
     def light_fixture(self, fixture):
@@ -569,6 +573,7 @@ class Builder:
                     name=f"墙面_微调_{finish}",
                     baseColorFactor=[*(round(c * 255) for c in color), 255],
                     roughnessFactor=0.75,
+                    metallicFactor=0,
                 )
                 if color
                 else None
@@ -612,6 +617,7 @@ class Builder:
                     name=f"墙面_微调_{finish}",
                     baseColorFactor=[*(round(c * 255) for c in color), 255],
                     roughnessFactor=0.75,
+                    metallicFactor=0,
                 )
                 if color
                 else None
@@ -727,6 +733,11 @@ class Builder:
                 key=lambda o: o["offset"],
             )
             for opening in openings:
+                self.cut_metadata = {
+                    **self.cut_metadata,
+                    "opening_index": doc["openings"].index(opening),
+                    "opening_kind": opening["kind"],
+                }
                 start, end = opening["offset"], opening["offset"] + opening["width"]
                 bottom = min(opening["bottom"], height)
                 top = min(opening["bottom"] + opening["height"], height)
@@ -820,9 +831,14 @@ class Builder:
         for index, item in enumerate(doc["furniture"], 1):
             self.furniture(item, index)
         for fixture in doc.get("lights", []):
-            self.light_fixture(fixture)
+            self.part_metadata = {"fixture_owner_id": fixture["id"]}
+            try:
+                self.light_fixture(fixture)
+            finally:
+                self.part_metadata = None
 
         def extras(tree):
+            apply_surface_optics(tree, self.texture_root)
             for material in tree.get("materials", []):
                 name = material.get("name", "")
                 if "normalTexture" in material:

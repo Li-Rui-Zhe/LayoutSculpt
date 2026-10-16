@@ -591,6 +591,43 @@
   padding: 15px 0 0;
   font-size: 11px;
 }
+
+.diy-reference {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px dashed #bdcbb8;
+  border-radius: 8px;
+  background: #f7f9f4;
+}
+.diy-reference-heading,
+.diy-reference-preview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.diy-reference-heading strong {
+  margin-right: auto;
+}
+.diy-reference-heading small {
+  font-weight: normal;
+  color: #70806c;
+}
+.diy-reference-preview {
+  margin-top: 12px;
+}
+.diy-reference-preview img {
+  display: block;
+  width: 150px;
+  height: 112px;
+  object-fit: contain;
+  background: white;
+  border: 1px solid #dce3d7;
+  border-radius: 6px;
+}
+.diy-reference-preview p {
+  margin: 0 0 8px;
+}
 .diy-footer > span {
   margin-right: auto;
   color: #587247;

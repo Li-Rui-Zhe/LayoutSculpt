@@ -15,14 +15,17 @@ export default function MaterialLibrary({
   targetName = "当前方案",
   floorOnly = false,
   initialRoomId = "all",
+  initialCategory = "walls",
 }) {
-  useCustomTextures();
+  const textureStatus = useCustomTextures();
   const texturePicker = useRef(null);
   const [uploading, setUploading] = useState(false),
     [uploadError, setUploadError] = useState("");
   const prefs = useLibraryPreferences();
   const [onlyFavorites, setOnlyFavorites] = useState(false);
-  const [category, setCategory] = useState(floorOnly ? "floor" : "walls");
+  const [category, setCategory] = useState(
+    floorOnly ? "floor" : initialCategory,
+  );
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [roomId, setRoomId] = useState(initialRoomId);
@@ -65,6 +68,8 @@ export default function MaterialLibrary({
         }}
       />
       {uploadError && <p role="alert">{uploadError}</p>}
+      {textureStatus.error && <p role="alert">素材同步失败：{textureStatus.error} <button onClick={() => loadCustomTextures(true)}>重试</button></p>}
+      {!!textureStatus.unavailable.length && <p role="status">有 {textureStatus.unavailable.length} 份材质记录损坏或贴图缺失，其他素材仍可正常使用。</p>}
       <div className="library-filters">
         <button
           disabled={uploading}
@@ -128,9 +133,11 @@ export default function MaterialLibrary({
             <>
               <div className="library-selection">
                 <span>
-                  {selected.id.startsWith("texture:")
-                    ? "自定义贴图"
-                    : "内置材质"}{" "}
+                  {selected.recipe
+                    ? "DIY 材质"
+                    : selected.id.startsWith("texture:")
+                      ? "自定义贴图"
+                      : "内置材质"}{" "}
                   · {labels[category]}
                 </span>
                 <h2>{selected.name}</h2>

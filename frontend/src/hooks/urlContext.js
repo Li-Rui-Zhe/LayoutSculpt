@@ -5,8 +5,10 @@ export function readContext(key, fallback = "") {
   const value = new URL(location.href).searchParams.get(key);
   const allowed = {
     tab: ["design", "source", "activity", "assets", "edit", "review"],
+    editorView: ["plan", "scene"],
     diyMode: ["furniture", "walls", "floor"],
     assetType: ["models", "materials"],
+    materialCategory: ["walls", "floor"],
     librarySource: ["all", "builtin", "imported", "diy", "generated", "sample"],
     librarySort: ["source", "name", "size"],
   };

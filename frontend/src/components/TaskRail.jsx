@@ -95,7 +95,11 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
           <Search size={14} />
           <input
             aria-label="搜索任务"
-            placeholder="搜索任务名称或编号"
+            placeholder={
+              projects.hasMoreHistory
+                ? "搜索已加载任务名称或编号"
+                : "搜索任务名称或编号"
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -163,6 +167,11 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
         </div>
       )}
       <div className="task-list">
+        {projects.hasMoreHistory && (
+          <p className="field-note">
+            当前显示最近任务及关联父版本。筛选、统计与比较仅针对已加载记录，可继续加载历史。
+          </p>
+        )}
         {jobs.map((job) => (
           <div key={job.id} className="project-version-row">
             <button
@@ -172,7 +181,8 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
             >
               <div className="task-card-top">
                 <span className="task-number">
-                  V{job.version} · #{job.id.slice(0, 6).toUpperCase()}
+                  {projects.hasMoreHistory ? "版本" : `V${job.version}`} · #
+                  {job.id.slice(0, 6).toUpperCase()}
                 </span>
                 <StatusBadge status={job.status} />
               </div>
@@ -246,6 +256,15 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
             </div>
           </div>
         ))}
+        {projects.hasMoreHistory && (
+          <button
+            className="secondary-button"
+            disabled={projects.historyLoading}
+            onClick={projects.loadMore}
+          >
+            {projects.historyLoading ? "正在加载…" : "加载更多历史任务"}
+          </button>
+        )}
         {!jobs.length && (
           <div className="rail-empty">
             <FolderOpen size={27} />

@@ -17,7 +17,7 @@ export default function PolygonFields({ points, onChange, max = 24 }) {
               onCommit={(value) => {
                 const next = clone(points);
                 next[index][axis] = value;
-                onChange(next);
+                return onChange(next);
               }}
             />
           ))}

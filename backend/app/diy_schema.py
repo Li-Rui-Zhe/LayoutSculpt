@@ -1,17 +1,27 @@
 """可编辑的 DIY 几何契约：仅数据，不接收脚本、文件路径或远程资产。"""
 
+import json
 import math
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from .surface_materials import MATERIALS
+
+from .surface_materials import MATERIALS, ROOT
+
+FURNITURE_MATERIALS = {
+    m["id"]: m
+    for m in json.loads(
+        (ROOT / "assets/materials/furniture.json").read_text(encoding="utf-8")
+    )
+}
+DIY_MATERIALS = {**MATERIALS, **FURNITURE_MATERIALS}
 
 
 class DiyPart(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     id: str = Field(min_length=1, max_length=40, pattern=r"^[a-zA-Z0-9_-]+$")
     name: str = Field(min_length=1, max_length=60)
-    material_id: Literal[tuple(MATERIALS)] | None = None
+    material_id: Literal[tuple(DIY_MATERIALS)] | None = None
     edit_locked: bool = False
     edit_hidden: bool = False
     edit_group: str = Field(default="", max_length=120)
@@ -66,7 +76,8 @@ class DiyDesign(BaseModel):
 
 class DiyGenerate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    prompt: str = Field(min_length=1, max_length=3000)
+    prompt: str = Field(default="", max_length=3000)
+    reference_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     model: str | None = Field(default=None, min_length=1, max_length=160)
     reasoning_effort: str | None = Field(default=None, min_length=1, max_length=40)
     base: DiyDesign | None = None

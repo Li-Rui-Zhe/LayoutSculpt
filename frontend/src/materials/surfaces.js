@@ -18,6 +18,7 @@ export function surfaceProfile(material, category, role = "upholstery") {
       0.8,
     normalStrength:
       material.normalStrength ?? (surface === "linen" ? 0.35 : 0.25),
+    optics: material.optics ?? null,
   };
 }
 

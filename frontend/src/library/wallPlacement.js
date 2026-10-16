@@ -9,7 +9,15 @@ export const verticalOverlap = (a, b) =>
   Math.min((a.elevation ?? 0) + a.height, (b.elevation ?? 0) + b.height) >
   Math.max(a.elevation ?? 0, b.elevation ?? 0) + 1e-6;
 
-export function wallPlacement(document, template, rooms, blocked) {
+export function wallPlacement(
+  document,
+  template,
+  rooms,
+  blocked,
+  anchor = null,
+  accept = () => true,
+) {
+  const candidates = [];
   for (const room of rooms) {
     for (const wall of document.layout.walls) {
       const dx = wall.end.x - wall.start.x,
@@ -21,8 +29,24 @@ export function wallPlacement(document, template, rooms, blocked) {
       )
         continue;
       const margin = template.width / 2 + 0.02;
-      const centers = [length / 2];
-      for (let offset = margin; offset <= length - margin; offset += 0.2)
+      const centers = anchor
+        ? [
+            Math.max(
+              margin,
+              Math.min(
+                length - margin,
+                ((anchor.x - wall.start.x) * dx +
+                  (anchor.y - wall.start.y) * dy) /
+                  length,
+              ),
+            ),
+          ]
+        : [length / 2];
+      for (
+        let offset = anchor ? Infinity : margin;
+        offset <= length - margin;
+        offset += 0.2
+      )
         centers.push(offset);
       for (const offset of centers) {
         if (
@@ -50,13 +74,21 @@ export function wallPlacement(document, template, rooms, blocked) {
           };
           if (
             itemFits(item, room) &&
+            accept(item) &&
             !blocked.some((p) => overlapArea(furnitureCorners(item), p) > 1e-6)
-          )
-            return item;
+          ) {
+            if (!anchor) return item;
+            const distance = Math.hypot(item.x - anchor.x, item.y - anchor.y);
+            if (distance <= 0.75) candidates.push({ item, distance });
+          }
         }
       }
     }
   }
+  if (candidates.length)
+    return candidates.sort((a, b) => a.distance - b.distance)[0].item;
+  if (anchor)
+    throw Error("请靠近可安装电视的完整墙面，避开门窗；电视将自动贴墙。");
   throw Error(
     "没有找到可安装电视的完整墙面，请检查墙面宽度、高度、门窗和同高度家具。",
   );
