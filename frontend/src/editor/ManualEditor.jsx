@@ -436,13 +436,26 @@ export default function ManualEditor({
     error ||
     draft.storageError
   );
+  // 同一问题可能同时来自操作错误、前端校验和服务端检查，优先保留可定位的条目。
+  const feedbackTexts = new Set(issues.map((issue) => issue.text.trim()));
+  const detailError =
+    error && error !== draft.storageError && !feedbackTexts.has(error.trim())
+      ? error
+      : "";
+  if (error) feedbackTexts.add(error.trim());
+  if (draft.storageError) feedbackTexts.add(draft.storageError.trim());
+  const feedbackSuggestions = serverCheck.issues.filter((issue) => {
+    const text = issue.text.trim();
+    if (feedbackTexts.has(text)) return false;
+    feedbackTexts.add(text);
+    return true;
+  });
   useEffect(() => {
     setPickingWall(false);
   }, [tool]);
   useEffect(() => {
-    if (error || draft.storageError) setValidationOpen(true);
-    else if (!issues.length) setValidationOpen(false);
-  }, [error, draft.storageError, issues.length]);
+    if (!hasFeedback) setValidationOpen(false);
+  }, [hasFeedback]);
   useEffect(() => {
     if (!isActive || !validationOpen) return;
     const close = (event) => {
@@ -1258,6 +1271,7 @@ export default function ManualEditor({
       document={document}
       committedDocument={draft.document}
       editError={error}
+      onDismissEditError={() => setError("")}
       placement={placement ? { active: true, ...placementResult } : null}
       onPlacementMove={movePlacement}
       onPlacementConfirm={confirmPlacement}
@@ -3871,39 +3885,45 @@ export default function ManualEditor({
             role="status"
           >
             {hasFeedback ? <AlertTriangle size={15} /> : <Check size={15} />}
-            <p title={error || draft.storageError || ""}>
-              {error ||
-                draft.storageError ||
-                (issues.length
-                  ? `${issues.length} 处布局问题，请调整后保存`
-                  : serverCheck.status === "checking"
-                    ? "基础检查通过 · 正在检查碰撞与通行"
-                    : serverCheck.status === "done"
-                      ? serverCheck.issues.length
-                        ? `${serverCheck.issues.length} 项设计建议`
-                        : "几何与通行检查通过"
-                      : "基础检查通过")}
+            <p
+              title={
+                validationOpen ? undefined : error || draft.storageError || ""
+              }
+            >
+              {validationOpen && hasFeedback
+                ? "布局检查详情"
+                : error ||
+                  draft.storageError ||
+                  (issues.length
+                    ? `${issues.length} 处布局问题，请调整后保存`
+                    : serverCheck.status === "checking"
+                      ? "基础检查通过 · 正在检查碰撞与通行"
+                      : serverCheck.status === "done"
+                        ? serverCheck.issues.length
+                          ? `${serverCheck.issues.length} 项设计建议`
+                          : "几何与通行检查通过"
+                        : "基础检查通过")}
             </p>
             <button
               type="button"
-              aria-label="查看布局问题"
+              aria-label={validationOpen ? "收起布局问题" : "查看布局问题"}
               aria-expanded={validationOpen && hasFeedback}
               aria-controls={`edit-feedback-${job.id}`}
               disabled={!hasFeedback}
               onClick={() => setValidationOpen((value) => !value)}
             >
-              {validationOpen && hasFeedback ? "收起" : "查看"}
+              {validationOpen && hasFeedback ? "收起详情" : "查看详情"}
             </button>
           </div>
           {hasFeedback && validationOpen && (
             <div
               className="edit-issues"
-              role="alert"
+              role="region"
+              aria-label="布局检查详情"
               id={`edit-feedback-${job.id}`}
             >
-              <AlertTriangle size={16} />
               <div>
-                {error && <p>{error}</p>}
+                {detailError && <p>{detailError}</p>}
                 {draft.storageError && (
                   <div>
                     <p>{draft.storageError}</p>
@@ -3937,7 +3957,7 @@ export default function ManualEditor({
                     <button onClick={draft.reload}>读取后端最新草稿</button>
                   </div>
                 )}
-                {serverCheck.issues.map((issue, index) => (
+                {feedbackSuggestions.map((issue, index) => (
                   <p key={`server-${index}`}>建议：{issue.text}</p>
                 ))}
                 {issues.slice(0, 5).map((issue, index) => (

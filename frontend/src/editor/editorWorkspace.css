@@ -218,11 +218,37 @@
   color: #4a6350;
 }
 .scene-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   z-index: 3;
   padding: 8px 12px;
   font-size: 12px;
   background: #fff0e4;
   color: #984a24;
+}
+.scene-error > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.scene-error .scene-error-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 5px;
+  color: inherit;
+}
+.scene-error .scene-error-close:hover {
+  background: #984a2414;
+}
+.scene-error .scene-error-close:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 .manual-editor .scene-rotation-tools {
   position: absolute;

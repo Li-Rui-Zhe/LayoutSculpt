@@ -616,7 +616,7 @@
 .edit-feedback {
   position: relative;
   flex: none;
-  height: 40px;
+  min-height: 40px;
   margin-top: 10px;
 }
 .edit-check-summary {
@@ -650,18 +650,16 @@
   font-size: 12px;
 }
 .edit-feedback > .edit-issues {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
-  width: min(440px, 100%);
-  margin: 0;
-  max-height: min(280px, 50vh);
-  z-index: 10;
-  padding: 14px;
+  margin: -1px 0 0;
+  max-height: min(180px, 30vh);
+  padding: 10px 14px;
   background: #fffaf0;
   border-color: #dcc39b;
   color: #876632;
-  box-shadow: 0 6px 24px #253b2926;
+  border-radius: 0 0 8px 8px;
+}
+.edit-feedback:has(> .edit-issues) .edit-check-summary {
+  border-radius: 8px 8px 0 0;
 }
 .edit-feedback .edit-issues :is(p, button) {
   font-size: 12px;

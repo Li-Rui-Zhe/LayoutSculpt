@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 import RotationControl from "./RotationControl.jsx";
 import DiyPreview from "../diy/DiyPreview.jsx";
 import { createPreviewQueue } from "./previewQueue.js";
@@ -13,6 +14,7 @@ export default function LivePreview({
   active = true,
   busy,
   editError,
+  onDismissEditError,
   onSelect,
   onGesture,
   onRotate,
@@ -137,9 +139,20 @@ export default function LivePreview({
       </div>
       {(editError || state.phase === "error") && (
         <div className="scene-error" role="alert">
-          {editError ? `修改未应用：${editError}` : status}
+          <span>{editError ? `修改未应用：${editError}` : status}</span>
           {state.phase === "error" && (
             <button onClick={() => setRetry((n) => n + 1)}>重新同步</button>
+          )}
+          {editError && (
+            <button
+              type="button"
+              className="scene-error-close"
+              aria-label="关闭修改提示"
+              title="关闭提示"
+              onClick={onDismissEditError}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
           )}
         </div>
       )}
