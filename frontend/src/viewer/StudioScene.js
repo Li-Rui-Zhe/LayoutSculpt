@@ -5,6 +5,7 @@ import {
   focusRoom,
 } from "./cameraTools.js";
 import * as THREE from "three";
+import { interactionQuality } from "./interactionQuality.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
@@ -116,9 +117,11 @@ export class StudioScene {
     this.controls.cursorStyle = "grab";
     this.controls.addEventListener("start", () => {
       this.interacting = true;
+      this.interactionQuality?.start();
     });
     this.controls.addEventListener("end", () => {
       this.interacting = false;
+      this.interactionQuality?.end();
     });
     this.controls.addEventListener("change", () => {
       updateCutaway(this.model, this.camera, {
@@ -149,6 +152,14 @@ export class StudioScene {
     this.composer.addPass(this.ao);
     this.composer.addPass(new OutputPass());
     this.composer.addPass(new SMAAPass());
+    this.interactionQuality = interactionQuality({
+      ratio: devicePixelRatio,
+      apply: (ratio) => {
+        this.renderer.setPixelRatio(ratio);
+        this.composer.setPixelRatio(ratio);
+        this.dirty = true;
+      },
+    });
     this.hemi = new THREE.HemisphereLight("#dce8ee", "#64503a", 0.8);
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight("#ffce95", 3.7);
@@ -227,6 +238,22 @@ export class StudioScene {
     frame();
   }
 
+  recoverContext() {
+    if (this.disposed) return;
+    // 环境贴图由 GPU 生成，恢复上下文后需要重新烘焙。
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const room = new RoomEnvironment();
+    const previous = this.environment;
+    this.environment = pmrem.fromScene(room, 0.04);
+    this.scene.environment = this.environment.texture;
+    previous.dispose();
+    room.dispose();
+    pmrem.dispose();
+    this.composer.reset();
+    this.renderer.shadowMap.needsUpdate = true;
+    this.dirty = true;
+  }
+
   attach(host, callbacks) {
     this.observer.disconnect();
     this.host = host;
@@ -246,6 +273,7 @@ export class StudioScene {
 
   setActive(active) {
     this.active = active;
+    this.interactionQuality?.restore();
     this.controls.enabled = active && !!this.model;
     if (active) {
       this.lastFrame = performance.now();
@@ -799,6 +827,7 @@ export class StudioScene {
     );
   }
   snapshot() {
+    this.interactionQuality?.restore();
     this.composer.render();
     return this.renderer.domElement.toDataURL("image/png");
   }
@@ -817,6 +846,7 @@ export class StudioScene {
     return canvas.toDataURL("image/jpeg", 0.8);
   }
   refreshThumbnails() {
+    this.interactionQuality?.restore();
     const thumbs = {};
     try {
       for (const preset of presets) {
@@ -835,6 +865,7 @@ export class StudioScene {
   }
   dispose() {
     this.disposed = true;
+    this.interactionQuality?.close();
     this.revision++;
     cancelAnimationFrame(this.frame);
     this.observer.disconnect();

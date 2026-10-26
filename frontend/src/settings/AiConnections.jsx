@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  PlugZap,
-  Monitor,
   Cloud,
+  Monitor,
   Check,
   ShieldCheck,
   Eye,
@@ -11,24 +10,19 @@ import {
   LoaderCircle,
   CheckCircle2,
   AlertCircle,
-  Image,
-  Layers,
-  Armchair,
-  ScanLine,
-  ChevronRight,
   KeyRound,
   ExternalLink,
+  ArrowRight,
+  PlugZap,
 } from "lucide-react";
 import { api } from "../api.js";
-import { chooseModel } from "../hooks/modelSelection.js";
 import CodexRuntime from "./CodexRuntime.jsx";
 import "./ai-connections.css";
 
-const names = { codex: "本机 Codex", deepseek: "DeepSeek API" };
-
+const names = { codex: "Codex", deepseek: "DeepSeek API" };
 export default function AiConnections() {
   const [settings, setSettings] = useState(null);
-  const [provider, setProvider] = useState("codex");
+  const [provider, setProvider] = useState("deepseek");
   const [catalog, setCatalog] = useState(null);
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
@@ -37,35 +31,34 @@ export default function AiConnections() {
   const [error, setError] = useState("");
   const [reloadNeeded, setReloadNeeded] = useState(false);
   const [notice, setNotice] = useState("");
-  const [remove, setRemove] = useState(false);
   const request = useRef(null),
     sequence = useRef(0);
-  const busy = [
-    "loading",
-    "testing",
-    "saving",
-    "checking",
-    "installing",
-  ].includes(phase);
-  const selected = catalog?.items.find((item) => item.id === model);
+  const busy = phase !== "idle";
+  const selected = catalog?.items.find(
+    (item) => item.id === (model || catalog.default_model),
+  );
   const configured = settings?.deepseek.configured;
-
+  const applyCatalog = (value) => {
+    setCatalog(value);
+    setModel(value?.default_model || "");
+  };
   const load = async () => {
     const current = ++sequence.current;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     setPhase("loading");
-    setReloadNeeded(false);
     setError("");
     try {
       const value = await api("/ai/settings", { signal: controller.signal });
       if (current !== sequence.current) return;
       setSettings(value);
-      setProvider(value.default_provider);
+      setProvider(value.revision > 0 ? value.default_provider : "deepseek");
       setKey("");
       setVisible(false);
       setCatalog(null);
+      setModel("");
+      setReloadNeeded(false);
       setNotice("");
     } catch (e) {
       if (current === sequence.current) setError(e.message);
@@ -80,9 +73,8 @@ export default function AiConnections() {
       request.current?.abort();
     };
   }, []);
-
-  const chooseProvider = (value) => {
-    if (value === provider) return;
+  const choose = (value) => {
+    if (busy || value === provider) return;
     setProvider(value);
     setCatalog(null);
     setModel("");
@@ -90,33 +82,30 @@ export default function AiConnections() {
     setVisible(false);
     setError("");
     setNotice("");
-    setRemove(false);
   };
-  const applyCatalog = (value) => {
-    setCatalog(value);
-    const preferred = settings?.[provider]?.default_model;
-    setModel(
-      value
-        ? chooseModel(
-            value,
-            provider === "deepseek" && preferred
-              ? `deepseek::${preferred}`
-              : preferred,
-            false,
-          )
-        : "",
-    );
-  };
-  const send = async (path, body, saving = false) => {
+  const send = async (testing = false, removeKey = false) => {
     const current = ++sequence.current;
+    request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
-    setPhase(saving ? "saving" : "testing");
-    setReloadNeeded(false);
+    setPhase(testing ? "testing" : "saving");
     setError("");
     setNotice("");
     try {
-      const value = await api(path, {
+      const body = {
+        provider: removeKey ? "codex" : provider,
+        ...(provider === "deepseek" && key.trim() && !removeKey
+          ? { api_key: key.trim() }
+          : {}),
+        ...(!testing
+          ? {
+              revision: settings.revision,
+              model: model || null,
+              ...(removeKey ? { remove_key: true } : {}),
+            }
+          : {}),
+      };
+      const value = await api(testing ? "/ai/test" : "/ai/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -124,131 +113,112 @@ export default function AiConnections() {
         timeoutMs: 65000,
       });
       if (current !== sequence.current) return;
-      if (saving) {
+      applyCatalog(value.catalog);
+      if (testing) {
+        setNotice(
+          "连接检测通过，可在下方选择模型；点击连接按钮后保存。持续生成仍需账户有可用权限和额度。",
+        );
+      } else {
         setSettings(value);
         setKey("");
         setVisible(false);
-        setRemove(false);
-        setProvider(value.default_provider);
-        if (body.remove_key) {
-          setCatalog(null);
-          setModel("");
-        }
+        setReloadNeeded(false);
+        if (removeKey) setProvider("deepseek");
         setNotice(
-          body.remove_key
-            ? "已移除 DeepSeek 连接，默认来源已切回本机 Codex。"
-            : `已保存，后续新任务默认使用${names[value.default_provider]}。`,
+          removeKey
+            ? "已移除 DeepSeek 密钥。默认来源已切回 Codex，使用前请确认连接可用。"
+            : `已连接 ${names[value.default_provider]} 并设为默认，可以开始设计了。`,
         );
         window.dispatchEvent(
           new CustomEvent("habitat:ai-changed", {
             detail: { provider: value.default_provider },
           }),
         );
-      } else {
-        applyCatalog(value.catalog);
-        setNotice(value.message);
       }
     } catch (e) {
-      if (current === sequence.current) {
-        setError(e.message);
-        setReloadNeeded(saving && (e.status === 409 || !e.status));
-        if (!saving) setCatalog(null);
+      if (current !== sequence.current) return;
+      const uncertain = !testing && (e.status === 409 || !e.status);
+      setReloadNeeded(uncertain);
+      setError(
+        uncertain
+          ? "连接设置可能已保存或被其他页面更新，请先重新读取状态。"
+          : e.message,
+      );
+      if (provider === "codex") {
+        try {
+          await refreshCodex();
+        } catch {}
       }
     } finally {
       if (current === sequence.current) setPhase("idle");
     }
   };
-  const test = () =>
-    send("/ai/test", {
-      provider,
-      ...(provider === "deepseek" && key.trim() ? { api_key: key.trim() } : {}),
-    });
-  const save = () =>
-    send(
-      "/ai/settings",
-      {
-        provider,
-        revision: settings.revision,
-        model,
-        ...(provider === "deepseek" && key.trim()
-          ? { api_key: key.trim() }
-          : {}),
-      },
-      true,
+  const refreshCodex = async () => {
+    const value = await api("/ai/settings");
+    setSettings((previous) =>
+      previous ? { ...previous, codex: value.codex } : previous,
     );
-  const cancelTest = () => {
-    ++sequence.current;
-    request.current?.abort();
-    setPhase("idle");
-    setNotice("已取消本次连接检测，已保存的设置没有改变。");
   };
-
   return (
-    <section className="ai-connections" aria-label="AI 接入设置">
+    <section className="ai-connections ai-simple" aria-label="AI 接入设置">
       <header className="ai-page-heading">
         <div className="ai-page-title">
           <span className="ai-page-icon">
-            <PlugZap size={25} strokeWidth={1.6} />
+            <PlugZap size={25} />
           </span>
           <div>
-            <span className="ai-eyebrow">AI CONNECTIONS</span>
-            <h1>AI 接入</h1>
-            <p>选一个顺手的 AI，让灵感接着发生。</p>
+            <span className="ai-eyebrow">连接创作能力</span>
+            <h1>让 AI 加入你的设计</h1>
+            <p>选一种接入方式，连接一次，之后直接使用。</p>
           </div>
         </div>
-        <button className="secondary-button" disabled={busy} onClick={load}>
+        <button className="ai-text-button" disabled={busy} onClick={load}>
           <RefreshCw size={14} />
           刷新状态
         </button>
       </header>
-
       <div className="ai-settings-body">
-        <div className="ai-current-source">
-          <span className="ai-online-dot" />
-          <span>当前默认来源</span>
-          <strong>
-            {settings ? names[settings.default_provider] : "正在读取…"}
-          </strong>
-          <span className="ai-current-note">
-            用于新建任务，已有任务保留原模型
-          </span>
-        </div>
-        {settings?.warning && (
-          <div className="ai-feedback warning" role="status">
-            <AlertCircle size={17} />
-            {settings.warning}
+        {settings && (
+          <div className="ai-current-source">
+            <span>新任务默认来源</span>
+            <strong>{names[settings.default_provider]}</strong>
+            <span className="ai-current-note">
+              已有任务保持原来的来源和模型
+            </span>
           </div>
         )}
         {error && (
           <div className="ai-feedback error" role="alert">
-            <AlertCircle size={17} />
+            <AlertCircle size={16} />
             <span>{error}</span>
-            <button
-              disabled={busy}
-              onClick={reloadNeeded || !settings ? load : test}
-            >
-              {reloadNeeded ? "刷新设置" : "重试"}
+            {(reloadNeeded || !settings) && (
+              <button disabled={busy} onClick={load}>
+                重新读取状态
+              </button>
+            )}
+            <button aria-label="关闭接入提示" onClick={() => setError("")}>
+              ×
             </button>
           </div>
         )}
-        {!settings && (
+        {settings?.warning && (
+          <p className="ai-feedback warning" role="status">
+            {settings.warning}
+          </p>
+        )}
+        {!settings ? (
           <div className="ai-loading" role="status">
-            {phase === "loading" ? (
+            {busy ? (
               <>
-                <LoaderCircle size={20} className="spin" />
-                正在读取本机连接设置…
+                <LoaderCircle className="spin" size={18} />
+                正在读取连接设置…
               </>
             ) : (
-              "连接设置尚未读取成功，请重试。"
+              "暂时无法读取设置，请重试。"
             )}
           </div>
-        )}
-        {settings && (
+        ) : (
           <>
-            <div className="ai-section-label">
-              <h2>选择 AI 来源</h2>
-              <span>同一套设计流程，两种连接方式</span>
-            </div>
             <div
               className="ai-provider-cards"
               role="group"
@@ -256,35 +226,33 @@ export default function AiConnections() {
             >
               {[
                 [
-                  "codex",
-                  Monitor,
-                  "沿用本机登录和模型配置",
-                  "无需额外填写密钥",
-                ],
-                [
                   "deepseek",
                   Cloud,
-                  "使用你自己的 DeepSeek API",
-                  "直连官方服务，按账户计费",
+                  "简单接入 · 推荐",
+                  "粘贴 API Key，一键连接",
+                  "不用安装 CLI，适合先开始文字设计",
                 ],
-              ].map(([id, Icon, title, sub]) => (
+                [
+                  "codex",
+                  Monitor,
+                  "进阶接入",
+                  "已有 Codex？直接复用",
+                  "也可以让项目准备独立环境",
+                ],
+              ].map(([id, Icon, badge, title, sub]) => (
                 <button
                   key={id}
                   disabled={busy}
                   aria-pressed={provider === id}
-                  onClick={() => chooseProvider(id)}
+                  onClick={() => choose(id)}
                   className="ai-provider-card"
                 >
                   <span className={`ai-provider-icon ${id}`}>
-                    <Icon size={25} strokeWidth={1.5} />
+                    <Icon size={25} />
                   </span>
                   <div>
-                    <strong>
-                      {names[id]}
-                      {settings.default_provider === id && (
-                        <small>当前默认</small>
-                      )}
-                    </strong>
+                    <span className="ai-choice-badge">{badge}</span>
+                    <strong>{names[id]}</strong>
                     <p>{title}</p>
                     <span>{sub}</span>
                   </div>
@@ -294,63 +262,24 @@ export default function AiConnections() {
                 </button>
               ))}
             </div>
-
             <div className="ai-settings-layout">
               <div className="ai-connection-panel">
                 <div className="ai-panel-heading">
                   <div>
-                    <span className="ai-step">01</span>
-                    <h2>配置连接</h2>
+                    <h2>
+                      {provider === "deepseek"
+                        ? "填写密钥，就能开始"
+                        : "连接你的 Codex"}
+                    </h2>
                   </div>
-                  <span>{names[provider]}</span>
+                  <span>
+                    {provider === "deepseek" ? "无需安装" : "进阶使用"}
+                  </span>
                 </div>
-                {provider === "codex" ? (
-                  <CodexRuntime
-                    initial={settings.codex.runtime}
-                    busy={busy}
-                    onPhase={setPhase}
-                    onAlternative={
-                      configured ? () => chooseProvider("deepseek") : undefined
-                    }
-                    onResult={(nextCatalog, diagnostics, replace) => {
-                      window.dispatchEvent(
-                        new Event("habitat:runtime-changed"),
-                      );
-                      if (replace) applyCatalog(nextCatalog);
-                      if (diagnostics)
-                        setSettings((previous) => ({
-                          ...previous,
-                          codex: {
-                            ...previous.codex,
-                            connected: diagnostics.connected,
-                            runtime: diagnostics,
-                          },
-                        }));
-                      setError("");
-                      setNotice("");
-                    }}
-                  />
-                ) : (
+                {provider === "deepseek" ? (
                   <div className="ai-deepseek-fields">
-                    <label htmlFor="ai-endpoint">
-                      服务地址<span>DeepSeek 官方</span>
-                    </label>
-                    <div className="ai-endpoint">
-                      <Cloud size={15} />
-                      <input
-                        id="ai-endpoint"
-                        readOnly
-                        value={settings.deepseek.base_url}
-                      />
-                    </div>
                     <div className="ai-key-label">
-                      <label htmlFor="ai-api-key">API Key</label>
-                      {configured && (
-                        <span>
-                          <ShieldCheck size={12} />
-                          已有加密密钥
-                        </span>
-                      )}
+                      <label htmlFor="ai-api-key">DeepSeek API Key</label>
                       <a
                         href="https://platform.deepseek.com/api_keys"
                         target="_blank"
@@ -369,8 +298,8 @@ export default function AiConnections() {
                         spellCheck={false}
                         placeholder={
                           configured
-                            ? "留空则继续使用已保存的密钥"
-                            : "粘贴你的 DeepSeek API Key"
+                            ? "已保存密钥，留空即可继续使用"
+                            : "粘贴你的 API Key"
                         }
                         value={key}
                         disabled={busy}
@@ -378,6 +307,7 @@ export default function AiConnections() {
                         onChange={(e) => {
                           setKey(e.target.value);
                           setCatalog(null);
+                          setModel("");
                           setError("");
                           setNotice("");
                         }}
@@ -392,205 +322,169 @@ export default function AiConnections() {
                       </button>
                     </div>
                     <p className="ai-field-help">
-                      已保存的密钥不会回显。更换密钥后，请重新测试连接。
+                      <ShieldCheck size={13} />{" "}
+                      {configured
+                        ? "已有密钥保存在本机，可直接连接。"
+                        : "密钥加密保存在本机，保存后不回显。"}{" "}
+                      直连 DeepSeek 官方 API，按你的账户计费。
                     </p>
+                    <div className="ai-fit-note">
+                      <p>
+                        文字家具、墙面与地板设计可直接开始。上传户型或参考图片，需要模型支持图片理解。
+                      </p>
+                    </div>
                   </div>
-                )}
-
-                {provider === "deepseek" && (
-                  <div className="ai-test-row">
-                    <button
-                      className="secondary-button"
-                      disabled={
-                        busy ||
-                        (provider === "deepseek" && !configured && !key.trim())
-                      }
-                      onClick={test}
-                    >
-                      {phase === "testing" ? (
-                        <LoaderCircle size={15} className="spin" />
-                      ) : (
-                        <PlugZap size={15} />
-                      )}
-                      {phase === "testing"
-                        ? "正在检测连接…"
-                        : "测试连接并读取模型"}
-                    </button>
-                    {phase === "testing" ? (
-                      <button className="ai-text-button" onClick={cancelTest}>
-                        取消检测
-                      </button>
-                    ) : (
-                      <small>仅读取模型，不提交生成任务</small>
-                    )}
-                  </div>
+                ) : (
+                  <CodexRuntime
+                    initial={settings.codex.runtime}
+                    connection={settings.codex}
+                    busy={busy}
+                    onPhase={setPhase}
+                    onConnect={() => send()}
+                    onEnvironment={refreshCodex}
+                    onAlternative={() => choose("deepseek")}
+                    onResult={(value, diagnostics, replace) => {
+                      if (replace) applyCatalog(value);
+                      if (diagnostics)
+                        setSettings((previous) => ({
+                          ...previous,
+                          codex: {
+                            ...previous.codex,
+                            runtime: diagnostics,
+                            connected: diagnostics.connected,
+                          },
+                        }));
+                      window.dispatchEvent(
+                        new Event("habitat:runtime-changed"),
+                      );
+                    }}
+                  />
                 )}
                 {notice && (
                   <div className="ai-feedback success" role="status">
                     <CheckCircle2 size={17} />
-                    {notice}
+                    <span>{notice}</span>
+                    <button
+                      aria-label="关闭成功提示"
+                      onClick={() => setNotice("")}
+                    >
+                      ×
+                    </button>
                   </div>
                 )}
-
-                <div className="ai-model-section">
-                  <div className="ai-panel-heading">
-                    <div>
-                      <span className="ai-step">02</span>
-                      <h2>选择默认模型</h2>
-                    </div>
-                    {catalog && <span>{catalog.items.length} 个可用模型</span>}
-                  </div>
-                  {catalog ? (
-                    <>
-                      <label htmlFor="ai-default-model">默认生成模型</label>
-                      <select
-                        id="ai-default-model"
-                        value={model}
-                        disabled={busy}
-                        onChange={(e) => setModel(e.target.value)}
-                      >
-                        {catalog.items.map((item) => (
-                          <option
-                            key={item.id}
-                            value={item.id}
-                            disabled={item.available === false}
-                          >
-                            {item.name}
-                            {item.available === false
-                              ? " · 不可用"
-                              : item.supports_image
-                                ? " · 支持图片"
-                                : " · 文字模型"}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="ai-model-capabilities">
-                        <span>
-                          <CheckCircle2 size={14} />
-                          文字设计
-                        </span>
-                        <span
-                          className={
-                            selected?.supports_image === false
-                              ? "unsupported"
-                              : ""
-                          }
-                        >
-                          <Image size={14} />
-                          {selected?.supports_image === false
-                            ? "仅文字输入"
-                            : "支持参考图片"}
-                        </span>
-                      </div>
-                      {selected?.supports_image === false && (
-                        <p className="ai-capability-note">
-                          此模型可用于无参考图的家具和材质设计。户型识别、图片参考和结构复核需要选择支持图片理解的模型。
-                        </p>
-                      )}
-                      {catalog.notice && (
-                        <p className="ai-field-help">{catalog.notice}</p>
-                      )}
-                    </>
-                  ) : (
-                    <div className="ai-model-placeholder">
-                      <Layers size={20} strokeWidth={1.4} />
-                      <span>先测试连接，再从实际可用的模型中选择</span>
-                    </div>
-                  )}
-                </div>
+                {selected && (
+                  <p className="ai-capability-note">
+                    当前模型：{selected.name} ·{" "}
+                    {selected.supports_image === true
+                      ? "支持文字设计与识图（非图片生成）"
+                      : selected.supports_image === false
+                        ? "仅支持文字输入，上传户型图请切换图片模型"
+                        : "识图能力尚未确认，上传图片前需检查"}
+                  </p>
+                )}
                 <footer className="ai-save-row">
-                  <span>
-                    {provider === settings.default_provider
-                      ? "修改后保存，新的设置才会生效"
-                      : `保存后，将默认使用${names[provider]}`}
-                  </span>
+                  <span>自动检测连接、选择默认模型并保存</span>
                   <button
                     className="primary-button"
-                    disabled={busy || !selected || selected.available === false}
-                    onClick={save}
+                    disabled={
+                      busy ||
+                      reloadNeeded ||
+                      (provider === "deepseek" && !configured && !key.trim()) ||
+                      (provider === "codex" && !settings.codex.available)
+                    }
+                    onClick={() => send()}
                   >
-                    {phase === "saving" ? (
-                      <LoaderCircle size={15} className="spin" />
+                    {busy ? (
+                      <LoaderCircle size={16} className="spin" />
                     ) : (
-                      <Check size={15} />
-                    )}
-                    {phase === "saving" ? "正在验证并保存…" : "保存并设为默认"}
+                      <ArrowRight size={16} />
+                    )}{" "}
+                    {phase === "saving"
+                      ? "正在连接并保存…"
+                      : `连接并使用 ${names[provider]}`}
                   </button>
                 </footer>
+                <details className="ai-advanced">
+                  <summary>模型与更多设置</summary>
+                  <p className="ai-field-help">
+                    通常保持自动选择即可；生成任务时也能单独换模型。
+                  </p>
+                  <label htmlFor="ai-default-model">默认模型</label>
+                  <select
+                    id="ai-default-model"
+                    value={model}
+                    disabled={busy}
+                    onChange={(e) => setModel(e.target.value)}
+                  >
+                    <option value="">自动选择可用模型</option>
+                    {catalog?.items.map((item) => (
+                      <option
+                        key={item.id}
+                        value={item.id}
+                        disabled={item.available === false}
+                      >
+                        {item.name}
+                        {item.available === false
+                          ? " · 不可用"
+                          : item.supports_image === true
+                            ? " · 支持识图"
+                            : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="ai-text-button"
+                    disabled={
+                      busy ||
+                      (provider === "deepseek" && !configured && !key.trim())
+                    }
+                    onClick={() => send(true)}
+                  >
+                    {phase === "testing" ? "正在读取…" : "读取可用模型"}
+                  </button>
+                  <p className="ai-field-help">
+                    只读取模型目录，不产生生成任务。更换模型后点击上方连接按钮保存。
+                  </p>
+                  {provider === "deepseek" && configured && (
+                    <details className="ai-remove">
+                      <summary>移除已保存的密钥</summary>
+                      <p>
+                        删除本机密钥并切回 Codex，已有设计保留；Codex
+                        需要另行连接。
+                      </p>
+                      <button disabled={busy} onClick={() => send(false, true)}>
+                        确认移除密钥
+                      </button>
+                    </details>
+                  )}
+                </details>
               </div>
-
               <aside className="ai-settings-guide">
                 <div className="ai-guide-block">
                   <span className="ai-guide-icon">
-                    <Layers size={20} />
+                    <Cloud size={22} />
                   </span>
-                  <h2>一次接入，贯穿设计流程</h2>
-                  <p>来源可随任务选择，熟悉的工作流保持一致。</p>
-                  <ul>
-                    {[
-                      [
-                        ScanLine,
-                        "户型识别与结构核对",
-                        "使用支持图片理解的模型",
-                      ],
-                      [Armchair, "家具 DIY", "描述创意，生成可编辑家具"],
-                      [Layers, "墙面与地板 DIY", "设计可保存、可复用的材质"],
-                    ].map(([Icon, title, sub]) => (
-                      <li key={title}>
-                        <Icon size={17} />
-                        <div>
-                          <strong>{title}</strong>
-                          <span>{sub}</span>
-                        </div>
-                        <ChevronRight size={13} />
-                      </li>
-                    ))}
-                  </ul>
+                  <h2>怎么选更省事？</h2>
+                  <p>
+                    <strong>想快速开始</strong>
+                    <br />选 DeepSeek API，填密钥后直接连接。
+                  </p>
+                  <p>
+                    <strong>电脑已有 Codex</strong>
+                    <br />选 Codex，检测通过后沿用现有登录与配置。
+                  </p>
+                  <p>
+                    <strong>想独立管理环境</strong>
+                    <br />在 Codex 更多设置中准备项目专用版本，首次单独登录。
+                  </p>
                 </div>
                 <div className="ai-guide-block ai-privacy">
-                  <ShieldCheck size={20} />
-                  <h3>密钥只留在本机</h3>
+                  <ShieldCheck size={18} />
                   <p>
-                    连接密钥加密保存，不会回显到页面，也不会写入任务记录或设计文件。
-                  </p>
-                  <p>
-                    使用 DeepSeek 时，设计描述和必要的参考图会发送至
-                    DeepSeek；本机 Codex 沿用其已配置的服务。
+                    生成所需的描述和图片会发送给你选择的 AI
+                    服务。失败时不会自动换用另一家服务。
                   </p>
                 </div>
-                <div className="ai-guide-block ai-quick-tip">
-                  <h3>想临时换个模型？</h3>
-                  <p>
-                    在生成表单的「AI
-                    来源」中切换即可。默认来源不会因此改变，失败也不会自动调用另一家服务。
-                  </p>
-                </div>
-                {configured && (
-                  <details
-                    className="ai-remove"
-                    open={remove}
-                    onToggle={(e) => setRemove(e.currentTarget.open)}
-                  >
-                    <summary>移除 DeepSeek 连接</summary>
-                    <p>将删除本机保存的密钥，并恢复以本机 Codex 为默认来源。</p>
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        send(
-                          "/ai/settings",
-                          {
-                            provider: "codex",
-                            revision: settings.revision,
-                            remove_key: true,
-                          },
-                          true,
-                        )
-                      }
-                    >
-                      确认移除并切回 Codex
-                    </button>
-                  </details>
-                )}
               </aside>
             </div>
           </>

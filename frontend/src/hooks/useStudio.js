@@ -49,26 +49,39 @@ export function useStudio(taskId = "sample") {
   );
   useEffect(() => {
     let alive = true;
-    api(`/drafts/studio:${taskId}`)
-      .then((value) => {
-        if (!alive) return;
-        let local = null;
-        try {
-          local = JSON.parse(localStorage.getItem(storageKey));
-        } catch {}
-        if (
-          !modified.current &&
-          value.document &&
-          (!local?._savedAt || local._savedAt <= value.updated_at)
-        )
-          setHistory({ past: [], present: value.document, future: [] });
-        setServerRevision(value.revision);
-      })
-      .catch(() => {
-        if (alive) setStorageError("预览设置暂时保存在浏览器，后端同步未连接");
-      });
+    let retryTimer;
+    let controller;
+    const read = () => {
+      controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      api(`/drafts/studio:${taskId}`, { signal: controller.signal })
+        .then((value) => {
+          if (!alive) return;
+          let local = null;
+          try {
+            local = JSON.parse(localStorage.getItem(storageKey));
+          } catch {}
+          if (
+            !modified.current &&
+            value.document &&
+            (!local?._savedAt || local._savedAt <= value.updated_at)
+          )
+            setHistory({ past: [], present: value.document, future: [] });
+          setServerRevision(value.revision);
+        })
+        .catch(() => {
+          if (alive) {
+            setStorageError("外观设置尚未同步，正在重试…");
+            retryTimer = setTimeout(read, 5000);
+          }
+        })
+        .finally(() => clearTimeout(timeout));
+    };
+    read();
     return () => {
       alive = false;
+      clearTimeout(retryTimer);
+      controller?.abort();
     };
   }, [taskId, storageKey]);
   useEffect(() => {

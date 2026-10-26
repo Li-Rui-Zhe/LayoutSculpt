@@ -5,6 +5,7 @@ import DiyPreview from "../diy/DiyPreview.jsx";
 import { createPreviewQueue } from "./previewQueue.js";
 import { selectionFromHit, liveObjects } from "./liveModel.js";
 import { apiErrorMessage } from "../apiErrors.js";
+import OperationStatus from "../components/OperationStatus.jsx";
 
 export default function LivePreview({
   document,
@@ -51,7 +52,7 @@ export default function LivePreview({
         setState(value);
       },
       build: async (snapshot, signal) => {
-        const response = await fetch(`/api/jobs/${jobId}/preview`, {
+        const response = await guardedFetch(`/api/jobs/${jobId}/preview`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...snapshot, name: "三维实时设计" }),
@@ -156,6 +157,17 @@ export default function LivePreview({
           )}
         </div>
       )}
+      <OperationStatus
+        active={!dragging && !["ready", "error"].includes(state.phase)}
+        label={
+          state.phase === "loading" ? "正在载入精细模型" : "正在更新三维设计"
+        }
+        detail={
+          selected
+            ? `正在同步：${itemLabel}；位置已按当前设计保留。`
+            : "按当前设计生成，可继续编辑。"
+        }
+      />
       {rotationOpen &&
         !placement &&
         selected?.type === "furniture" &&
@@ -216,3 +228,4 @@ export default function LivePreview({
     </section>
   );
 }
+import { guardedFetch } from "../connectionGuard.js";

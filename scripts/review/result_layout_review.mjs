@@ -1,4 +1,5 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const id = process.argv[2];
@@ -6,7 +7,7 @@ if (!/^[a-f0-9]{32}$/.test(id || ""))
   throw new Error("请提供已有成功任务 ID。");
 const output = "data/visual-review/light-workspace";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 const errors = [],
   metrics = [];
 try {

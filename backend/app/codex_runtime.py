@@ -84,7 +84,7 @@ def failure(error):
     if code == "authentication":
         return (
             code,
-            "本机 Codex 尚未登录或登录已失效，请执行 codex login 后重新检测。",
+            "Codex 尚未登录或登录已失效，请点击登录按钮完成连接。",
             "login",
         )
     if isinstance(error, TimeoutError) or "timeout" in text:

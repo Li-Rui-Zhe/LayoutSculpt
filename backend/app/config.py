@@ -11,6 +11,13 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
 
+def frontend_port() -> int:
+    port = int(os.getenv("STUDIO_FRONTEND_PORT", "5173"))
+    if not 1 <= port <= 65535 or port == 8000:
+        raise ValueError("STUDIO_FRONTEND_PORT 必须是 1 到 65535 的整数，且不能与后端 8000 相同")
+    return port
+
+
 def find_codex_command():
     if os.getenv("CODEX_CMD"):
         return os.environ["CODEX_CMD"]
@@ -31,6 +38,7 @@ def find_codex_command():
 
 @dataclass(frozen=True)
 class Settings:
+    frontend_port: int = field(default_factory=frontend_port)
     data_dir: Path = field(
         default_factory=lambda: Path(
             os.getenv("STUDIO_DATA_DIR", ROOT / "data")

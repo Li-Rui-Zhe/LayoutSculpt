@@ -1,9 +1,10 @@
 {
-  "name": "zaogejia",
+  "name": "layoutsculpt",
   "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "launch": "node scripts/backend.mjs launch",
     "start": "node scripts/backend.mjs start",
     "dev": "vite --config frontend/vite.config.js",
     "dev:api": "node scripts/backend.mjs dev",

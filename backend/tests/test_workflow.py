@@ -190,8 +190,10 @@ def create_job(client, collaboration=True):
     return response.json()
 
 
-def wait_job(client, job_id):
-    for _ in range(200):
+def wait_job(client, job_id, timeout=10):
+    deadline = time.monotonic() + timeout
+    job = None
+    while time.monotonic() < deadline:
         job = client.get(f"/api/jobs/{job_id}").json()
         if job["status"] == "awaiting_review":
             recognized = client.get(f"/api/jobs/{job_id}/artifacts/structure.json").json()
@@ -203,7 +205,7 @@ def wait_job(client, job_id):
         if job["status"] in {"succeeded", "failed", "cancelled"}:
             return job
         time.sleep(0.025)
-    raise AssertionError("测试任务未结束")
+    raise AssertionError(f"测试任务在 {timeout} 秒内未结束：{job.get('stage') if job else '未读取'}")
 
 
 @pytest.mark.parametrize("collaboration,expected_calls", [(False, 2), (True, 3)])
@@ -407,7 +409,8 @@ def test_malformed_model_response_never_becomes_success(tmp_path):
     codex = FakeCodex(malformed=True)
     with TestClient(app_for(tmp_path, codex)) as client:
         job = wait_job(client, create_job(client)["id"])
-        assert job["status"] == "failed" and job["result"] is None
+        assert job["status"] == "failed"
+        assert set(job["result"]) == {"failure"}  # 仅错误分类，不能伪装成生成成果。
         assert len(codex.calls) == 2  # 最多进行一次结构修正。
         assert not (tmp_path / "jobs" / job["id"] / "model.glb").exists()
 

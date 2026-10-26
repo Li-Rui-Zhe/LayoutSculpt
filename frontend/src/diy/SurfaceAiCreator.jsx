@@ -29,6 +29,19 @@ export default function SurfaceAiCreator({ category, onSelection }) {
   const [jobs, setJobs] = useState([]),
     [selected, setSelected] = useState(null),
     [revision, setRevision] = useState(0);
+  const [before, setBefore] = useState(null),
+    [historyBusy, setHistoryBusy] = useState(false);
+  const historyStarted = useRef(false),
+    historyLock = useRef(false);
+  const mergeJobs = (previous, items) =>
+    [
+      ...new Map(
+        [...previous, ...items].map((item) => [item.id, item]),
+      ).values(),
+    ].sort(
+      (a, b) =>
+        b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id),
+    );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [networkError, setNetworkError] = useState("");
@@ -66,7 +79,8 @@ export default function SurfaceAiCreator({ category, onSelection }) {
           signal: controller.signal,
         });
         if (live) {
-          setJobs(list.items);
+          setJobs((old) => mergeJobs(old, list.items));
+          if (!historyStarted.current) setBefore(list.next_cursor);
           setNetworkError("");
           timer = setTimeout(poll, list.items.some(active) ? 1500 : 8000);
         }
@@ -84,6 +98,26 @@ export default function SurfaceAiCreator({ category, onSelection }) {
       clearTimeout(timer);
     };
   }, [category, revision]);
+  const loadMore = async () => {
+    if (!before || historyLock.current) return;
+    historyLock.current = true;
+    setHistoryBusy(true);
+    try {
+      const list = await api(
+        `/materials/generations?category=${category}&before=${encodeURIComponent(before)}`,
+      );
+      if (!mounted.current) return;
+      setJobs((old) => mergeJobs(old, list.items));
+      setBefore(list.next_cursor);
+      historyStarted.current = true;
+      setNetworkError("");
+    } catch (e) {
+      if (mounted.current) setNetworkError(e.message);
+    } finally {
+      historyLock.current = false;
+      if (mounted.current) setHistoryBusy(false);
+    }
+  };
   const generate = async (event) => {
     event.preventDefault();
     if (lock.current || running || !models.ready || prompt.trim().length < 3)
@@ -253,6 +287,11 @@ export default function SurfaceAiCreator({ category, onSelection }) {
               {labels[item.status]} · {item.prompt}
             </button>
           ))}
+          {before && (
+            <button disabled={historyBusy} onClick={loadMore}>
+              {historyBusy ? "正在读取…" : "加载更早的记录"}
+            </button>
+          )}
         </details>
       )}
     </section>

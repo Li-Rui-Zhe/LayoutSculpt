@@ -6,7 +6,7 @@ import re
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import File, Form, HTTPException, UploadFile
+from fastapi import File, Form, HTTPException, UploadFile, Query
 from fastapi.responses import FileResponse
 from pydantic import (
     BaseModel,
@@ -41,6 +41,7 @@ class SurfaceGenerationService:
         self.settings, self.store = settings, store
         self.client, self.registry = client, registry
         self.tasks = {}
+        self.closing = False
         self.lock = asyncio.Lock()
         self.gate = asyncio.Semaphore(1)
 
@@ -59,7 +60,7 @@ class SurfaceGenerationService:
             if "request" not in columns:
                 await db.execute("ALTER TABLE surface_generations ADD COLUMN request TEXT")
             await db.execute(
-                "UPDATE surface_generations SET status='failed',error='服务重启，生成已中断；可按原参数重新生成' WHERE status IN ('queued','running')"
+                "UPDATE surface_generations SET status='failed',error='服务重启，生成已中断；可按原参数重新生成' WHERE status='running'"
             )
             await db.commit()
         finally:
@@ -72,7 +73,20 @@ class SurfaceGenerationService:
         self.tasks[identifier] = task
         task.add_done_callback(lambda _: self.tasks.pop(identifier, None))
 
-    async def rows(self, category=None, identifier=None, current_only=False):
+    async def resume_queued(self):
+        for item in await self.rows(limit=None, active_only=True):
+            if item["status"] != "queued":
+                continue
+            try:
+                request = SurfaceGenerate.model_validate_json(item["request"] or "{}")
+                if item["method"] != "parametric":
+                    raise ValueError("legacy method")
+            except ValueError:
+                await self.update(item["id"], "failed", error="排队参数无法恢复，请重新填写材质要求")
+                continue
+            self.schedule(item["id"], request)
+
+    async def rows(self, category=None, identifier=None, current_only=False, *, before=None, limit=30, active_only=False):
         db = await self.store.connect()
         try:
             where, values = (
@@ -84,8 +98,16 @@ class SurfaceGenerationService:
             )
             if current_only:
                 where += " AND method='parametric'"
+            if active_only:
+                where += " AND status IN ('queued','running')"
+            if before:
+                where += " AND (created_at,id) < (?,?)"
+                values.extend(before)
+            suffix = " LIMIT ?" if limit is not None else ""
+            if limit is not None:
+                values.append(limit)
             cursor = await db.execute(
-                f"SELECT * FROM surface_generations WHERE {where} ORDER BY created_at DESC LIMIT 30",
+                f"SELECT * FROM surface_generations WHERE {where} ORDER BY created_at DESC,id DESC{suffix}",
                 values,
             )
             items = [dict(row) for row in await cursor.fetchall()]
@@ -122,7 +144,7 @@ class SurfaceGenerationService:
         async with self.lock:
             active = [
                 row
-                for row in await self.rows()
+                for row in await self.rows(limit=None, active_only=True)
                 if row["status"] in {"queued", "running"}
             ]
             if len(active) >= 2 or any(
@@ -172,6 +194,8 @@ class SurfaceGenerationService:
                     )
                 await self.update(identifier, "succeeded", result=result)
         except asyncio.CancelledError:
+            if self.closing and (await self.rows(identifier=identifier))[0]["status"] == "queued":
+                raise
             await self.update(identifier, "cancelled", error="生成已中断，可按原参数重新生成")
             raise
         except Exception as exc:  # noqa: BLE001 - 后台任务必须将非预期失败持久化为可恢复状态。
@@ -184,6 +208,7 @@ class SurfaceGenerationService:
             await self.update(identifier, "failed", error=message)
 
     async def close(self):
+        self.closing = True
         tasks = list(self.tasks.values())
         for task in tasks:
             task.cancel()
@@ -216,8 +241,19 @@ def install_surface_creation_routes(app, settings, service, resolve_model=None):
         return FileResponse(path, media_type="image/png")
 
     @app.get("/api/materials/generations")
-    async def generations(category: Literal["walls", "floor"]):
-        return {"items": await service.rows(category=category, current_only=True)}
+    async def generations(category: Literal["walls", "floor"], before: str | None = Query(default=None, max_length=200)):
+        cursor = None
+        if before:
+            try:
+                cursor = json.loads(before)
+                if not isinstance(cursor, list) or len(cursor) != 2 or not all(isinstance(v, str) for v in cursor):
+                    raise ValueError("invalid cursor")
+            except ValueError as exc:
+                raise HTTPException(422, "记录位置无效，请重新打开生成记录") from exc
+        rows = await service.rows(category=category, current_only=True, before=cursor, limit=31)
+        items = rows[:30]
+        next_cursor = json.dumps([items[-1]["created_at"], items[-1]["id"]]) if len(rows) > 30 else None
+        return {"items": items, "next_cursor": next_cursor}
 
     @app.post("/api/materials/generations", status_code=202)
     async def generate(request: SurfaceGenerate):

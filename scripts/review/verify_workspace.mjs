@@ -1,11 +1,12 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
 const jobId = process.argv[2];
 if (!/^[a-f0-9]{32}$/.test(jobId || ""))
   throw new Error("Pass a generated job ID");
 await mkdir("data/visual-review/workspace", { recursive: true });
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 try {
   const page = await browser.newPage({
     viewport: { width: 1600, height: 1100 },

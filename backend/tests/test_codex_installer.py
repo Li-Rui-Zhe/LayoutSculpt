@@ -156,14 +156,21 @@ async def test_restore_system_cli_and_previous_managed_version(installer, monkey
 
 
 @pytest.mark.asyncio
-async def test_update_refuses_busy_generation_and_maintenance_blocks_new_generation(
+async def test_update_downloads_while_busy_and_switches_only_when_idle(
     installer,
 ):
     installer.runtime.local.active_generations = 1
-    with pytest.raises(InstallError, match="正在处理任务"):
-        await installer.start()
-    assert not installer.calls
+    original = installer.runtime.local.command
+    await installer.start()
+    async with asyncio.timeout(5):
+        while installer.job.get("stage") != "waiting_idle":
+            await asyncio.sleep(0.02)
+    assert installer.calls
+    assert installer.runtime.local.command == original
+    assert not installer.runtime.local.maintenance
     installer.runtime.local.active_generations = 0
+    await installer.task
+    assert installer.job["status"] == "succeeded"
     installer.runtime.local.maintenance = True
     with pytest.raises(CodexError, match="更新环境"):
         await installer.runtime.local.generate()
@@ -201,6 +208,22 @@ async def test_unlogged_new_install_is_kept_with_explicit_login_instruction(inst
 
 
 @pytest.mark.asyncio
+async def test_explicit_isolation_persists_and_rollback_restores_environment(installer):
+    await installer.start("install")
+    await installer.task
+    assert installer.runtime.local.environment_mode == "shared"
+    await installer.start("isolated")
+    await installer.task
+    assert installer.job["status"] == "succeeded"
+    assert installer.runtime.local.environment_mode == "isolated"
+    assert CodexClient(installer.settings).environment_mode == "isolated"
+    assert read_active(installer.settings.data_dir)["codex"]["previous"]["config_mode"] == "shared"
+    await installer.start("rollback")
+    await installer.task
+    assert installer.runtime.local.environment_mode == "shared"
+
+
+@pytest.mark.asyncio
 async def test_write_failure_rolls_back_and_reports_only_curated_message(
     installer, monkeypatch
 ):
@@ -230,8 +253,11 @@ async def test_busy_at_activation_preserves_original(installer):
 
     installer.verify = verify
     await installer.start()
-    await installer.task
-    assert installer.job["status"] == "failed"
+    async with asyncio.timeout(5):
+        while installer.job.get("stage") != "waiting_idle":
+            await asyncio.sleep(0.02)
+    await installer.cancel()
+    assert installer.job["status"] == "cancelled"
     assert not selected_tool(installer.settings.data_dir, "codex")
     installer.runtime.local.stop.assert_not_called()
 

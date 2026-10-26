@@ -197,14 +197,16 @@ def test_material_management_archive_preserves_image_and_cleanup_scope(tmp_path)
             == 200
         )
         assert len(client.get("/api/materials/custom").json()["items"]) == 1
-        cache = tmp_path / "ai-cache" / "old.json"
-        cache.parent.mkdir(exist_ok=True)
-        cache.write_text("{}")
-        fresh = cache.with_name("fresh.json")
-        fresh.write_text("{}")
+        from backend.app.ai_cache import StageCache
+        stage_cache = StageCache(tmp_path / "ai-cache")
+        stage_cache.write("a" * 64, {})
+        stage_cache.write("b" * 64, {})
+        cache = stage_cache.path("a" * 64)
+        fresh = stage_cache.path("b" * 64)
+        expected = cache.stat().st_size + fresh.stat().st_size
         os.utime(cache, (time.time() - 31 * 86400,) * 2)
-        assert client.post("/api/library/cache/clean").json()["removed_bytes"] == 2
-        assert fresh.is_file() and not cache.exists()
+        assert client.post("/api/library/cache/clean").json()["removed_bytes"] == expected
+        assert not fresh.exists() and not cache.exists()
         assert len(client.get("/api/library/manage").json()["items"]) == 1
 
 

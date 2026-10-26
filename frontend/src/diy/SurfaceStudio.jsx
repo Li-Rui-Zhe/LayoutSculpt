@@ -71,6 +71,7 @@ export default function SurfaceStudio({ category, onLibrary }) {
     [error, setError] = useState("");
   const [saved, setSaved] = useState(null),
     [pendingSeed, setPendingSeed] = useState(null);
+  const [storageError, setStorageError] = useState("");
   const importPicker = useRef(null),
     appliedAiJob = useRef(readJson(`surface-ai-applied:${category}`)),
     saveLock = useRef(false),
@@ -115,7 +116,12 @@ export default function SurfaceStudio({ category, onLibrary }) {
         `surface-workspace:v2:${category}`,
         JSON.stringify({ mode, drafts }),
       );
-    } catch {}
+      setStorageError("");
+    } catch {
+      setStorageError(
+        "材质参数暂未保存到浏览器，请及时保存到素材库；当前调整仍保留在页面中。",
+      );
+    }
   }, [category, mode, drafts]);
 
   // 手绘独立同步；其他页签始终可继续使用。取消旧请求，防止慢响应覆盖新笔画。
@@ -170,7 +176,7 @@ export default function SurfaceStudio({ category, onLibrary }) {
     setPreviewError("");
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch("/api/materials/preview", {
+        const response = await guardedFetch("/api/materials/preview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -365,6 +371,7 @@ export default function SurfaceStudio({ category, onLibrary }) {
         </div>
       </header>
       {error && <p role="alert">{error}</p>}
+      {storageError && <p role="status">{storageError}</p>}
       {currentSaved && (
         <p role="status">
           「{saved.name}」已保存，可在素材库和户型生成页面选择。
@@ -785,3 +792,4 @@ export default function SurfaceStudio({ category, onLibrary }) {
     </section>
   );
 }
+import { guardedFetch } from "../connectionGuard.js";

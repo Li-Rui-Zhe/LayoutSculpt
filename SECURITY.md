@@ -4,7 +4,7 @@
 
 ## 中文
 
-造个家（LayoutSculpt）是个人维护的开源项目，欢迎反馈问题、提出建议和参与改进。
+LayoutSculpt是个人维护的开源项目，欢迎反馈问题、提出建议和参与改进。
 
 ### 日常反馈
 
@@ -24,7 +24,7 @@
 
 ## English
 
-LayoutSculpt (造个家) is an open-source project maintained by an individual. Bug reports, suggestions, and contributions are welcome.
+LayoutSculpt is an open-source project maintained by an individual. Bug reports, suggestions, and contributions are welcome.
 
 ### General feedback
 

@@ -1,4 +1,5 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const id = process.argv[2];
@@ -6,7 +7,7 @@ if (!/^[a-f0-9]{32}$/.test(id || "")) throw Error("请提供失败任务 ID。")
 const submit = process.argv.includes("--retry");
 const output = "data/visual-review/model-compatibility";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 const report = { checks: [], errors: [], retried: null };
 try {
   const page = await browser.newPage({
@@ -34,8 +35,10 @@ try {
   await effort.selectOption("high");
   report.checks.push("新任务的 gpt-6.1-sol 提供完整档位，可选择 high");
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "新建重试任务", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "选择模型并重试" });
+  await page
+    .getByRole("button", { name: "更换模型重新生成", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "更换模型重新生成" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("生成模型")).toBeEnabled();
   await dialog.getByLabel("生成模型").selectOption("gpt-6.1-sol");
@@ -43,7 +46,7 @@ try {
   await page.screenshot({ path: `${output}/retry-desktop.png` });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
-    dialog.getByRole("button", { name: "创建重试任务", exact: true }),
+    dialog.getByRole("button", { name: "使用所选模型生成新版本", exact: true }),
   ).toBeInViewport();
   expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
     true,
@@ -57,7 +60,7 @@ try {
         r.request().method() === "POST",
     );
     await dialog
-      .getByRole("button", { name: "创建重试任务", exact: true })
+      .getByRole("button", { name: "使用所选模型生成新版本", exact: true })
       .click();
     const result = await response;
     expect(result.status()).toBe(201);

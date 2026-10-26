@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 from uuid import uuid4
 from weakref import WeakValueDictionary
@@ -23,6 +24,36 @@ class StageCache:
         # 同一输入共享推理；不同输入不能因散列桶碰撞而互相阻塞。
         # 等待者和持有者释放后自动回收锁，避免按任务数量累积。
         self.locks = WeakValueDictionary()
+
+    def prune(self, max_bytes=512 * 1024 * 1024, max_age_days=30):
+        """Remove only rebuildable cache entries; never traverse directory links."""
+        if not self.root.exists() or self.root.is_symlink() or (hasattr(self.root, "is_junction") and self.root.is_junction()):
+            return {"removed_bytes": 0, "remaining_bytes": 0}
+        entries = []
+        for folder in self.root.iterdir():
+            if not folder.is_dir() or folder.is_symlink() or (hasattr(folder, "is_junction") and folder.is_junction()):
+                continue
+            for path in folder.glob("*.json"):
+                if path.is_symlink() or len(path.stem) != 64 or any(c not in "0123456789abcdef" for c in path.stem) or folder.name != path.stem[:2]:
+                    continue
+                try:
+                    stat = path.stat()
+                    entries.append((stat.st_mtime, stat.st_size, path))
+                except FileNotFoundError:
+                    pass
+        entries.sort(reverse=True)
+        kept = removed = 0
+        cutoff = time.time() - max_age_days * 86400
+        for modified, size, path in entries:
+            if modified < cutoff or kept + size > max_bytes:
+                try:
+                    path.unlink()
+                    removed += size
+                except FileNotFoundError:
+                    pass
+            else:
+                kept += size
+        return {"removed_bytes": removed, "remaining_bytes": kept}
 
     def key(
         self,

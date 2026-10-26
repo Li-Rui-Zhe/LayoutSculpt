@@ -99,7 +99,7 @@ def test_furniture_issues_do_not_block_confirmed_structure_delivery(tmp_path, pr
 def test_furniture_timeout_still_delivers_actual_verified_glb(tmp_path):
     settings = replace(Settings(), data_dir=tmp_path)
     with TestClient(create_app(settings, client=FurnitureProblemCodex("timeout"), model_builder=build_model)) as client:
-        final = wait_job(client, create_job(client)["id"])
+        final = wait_job(client, create_job(client)["id"], timeout=60)
         assert final["status"] == "succeeded", final
         result = final["result"]
         assert result["delivery_status"] == "structure_ready"

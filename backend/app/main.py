@@ -31,12 +31,17 @@ from .diy import DiyService, install_diy_routes
 from .generation_errors import generation_validation_message
 from .idempotency import install_idempotency
 from .instance_lock import instance_lock
+from .data_maintenance import prepare_data
+from .ai_cache import StageCache
+from .maintenance_routes import install_maintenance_routes
+from .runtime_identity import instance_id, project_id
 from .library import LibraryService, install_library_routes
 from .local_review import install_local_review_routes
 from .project_transfer import install_transfer_routes
 from .recovery import REVIEW_TIMEOUT_WARNING, recoverable_recognition
 from .request_limits import RequestLimits
 from .schemas import (
+    ContinueRequest,
     Furnishing,
     JobOptions,
     Layout,
@@ -53,8 +58,6 @@ from .workflow import JobRunner, create_graph
 from .workspace import initialize_workspace, install_workspace_routes
 
 ALLOWED_ORIGINS = {
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
     "http://127.0.0.1:8000",
     "http://localhost:8000",
 }
@@ -102,6 +105,10 @@ def normalize_image(content: bytes) -> bytes:
 
 def create_app(settings=None, *, client=None, model_builder=None):
     settings = settings or Settings()
+    allowed_origins = ALLOWED_ORIGINS | {
+        f"http://127.0.0.1:{settings.frontend_port}",
+        f"http://localhost:{settings.frontend_port}",
+    }
     store = Store(settings.db_path)
     codex = AIClientRouter(settings, client or CodexClient(settings))
     registry = SkillRegistry(settings.skills_dir)
@@ -114,6 +121,14 @@ def create_app(settings=None, *, client=None, model_builder=None):
 
     @asynccontextmanager
     async def service_lifespan(app):
+        cache = StageCache(settings.data_dir / "ai-cache")
+        async def maintain_cache():
+            while True:
+                try:
+                    await asyncio.to_thread(cache.prune)
+                except OSError:
+                    pass  # Cache housekeeping must not interrupt saved projects.
+                await asyncio.sleep(6 * 3600)
         await store.initialize()
         await surfaces.initialize()
         await initialize_workspace(store)
@@ -130,9 +145,18 @@ def create_app(settings=None, *, client=None, model_builder=None):
             app.state.runner = JobRunner(graph, store, settings.concurrency, settings)
             for job_id in interrupted_jobs:
                 app.state.runner.schedule(job_id, resume=True)
+            await diy.resume_queued()
+            await surfaces.resume_queued()
+            cache_task = asyncio.create_task(maintain_cache())
             try:
                 yield
             finally:
+                cache_task.cancel()
+                try:
+                    await cache_task
+                except asyncio.CancelledError:
+                    pass
+                await app.state.codex_login.close()
                 await app.state.codex_installer.close()
                 await surfaces.close()
                 await app.state.runner.close()
@@ -142,10 +166,11 @@ def create_app(settings=None, *, client=None, model_builder=None):
     @asynccontextmanager
     async def lifespan(app):
         with instance_lock(settings.data_dir):
+            await asyncio.to_thread(prepare_data, settings.data_dir)
             async with service_lifespan(app):
                 yield
 
-    app = FastAPI(title="造个家户型工作台", version="2.1.0", lifespan=lifespan)
+    app = FastAPI(title="LayoutSculpt户型工作台", version="2.1.0", lifespan=lifespan)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, exc):
@@ -172,6 +197,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
     app.state.diy = diy
     app.state.surface_generations = surfaces
     install_ai_routes(app, settings, codex)
+    install_maintenance_routes(app, settings)
     install_idempotency(app, store, lambda job: public(job))
     app.add_middleware(RequestLimits)
     app.add_middleware(
@@ -181,7 +207,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(ALLOWED_ORIGINS),
+        allow_origins=list(allowed_origins),
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "Last-Event-ID", "Idempotency-Key"],
     )
@@ -191,10 +217,10 @@ def create_app(settings=None, *, client=None, model_builder=None):
         if (
             request.method not in {"GET", "HEAD", "OPTIONS"}
             and request.headers.get("origin")
-            and request.headers["origin"] not in ALLOWED_ORIGINS
+            and request.headers["origin"] not in allowed_origins
         ):
             return JSONResponse(
-                {"detail": "不允许来自其他站点的写入请求"}, status_code=403
+                {"detail": "当前页面地址与服务配置不一致，保存或添加未执行。请保留当前编辑内容，从 http://127.0.0.1:8000 打开工作台；开发模式请统一 STUDIO_FRONTEND_PORT 并重启前后端。"}, status_code=403
             )
         return await call_next(request)
 
@@ -244,6 +270,15 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 503,
                 "家具 GLB 资产库不可用，请检查 assets/furniture/glb",
             ) from exc
+
+    @app.get("/api/client-access")
+    async def client_access(origin: str = ""):
+        # Read-only identification. The middleware still authorizes every write.
+        return JSONResponse({
+            "application": "layoutsculpt", "protocol": 1,
+            "project_id": project_id(), "instance_id": instance_id(settings),
+            "origin": origin, "write_allowed": origin in allowed_origins,
+        }, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/health")
     async def health():
@@ -378,6 +413,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         style_description: str = Form("", max_length=1000),
         notes: str = Form(""),
         collaboration: bool = Form(True),
+        review_mode: str = Form("manual"),
         model: str = Form(""),
         reasoning_effort: str = Form(""),
         furniture_mode: str = Form("library"),
@@ -390,6 +426,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 style_description=style_description,
                 notes=notes,
                 collaboration=collaboration,
+                review_mode=review_mode,
                 model=model.strip() or None,
                 reasoning_effort=reasoning_effort.strip() or None,
                 furniture_mode=furniture_mode,
@@ -505,6 +542,26 @@ def create_app(settings=None, *, client=None, model_builder=None):
             if pending:
                 await asyncio.gather(pending, return_exceptions=True)
             request.app.state.runner.schedule(job_id.hex)
+            return public(await store.get(job_id.hex))
+
+    @app.post("/api/jobs/{job_id}/continue")
+    async def continue_generation(job_id: UUID, document: ContinueRequest, request: Request):
+        # 与确认结构共用锁，等待上一轮 runner 彻底结束再重开终态。
+        async with confirmation_lock:
+            job = await require_job(job_id.hex)
+            runner = request.app.state.runner
+            if job["status"] in {"queued", "running"}:
+                return public(job)
+            if job["status"] not in {"failed", "cancelled"}:
+                raise HTTPException(409, "此任务无需恢复，请刷新查看最新结果")
+            if not (settings.workspace(job_id.hex) / "source.png").is_file():
+                raise HTTPException(409, "原图已丢失，请重新上传；已有设计版本仍保留")
+            task = runner.tasks.get(job_id.hex)
+            if task is not None:
+                await asyncio.gather(task, return_exceptions=True)
+            if not await store.continue_job(job_id.hex, document.revision):
+                raise HTTPException(409, "任务状态已变化，请刷新后再继续")
+            runner.schedule(job_id.hex, resume=True)
             return public(await store.get(job_id.hex))
 
     @app.post("/api/jobs/{job_id}/retry", status_code=201)
@@ -739,6 +796,17 @@ def create_app(settings=None, *, client=None, model_builder=None):
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.get("/api/jobs/{job_id}/preview/{filename}")
+    async def initial_artifact(job_id: UUID, filename: str):
+        job = await require_job(job_id.hex)
+        if filename not in {"model.glb", "layout.json"} or not (job.get("result") or {}).get("preview"):
+            raise HTTPException(404, "三维初稿尚未准备好")
+        path = settings.workspace(job_id.hex) / "initial" / filename
+        if not path.is_file():
+            raise HTTPException(404, "三维初稿文件不存在")
+        return FileResponse(path, media_type="model/gltf-binary" if filename == "model.glb" else "application/json",
+                            headers={"Cache-Control": "no-store"})
 
     @app.get("/api/jobs/{job_id}/artifacts/{filename}")
     async def artifact(job_id: UUID, filename: str):

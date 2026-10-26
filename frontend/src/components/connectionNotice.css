@@ -1,0 +1,30 @@
+.connection-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: #fff5e5;
+  color: #76501c;
+  border-bottom: 1px solid #e8cd9f;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.connection-notice > div {
+  flex: 1 1 360px;
+}
+.connection-notice strong {
+  font-weight: 500;
+}
+.connection-notice p {
+  margin: 4px 0 0;
+}
+.connection-notice button,
+.connection-notice a {
+  color: inherit;
+  padding: 6px 9px;
+  background: transparent;
+  border: 1px solid #dcc59f;
+  border-radius: 5px;
+  white-space: nowrap;
+}

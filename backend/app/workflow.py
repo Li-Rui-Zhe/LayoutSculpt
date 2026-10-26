@@ -619,6 +619,8 @@ def create_graph(
             message="正在生成真实墙体、门窗及家具模型",
         )
         workspace = settings.workspace(state["job_id"])
+        if state.get("source_sha256") and state["source_sha256"] != source_hash(workspace / "source.png"):
+            raise ValueError("原图在生成期间发生变化，请重新识别")
         layout = Layout.model_validate(state["layout"])
         layout, furniture, quality = finish_design(
             layout,
@@ -670,6 +672,8 @@ def create_graph(
             render_style,
             furniture_mode=state["options"].get("furniture_mode", "library"),
         )
+        if state.get("source_sha256") and state["source_sha256"] != source_hash(workspace / "source.png"):
+            raise ValueError("建模期间原图发生变化，请重新识别")
         if confirmation and confirmation["source_sha256"] != source_hash(
             workspace / "source.png"
         ):
@@ -749,11 +753,47 @@ def create_graph(
             )
         return {"result": result}
 
+    async def preview(state):
+        """独立目录发布真实建筑初稿；不写入人工确认，也不开放正式交付。"""
+        job_id = state["job_id"]
+        workspace = settings.workspace(job_id)
+        layout = Layout.model_validate(state["layout"])
+        validate_generated_structure(layout)
+        await store.update(job_id, stage="准备三维初稿", progress=47,
+                           message="结构已完成几何检查，正在生成真实墙体、门窗和地板")
+        from .surface_design import apply_generation_surfaces
+
+        layout = apply_generation_surfaces(layout, state["options"])
+        pending = workspace / "initial-pending"
+        pending.mkdir(exist_ok=True)
+        style = state["options"]["style"]
+        report = await model_builder(settings, pending, layout, Furnishing(items=[], notes=[]),
+                                     "natural" if style == "custom" else style,
+                                     furniture_mode=state["options"].get("furniture_mode", "library"))
+        if state.get("source_sha256") != source_hash(workspace / "source.png"):
+            raise ValueError("原图在初稿生成期间发生变化，请重新识别")
+        initial = workspace / "initial"
+        initial.mkdir(exist_ok=True)
+        # 构建过程不暴露半写文件；重试时上一份可用初稿仍可查看。
+        for filename in ("model.glb", "layout.json"):
+            (pending / filename).replace(initial / filename)
+        result = {**state["result"], "preview": {
+            "model_url": f"/api/jobs/{job_id}/preview/model.glb",
+            "layout_url": f"/api/jobs/{job_id}/preview/layout.json",
+            "source_reviewed": False,
+            "structure_hash": structure_hash(layout),
+            "consistency": report.get("consistency", {}),
+        }}
+        await store.update(job_id, result=result, progress=50,
+                           message="三维初稿已可查看，尚未人工核对；正在继续布置家具")
+        return {"awaiting_review": False, "result": result}
+
     graph = StateGraph(State)
     for name, node in [
         ("recognize", recognize),
         ("review", review),
         ("prepare_review", prepare_review),
+        ("preview", preview),
         ("furnish", furnish),
         ("build", build),
     ]:
@@ -782,7 +822,13 @@ def create_graph(
         ),
     )
     graph.add_edge("review", "prepare_review")
-    graph.add_edge("prepare_review", END)
+    graph.add_conditional_edges("prepare_review", lambda state: (
+        "preview" if state["options"].get("review_mode") == "preview"
+        and not state.get("recovered_structure_of")
+        and state.get("ai_review", {}).get("status") not in {"timed_out", "incomplete"}
+        else END
+    ))
+    graph.add_edge("preview", "furnish")
     graph.add_edge("furnish", "build")
     graph.add_edge("build", END)
     return graph.compile(checkpointer=checkpointer)
@@ -825,7 +871,7 @@ class JobRunner:
                 if not await self.store.update(
                     job_id,
                     status="running",
-                    stage="服务已恢复，继续未完成的步骤"
+                    stage="检查已完成步骤，继续生成"
                     if resume
                     else "应用人工设计，准备三维建模"
                     if seed.get("edited_of")
@@ -875,8 +921,8 @@ class JobRunner:
                             raise ValueError(
                                 "恢复记录与当前原图、结构确认或参数不一致，请重新核对任务"
                             )
-                        # Resume only the pending node. An unconfirmed layout
-                        # still ends at prepare_review, never at model building.
+                        # 只继续待完成节点。旧任务仍按原选项走人工核对；
+                        # preview 模式可以建模，但绝不写入人工确认。
                         graph_input = None
                 result = await self.graph.ainvoke(graph_input, config=config)
                 if resume and result.get("result", {}).get("model_url"):
@@ -921,6 +967,7 @@ class JobRunner:
                 stage="生成失败",
                 error=message,
                 message=message,
+                result={**(current.get("result") or {}), "failure": classify_ai_error(exc)},
             )
 
     async def cancel(self, job_id):

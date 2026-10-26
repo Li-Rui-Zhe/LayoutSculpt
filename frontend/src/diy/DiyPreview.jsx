@@ -1,5 +1,8 @@
+import OperationStatus from "../components/OperationStatus.jsx";
+import ContextRecovery from "../viewer/ContextRecovery.jsx";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { interactionQuality } from "../viewer/interactionQuality.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
@@ -208,7 +211,21 @@ export default function DiyPreview({
     const render = () => {
       if (!disposed) renderer.render(scene, camera);
     };
+    const quality = interactionQuality({
+      ratio: window.devicePixelRatio,
+      apply: (ratio) => {
+        renderer.setPixelRatio(ratio);
+        render();
+      },
+    });
+    controls.addEventListener("start", quality.start);
+    controls.addEventListener("end", quality.end);
+    renderer.domElement.addEventListener("pointerdown", quality.start);
+    window.addEventListener("pointerup", quality.end);
+    window.addEventListener("pointercancel", quality.end);
+    window.addEventListener("blur", quality.restore);
     const rt = {
+      renderer,
       scene,
       camera,
       controls,
@@ -431,6 +448,11 @@ export default function DiyPreview({
     renderer.domElement.addEventListener("pointerup", pointerUp);
     return () => {
       disposed = true;
+      quality.close();
+      window.removeEventListener("pointerup", quality.end);
+      window.removeEventListener("pointercancel", quality.end);
+      window.removeEventListener("blur", quality.restore);
+      renderer.domElement.removeEventListener("pointerdown", quality.start);
       observer.disconnect();
       removePlacement();
       removeDirectDrag();
@@ -858,6 +880,19 @@ export default function DiyPreview({
       : liveDocument.layout[liveSelection.type])?.[liveSelection.index];
   return (
     <div className="diy-preview-wrap">
+      <ContextRecovery
+        target={() => runtime.current?.renderer.domElement}
+        onLost={() => {
+          runtime.current?.cancelDirectDrag?.();
+          runtime.current?.gizmo.reset();
+          callbacks.current.onSceneGesture?.("cancel");
+          if (runtime.current) runtime.current.controls.enabled = true;
+        }}
+        onRestored={() => {
+          runtime.current?.render();
+          setVersion((n) => n + 1);
+        }}
+      />
       <div
         ref={host}
         className="diy-preview"
@@ -1035,8 +1070,12 @@ export default function DiyPreview({
         {!modelUrl && !modelDocument && " · 点选部件"}
       </span>
       {loading && !modelDocument && (
-        <div className="diy-preview-message" role="status">
-          正在加载三维模型…
+        <div className="diy-preview-message">
+          <OperationStatus
+            active={loading}
+            label="正在加载精细模型"
+            detail="完成后将在当前预览区显示。"
+          />
         </div>
       )}
       {error && (

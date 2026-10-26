@@ -77,7 +77,7 @@ export default function ModelFields({
                 ? " · 当前不可选"
                 : models.requiresImage !== false &&
                     item.supports_image === false
-                  ? " · 不支持图片"
+                  ? " · 不支持识图"
                   : ""}
               {item.source === "local_config" && item.available !== false
                 ? " · 本地配置"
@@ -91,7 +91,7 @@ export default function ModelFields({
           models.requiresImage !== false &&
           !models.catalog.items.some((item) => selectableModel(item, true)) && (
             <p className="field-error">
-              这个来源暂时没有支持图片的可用模型，请切换来源或在 AI
+              这个来源暂时没有支持识图的可用模型，请切换来源或在 AI
               接入中重新检测。
             </p>
           )}

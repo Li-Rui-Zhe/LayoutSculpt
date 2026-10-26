@@ -367,6 +367,7 @@ class JobOptions(StrictModel):
     render_style: Literal["natural", "cream", "modern"] | None = None
     notes: str = Field(default="", max_length=3000)
     collaboration: bool = True
+    review_mode: Literal["manual", "preview"] = "manual"
     model: str | None = Field(default=None, min_length=1, max_length=160)
     reasoning_effort: str | None = Field(default=None, min_length=1, max_length=40)
     furniture_mode: Literal["library", "basic"] = "library"
@@ -381,6 +382,10 @@ class JobOptions(StrictModel):
         if self.style != "custom":
             self.style_description = ""
         return self
+
+
+class ContinueRequest(StrictModel):
+    revision: str = Field(min_length=1, max_length=80)
 
 
 class RetryRequest(StrictModel):

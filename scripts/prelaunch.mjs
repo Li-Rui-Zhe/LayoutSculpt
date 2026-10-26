@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { createServer } from "node:net";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execFileSync } from "node:child_process";
@@ -7,13 +9,16 @@ import { findPython } from "./python.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 if (!existsSync(path.join(root, "dist", "index.html")))
   throw new Error("请先执行 pnpm build。");
-const base = "http://127.0.0.1:8011";
-try {
-  await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(1000) });
-  throw new Error("验收端口 8011 已被占用，请先关闭使用该端口的服务。");
-} catch (error) {
-  if (error.message.includes("8011 已被占用")) throw error;
-}
+// Use a free test port without stopping or reusing any existing service.
+const socket = createServer();
+await new Promise((resolve, reject) => {
+  socket.once("error", reject);
+  socket.listen(0, "127.0.0.1", resolve);
+});
+const port = socket.address().port;
+await new Promise((resolve) => socket.close(resolve));
+const base = `http://127.0.0.1:${port}`;
+const testData = path.join(root, "data", "prelaunch-tests", randomUUID());
 const child = spawn(
   findPython(root),
   [
@@ -23,13 +28,18 @@ const child = spawn(
     "--host",
     "127.0.0.1",
     "--port",
-    "8011",
+    String(port),
   ],
   {
     cwd: root,
     windowsHide: true,
     stdio: ["ignore", "ignore", "pipe"],
-    env: { ...process.env, PYTHONUTF8: "1" },
+    env: {
+      ...process.env,
+      PYTHONUTF8: "1",
+      STUDIO_TEST_PORT: String(port),
+      STUDIO_TEST_DATA: testData,
+    },
   },
 );
 let serverLog = "";
@@ -52,7 +62,11 @@ try {
   }
   if (!ready) throw new Error(`验收服务启动超时：${serverLog}`);
   process.env.REVIEW_URL = base;
-  await import("./review/prelaunch_review.mjs");
+  if (!process.argv.includes("--progressive")) {
+    await import("./review/prelaunch_review.mjs");
+    await import("./review/resilience_review.mjs");
+  }
+  await import("./review/progressive_review.mjs");
 } finally {
   if (process.platform === "win32") {
     try {

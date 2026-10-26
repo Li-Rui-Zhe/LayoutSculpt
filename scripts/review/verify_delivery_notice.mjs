@@ -1,12 +1,14 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const id = process.argv[2];
 if (!/^[a-f0-9]{32}$/.test(id || ""))
   throw new Error("请提供已有成功任务 ID。");
+const base = process.env.REVIEW_URL || "http://127.0.0.1:8000";
 const output = "data/visual-review/delivery-notice";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 const errors = [],
   checks = [],
   mutations = [];
@@ -16,7 +18,7 @@ try {
   });
   page.on("pageerror", (error) => errors.push(error.message));
   const snapshot = await (
-    await page.request.get(`http://127.0.0.1:8000/api/jobs/${id}`)
+    await page.request.get(`${base}/api/jobs/${id}`)
   ).json();
   expect(snapshot.status).toBe("succeeded");
   const fixture = structuredClone(snapshot);
@@ -44,22 +46,25 @@ try {
     (jobId) => localStorage.setItem("habitat-job", jobId),
     id,
   );
-  await page.goto("http://127.0.0.1:5173/");
+  await page.goto(base);
   await expect(page.locator("#viewport canvas")).toBeVisible({
     timeout: 30000,
   });
   await expect(page.locator(".delivery-notice")).toContainText("家具尚未完成");
-  await page.getByRole("button", { name: "完善家具", exact: true }).click();
-  await expect(
-    page.getByRole("dialog", { name: "改进当前方案", exact: true }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
+  let continued = 0;
+  await page.route(/\/api\/jobs\/[^/]+\/rebuild\?replan=true$/, (route) => {
+    continued++;
+    return route.fulfill({ json: fixture });
+  });
+  await page.getByRole("button", { name: "继续布置家具", exact: true }).click();
+  await expect.poll(() => continued).toBe(1);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.screenshot({ path: `${output}/desktop.png` });
-  checks.push("交付结构时明确说明家具未完成，并可进入完善方案弹窗");
+  checks.push("交付结构时明确说明家具未完成，可直接继续布置，无额外弹窗（请求被测试拦截）");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".delivery-notice")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "完善家具", exact: true }),
+    page.getByRole("button", { name: "继续布置家具", exact: true }),
   ).toBeVisible();
   expect(
     await page.evaluate(

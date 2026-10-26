@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from .texture_assets import available_textures
+from .ai_cache import StageCache
 
 
 class AssetChange(BaseModel):
@@ -138,20 +139,5 @@ def install_asset_management_routes(app, library):
 
     @app.post("/api/library/cache/clean")
     async def clean():
-        def remove_expired():
-            removed = 0
-            cache = root / "ai-cache"
-            for path in cache.rglob("*.json"):
-                try:
-                    if (
-                        not path.is_symlink()
-                        and path.resolve().is_relative_to(cache)
-                        and path.stat().st_mtime < time.time() - 30 * 86400
-                    ):
-                        removed += path.stat().st_size
-                        path.unlink()
-                except OSError:
-                    continue
-            return removed
-
-        return {"removed_bytes": await asyncio.to_thread(remove_expired)}
+        # 兼容旧入口，与本机数据管理使用同一清理规则。
+        return await asyncio.to_thread(StageCache(root / "ai-cache").prune, 0)

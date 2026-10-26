@@ -93,7 +93,6 @@ export default function StructureReview({ job, projects, onEdit }) {
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [checked, setChecked] = useState(false),
     [revision, setRevision] = useState(0);
   useEffect(() => {
     let alive = true;
@@ -112,7 +111,7 @@ export default function StructureReview({ job, projects, onEdit }) {
     };
   }, [job.id, revision]);
   const confirm = async () => {
-    if (!data || !checked || busy) return;
+    if (!data || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -193,15 +192,9 @@ export default function StructureReview({ job, projects, onEdit }) {
               </details>
             )}
           </div>
-          <label className="review-ack">
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={(e) => setChecked(e.target.checked)}
-              disabled={busy}
-            />
-            我已核对墙体、房间和门窗，并理解上述估算与待确认事项
-          </label>
+          <p className="field-note">
+            核对墙体、房间和门窗后，点击“已核对，继续生成”；有偏差可先调整结构。
+          </p>
           <div className="review-actions">
             <button
               className="text-button review-cancel"
@@ -220,7 +213,7 @@ export default function StructureReview({ job, projects, onEdit }) {
             </button>
             <button
               className="primary-button"
-              disabled={!checked || busy}
+              disabled={!data || busy}
               onClick={confirm}
             >
               {busy ? (
@@ -228,7 +221,7 @@ export default function StructureReview({ job, projects, onEdit }) {
               ) : (
                 <Check size={16} />
               )}
-              确认结构并继续
+              已核对，继续生成
             </button>
           </div>
         </>

@@ -14,7 +14,13 @@ const megabytes = (value) => `${(value / 1024 / 1024).toFixed(1)} MB`;
 const cancellable = (job) =>
   activeJob(job) && !["activate", "reconnect", "restore"].includes(job.stage);
 
-export default function CodexInstall({ disabled, update, onBusy, onComplete }) {
+export default function CodexInstall({
+  disabled,
+  update,
+  environment,
+  onBusy,
+  onComplete,
+}) {
   const [state, setState] = useState(null);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
@@ -118,8 +124,8 @@ export default function CodexInstall({ disabled, update, onBusy, onComplete }) {
     >
       <div className="ai-cli-install-heading">
         <div>
-          <h4>直接在这里更新 CLI</h4>
-          <p>下载官方稳定版，校验后自动重连并读取模型。</p>
+          <h4>项目管理</h4>
+          <p>下载官方版本，校验后使用，无需手动填写路径。</p>
         </div>
         <span>{state?.managed ? "使用项目专用 CLI" : "当前使用本机 CLI"}</span>
       </div>
@@ -127,7 +133,7 @@ export default function CodexInstall({ disabled, update, onBusy, onComplete }) {
         <button
           className="primary-button"
           disabled={locked}
-          onClick={() => act("install")}
+          onClick={() => act(state?.managed ? "install" : "isolated")}
         >
           {running || sending ? (
             <LoaderCircle size={14} className="spin" />
@@ -139,8 +145,8 @@ export default function CodexInstall({ disabled, update, onBusy, onComplete }) {
             : update?.available === true
               ? `一键更新至 ${update.latest_version}`
               : state?.managed && update?.available === false
-                ? "重新安装稳定版"
-                : "下载安装稳定版"}
+                ? "重新准备当前环境"
+                : "准备项目独立环境"}
         </button>
         {state?.can_rollback && (
           <button
@@ -172,13 +178,26 @@ export default function CodexInstall({ disabled, update, onBusy, onComplete }) {
         )}
       </div>
       <p className="ai-cli-install-note">
-        只为本项目安装一份
-        CLI，沿用本机登录与配置。安装成功后切换，其他软件使用的 CLI 保持原设置。
+        当前配置：
+        {state?.environment === "isolated"
+          ? "项目独立保存，首次需单独登录"
+          : "沿用本机配置和登录"}
+        。准备独立环境后，需完成登录才能使用；已有设计不会改变。
       </p>
+      {state?.managed && state.environment !== "isolated" && (
+        <button
+          className="ai-text-button"
+          disabled={locked}
+          onClick={() => act("isolated")}
+        >
+          切换为项目独立环境（需重新登录）
+        </button>
+      )}
       {state?.install_dir && (
-        <p className="ai-cli-install-path">
-          安装目录：<span>{state.install_dir}</span>
-        </p>
+        <details className="ai-install-location">
+          <summary>查看安装位置</summary>
+          <p className="ai-cli-install-path">{state.install_dir}</p>
+        </details>
       )}
       {job && (
         <div

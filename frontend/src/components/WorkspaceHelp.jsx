@@ -1,9 +1,16 @@
 import Modal from "./Modal.jsx";
+import { useState } from "react";
+import DataManagement from "../settings/DataManagement.jsx";
 
 export default function WorkspaceHelp({ onClose }) {
+  const [dataOpen, setDataOpen] = useState(false);
   return (
     <Modal title="操作指南" onClose={onClose} className="workspace-help">
       <h3>从户型图到设计成果</h3>
+      <details onToggle={(e) => setDataOpen(e.currentTarget.open)}>
+        <summary>本机数据与备份</summary>
+        {dataOpen && <DataManagement />}
+      </details>
       <ol>
         <li>新建项目，上传清晰户型图。</li>
         <li>对照原图核对墙体、房间与门窗。</li>
@@ -44,10 +51,7 @@ export default function WorkspaceHelp({ onClose }) {
         </li>
         <li>三维预览选定房间后可“只看此房间”；退出恢复全屋及阴影。</li>
       </ul>
-      <p>
-        “复制定位链接”保留当前项目、页签、房间和对象位置。链接需要在拥有该项目数据的本机服务上打开；跨设备搬迁请导出、导入成果
-        ZIP。
-      </p>
+      <p>跨设备搬迁请导出、导入成果 ZIP。</p>
       <p>
         多页面修改不同字段会尝试自动合并，并重置撤销基线；同字段冲突会停止同步，请先备份当前草稿，再读取最新版本。
       </p>

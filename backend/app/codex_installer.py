@@ -5,6 +5,7 @@ import json
 import platform
 import shutil
 import time
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
@@ -88,6 +89,7 @@ class CodexInstaller:
             "job": self.job,
             "install_dir": str(self.root / "packages/codex"),
             "managed": bool(selected_tool(self.settings.data_dir, "codex")),
+            "environment": self.runtime.local.environment_mode if isinstance(self.runtime.local, CodexClient) else "shared",
             "can_rollback": bool(
                 selected_tool(
                     self.settings.data_dir, "codex", entry=active.get("previous")
@@ -109,12 +111,12 @@ class CodexInstaller:
                 if (self.job or {}).get("action") == action:
                     return self.snapshot()
                 raise InstallError("已有 CLI 操作正在进行，请等待完成。")
-            if action not in {"install", "rollback", "system"}:
+            if action not in {"install", "isolated", "rollback", "system"}:
                 raise InstallError("不支持此 CLI 操作。")
             local = self.runtime.local
             if not isinstance(local, CodexClient):
                 raise InstallError("当前本机连接不支持自动更新。")
-            if local.active_generations or local.threads or local.pending:
+            if local.maintenance or (action in {"rollback", "system", "isolated"} and (local.active_generations or local.threads or local.pending)):
                 raise InstallError(
                     "本机 Codex 正在处理任务，请等待任务结束后更新 CLI。"
                 )
@@ -138,7 +140,7 @@ class CodexInstaller:
         self.candidate_dir = None
         try:
             async with asyncio.timeout(900):
-                if action == "install":
+                if action in {"install", "isolated"}:
                     await self.install()
                 else:
                     await self.restore(system=action == "system")
@@ -191,6 +193,10 @@ class CodexInstaller:
             raise InstallError("Codex 版本验证失败，未切换原环境。")
         candidate = CodexClient(replace(self.settings, codex_command=str(path)))
         candidate.command_override = str(path)
+        # A candidate version must never initialize against live credentials/config.
+        temporary = tempfile.TemporaryDirectory(prefix="verify-", dir=self.root)
+        candidate.environment_override = "isolated"
+        candidate.home_override = temporary.name
         try:
             await asyncio.wait_for(candidate.ensure_started(), 40)
         except (CodexError, OSError, TimeoutError):
@@ -199,8 +205,9 @@ class CodexInstaller:
             ) from None
         finally:
             await candidate.stop()
+            temporary.cleanup()
 
-    async def activate(self, path, version, *, system=False):
+    async def activate(self, path, version, *, system=False, config_mode=None):
         local = self.runtime.local
         await self.verify(path, version)
         old_active, old_command = read_active(self.settings.data_dir), local.command
@@ -215,17 +222,21 @@ class CodexInstaller:
                 "path": resolved.relative_to(self.root).as_posix(),
                 "version": version,
                 "prepared_at": now(),
+                "config_mode": config_mode or ("isolated" if self.job.get("action") == "isolated" else local.environment_mode),
             }
             if selected_tool(self.settings.data_dir, "codex"):
                 record["previous"] = {
                     k: v for k, v in old_active["codex"].items() if k != "previous"
                 }
             active["codex"] = record
-        async with local.lock:
-            if local.active_generations or local.threads or local.pending:
-                raise InstallError("本机 Codex 正在处理任务，请在任务结束后重试更新。")
-            local.maintenance = True
-            local.maintenance_owner = asyncio.current_task()
+        self.stage("waiting_idle", "更新已准备好，等待当前任务结束后启用；当前任务继续使用原版本。")
+        while True:
+            async with local.lock:
+                if not (local.maintenance or local.active_generations or local.threads or local.pending):
+                    local.maintenance = True
+                    local.maintenance_owner = asyncio.current_task()
+                    break
+            await asyncio.sleep(0.5)
         try:
             self.stage("activate", "正在切换本项目使用的 CLI…")
             async with local.lock:
@@ -332,4 +343,4 @@ class CodexInstaller:
             if not path or not VERSION.fullmatch(record.get("version", "")):
                 raise InstallError("没有可恢复的项目 CLI 版本。")
             version = record["version"]
-        await self.activate(Path(path), version, system=system)
+        await self.activate(Path(path), version, system=system, config_mode=None if system else record.get("config_mode", "shared"))

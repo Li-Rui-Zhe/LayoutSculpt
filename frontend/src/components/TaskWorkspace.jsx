@@ -19,8 +19,6 @@ import {
   ArrowUpRight,
   RotateCcw,
   Square,
-  FileJson,
-  FileBox,
   Sun,
   Moon,
   SlidersHorizontal,
@@ -31,8 +29,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { designFingerprint } from "../editor/objectIdentity.js";
-import { toDraft } from "../editor/geometry.js";
+import Deliverables from "./Deliverables.jsx";
 import Viewport from "./Viewport.jsx";
 import Modal from "./Modal.jsx";
 import { MaterialDock } from "./Materials.jsx";
@@ -192,175 +189,12 @@ function Activity({ job, events }) {
     </section>
   );
 }
-function Deliverables({ job, onCapture }) {
-  const [draftWarning, setDraftWarning] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    if (!job) return;
-    Promise.all([
-      fetch(`/api/drafts/edit:${job.id}`).then((r) => r.json()),
-      fetch(
-        job.result?.layout_url || `/api/jobs/${job.id}/artifacts/layout.json`,
-      ).then((r) => r.json()),
-    ])
-      .then(([draft, layout]) => {
-        if (alive)
-          setDraftWarning(
-            !!draft.document &&
-              JSON.stringify(designFingerprint(draft.document)) !==
-                JSON.stringify(designFingerprint(toDraft(layout))),
-          );
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [job?.id]);
-  if (job?.status !== "succeeded" || !job?.result?.model_url)
-    return (
-      <div className="empty-state">
-        <FolderDown size={38} />
-        <h2>成果将在这里汇集</h2>
-        <p>生成完成后，可以下载三维模型、工程文件和户型数据。</p>
-      </div>
-    );
-  const result = job.result;
-  return (
-    <section className="deliverables-page">
-      <div className="delivery-hero">
-        <span className="delivery-mark">
-          <Check size={24} />
-        </span>
-        <div>
-          <span className="eyebrow">你的空间，已准备就绪</span>
-          <h2>从设计到交付，一处完成。</h2>
-          <p>
-            {result.room_count} 个空间 · {result.area} ㎡ · 独立成果包
-          </p>
-        </div>
-      </div>
-      {draftWarning && (
-        <p className="workspace-note">
-          人工设计还有未生成的草稿修改。以下下载对应当前已生成版本，请回到人工设计保存并生成三维后再交付。
-        </p>
-      )}
-      <div className="delivery-actions">
-        <a
-          className="secondary-button"
-          href={`/api/jobs/${job.id}/drawing/svg`}
-          download
-        >
-          平面 SVG
-        </a>
-        <a
-          className="secondary-button"
-          href={`/api/jobs/${job.id}/drawing/dxf`}
-          download
-        >
-          平面 DXF · 毫米
-        </a>
-        <a
-          className="primary-button"
-          href={`/api/jobs/${job.id}/bundle`}
-          download
-        >
-          一键下载成果包
-        </a>
-        <a
-          className="secondary-button"
-          href={`/api/jobs/${job.id}/report`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          查看报告 / 导出 PDF
-        </a>
-      </div>
-      <div className="deliverable-grid">
-        {[
-          [
-            FileBox,
-            "三维模型",
-            "GLB",
-            "可在三维软件中查看和继续使用",
-            result.model_url,
-          ],
-          ...(result.blend_url
-            ? [
-                [
-                  Box,
-                  "Blender 工程",
-                  "BLEND",
-                  "包含模型、家具与打包贴图",
-                  result.blend_url,
-                ],
-              ]
-            : []),
-          [
-            FileJson,
-            "户型结构数据",
-            "JSON",
-            "房间、墙体、门窗与家具布局",
-            result.layout_url,
-          ],
-          [
-            ListChecks,
-            "生成清单",
-            "JSON",
-            "模型参数、识别说明与成果索引",
-            `/api/jobs/${job.id}/artifacts/manifest.json`,
-          ],
-          ...(result.quality_url
-            ? [
-                [
-                  ListChecks,
-                  "设计检查",
-                  "JSON",
-                  "家具碰撞检查、照明配置与改进记录",
-                  result.quality_url,
-                ],
-              ]
-            : []),
-          ...(result.consistency_url
-            ? [
-                [
-                  ListChecks,
-                  "结构一致性",
-                  "JSON",
-                  "墙体、门窗、地板和轮廓的校验记录",
-                  result.consistency_url,
-                ],
-              ]
-            : []),
-        ].map(([Icon, title, type, desc, url]) => (
-          <a className="deliverable-card" key={title} href={url} download>
-            <Icon size={25} strokeWidth={1.4} />
-            <span className="file-type">{type}</span>
-            <h3>{title}</h3>
-            <p>{desc}</p>
-            <span className="download-label">
-              下载文件 <Download size={14} />
-            </span>
-          </a>
-        ))}
-      </div>
-      <div className="delivery-tip">
-        <Info size={16} />
-        <p>
-          模型与工程保留生成时的材质。工作区的光照、配色调整可通过「导出效果图」保存为图片。
-        </p>
-        <button className="text-button" onClick={onCapture}>
-          前往设计预览 <ArrowRight size={14} />
-        </button>
-      </div>
-    </section>
-  );
-}
-
 // 外观、撤销和导出按任务隔离，渲染器由应用复用。
 export default function TaskWorkspace({
   job,
   projects,
   onCreate,
+  onConnections,
   active = true,
   headingHost,
   placementRequest,
@@ -481,6 +315,7 @@ export default function TaskWorkspace({
   const [actionError, setActionError] = useState("");
   const [imported, setImported] = useState(null);
   const [notice, setNotice] = useState("");
+  const [reviewNoticeDismissed, setReviewNoticeDismissed] = useState(false);
   const [improving, setImproving] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [improvement, setImprovement] = useState("restructure");
@@ -489,12 +324,14 @@ export default function TaskWorkspace({
   const previousStatus = useRef(job?.status);
   useEffect(() => {
     if (job?.status !== previousStatus.current) {
-      setTab(
-        job?.status === "succeeded"
-          ? "design"
-          : job?.status === "awaiting_review"
-            ? "review"
-            : "activity",
+      setTab((current) =>
+        job?.status === "succeeded" && ["assets", "source"].includes(current)
+          ? current
+          : job?.status === "succeeded"
+            ? "design"
+            : job?.status === "awaiting_review"
+              ? "review"
+              : "activity",
       );
       setPanel(job?.status === "succeeded" ? "overview" : "task");
       setInspectorOpen(!matchMedia("(max-width: 1000px)").matches);
@@ -525,6 +362,11 @@ export default function TaskWorkspace({
     imported?.url ||
     `${showcase.model_url}?v=${showcase.revision || showcase.id}`;
   const currentResult = job?.result;
+  const initialModel = !hasModel && currentResult?.preview?.model_url;
+  useEffect(() => {
+    if (initialModel)
+      setTab((current) => (current === "activity" ? "design" : current));
+  }, [initialModel]);
   const reset = (top = false) => {
     viewer.current?.isolateRoom(null);
     setRoomIsolated(false);
@@ -675,15 +517,61 @@ export default function TaskWorkspace({
         hidden={tab === "edit" || reviewing}
       >
         <div className="design-column">
+          {initialModel && tab === "design" && (
+            <div
+              className="delivery-notice initial-preview-status"
+              role="status"
+            >
+              <TriangleAlert size={17} />
+              <p>
+                <strong>三维初稿 · 尚未人工核对</strong> · {job.stage}（
+                {job.progress}%）。可以旋转、缩放；生成完成后可编辑。
+              </p>
+              <button className="text-button" onClick={() => setTab("source")}>
+                对照原图
+              </button>
+            </div>
+          )}
+          {job?.status === "succeeded" && actionError && !improving && (
+            <div className="form-error" role="alert">
+              {actionError}
+            </div>
+          )}
+          {job?.status === "succeeded" &&
+            job.options?.review_mode === "preview" &&
+            !currentResult?.consistency?.source_reviewed &&
+            !reviewNoticeDismissed && (
+              <div className="delivery-notice" role="status">
+                <TriangleAlert size={17} />
+                <p>
+                  空间已生成，尚未人工核对。可对照原图，在人工设计中调整墙体、门窗和家具。
+                </p>
+                <button
+                  className="text-button"
+                  onClick={() => setTab("source")}
+                >
+                  对照原图
+                </button>
+                <button
+                  className="text-button"
+                  aria-label="关闭待核对提示"
+                  onClick={() => setReviewNoticeDismissed(true)}
+                >
+                  ×
+                </button>
+              </div>
+            )}
           {currentResult?.delivery_notice && (
             <div className="delivery-notice" role="status">
               <TriangleAlert size={17} />
               <p>{currentResult.delivery_notice}</p>
               <button
                 className="text-button"
-                onClick={() => setImproving(true)}
+                disabled={busy}
+                title="基于已保存方案建立家具版本，保留当前方案和人工草稿"
+                onClick={() => action("refine")}
               >
-                完善家具 <ArrowRight size={13} />
+                继续布置家具 <ArrowRight size={13} />
               </button>
             </div>
           )}
@@ -705,14 +593,16 @@ export default function TaskWorkspace({
                 >
                   <Icon size={15} />
                   {label}
-                  {key === "assets" && job?.result && (
-                    <span>
-                      {3 +
-                        Number(!!job.result.blend_url) +
-                        Number(!!job.result.consistency_url) +
-                        Number(!!job.result.quality_url)}
-                    </span>
-                  )}
+                  {key === "assets" &&
+                    job?.status === "succeeded" &&
+                    job.result && (
+                      <span>
+                        {3 +
+                          Number(!!job.result.blend_url) +
+                          Number(!!job.result.consistency_url) +
+                          Number(!!job.result.quality_url)}
+                      </span>
+                    )}
                 </button>
               ))}
             <div className="workspace-tools">
@@ -1017,6 +907,29 @@ export default function TaskWorkspace({
                     </div>
                   )}
                 </>
+              ) : initialModel ? (
+                <>
+                  <Viewport
+                    url={initialModel}
+                    active={
+                      active && tab === "design" && !(mobile && inspectorOpen)
+                    }
+                    state={state}
+                    settings={settings}
+                    onLoading={setLoading}
+                    onError={setModelError}
+                  />
+                  {loading && (
+                    <div className="canvas-loading" role="status">
+                      正在载入真实建筑初稿…
+                    </div>
+                  )}
+                  {modelError && (
+                    <div className="canvas-error" role="alert">
+                      <p>{modelError}</p>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="empty-state">
                   <LoaderCircle
@@ -1067,6 +980,8 @@ export default function TaskWorkspace({
             {tab === "assets" && (
               <Deliverables
                 job={job}
+                projects={projects}
+                onEdit={() => setTab("edit")}
                 onCapture={() => {
                   setCaptureRequested(true);
                   setTab("design");
@@ -1608,7 +1523,7 @@ export default function TaskWorkspace({
                     识别结果已保留，可以直接核对，无需重新识别。
                   </p>
                   <button
-                    className="primary-button full-width"
+                    className="secondary-button full-width"
                     disabled={busy}
                     onClick={() => action("retry", { reuse_structure: true })}
                   >
@@ -1632,18 +1547,38 @@ export default function TaskWorkspace({
                   取消本次生成
                 </button>
               ) : (
-                <button
-                  className={`${job.can_recover_structure ? "secondary-button" : "primary-button"} full-width`}
-                  disabled={busy}
-                  onClick={() => {
-                    if (job.rebuild_of && !job.refine_of && !job.restructure_of)
-                      action("retry");
-                    else setRetrying(true);
-                  }}
-                >
-                  <RotateCcw size={14} />
-                  新建重试任务
-                </button>
+                <>
+                  {["authentication", "quota_exceeded"].includes(
+                    job.result?.failure?.code,
+                  ) && (
+                    <button
+                      className="secondary-button full-width"
+                      onClick={onConnections}
+                    >
+                      检查 AI 接入
+                    </button>
+                  )}
+                  <button
+                    className="primary-button full-width"
+                    disabled={busy}
+                    onClick={() =>
+                      action("continue", { revision: job.updated_at })
+                    }
+                  >
+                    <RotateCcw size={14} />
+                    {busy ? "正在继续…" : "继续生成"}
+                  </button>
+                  <p className="field-note">
+                    沿用原设置，复用有效步骤；已有设计版本保留。
+                  </p>
+                  <button
+                    className="text-button full-width"
+                    disabled={busy}
+                    onClick={() => setRetrying(true)}
+                  >
+                    更换模型重新生成
+                  </button>
+                </>
               )}
               <small>当前任务与其他生成相互独立</small>
             </div>

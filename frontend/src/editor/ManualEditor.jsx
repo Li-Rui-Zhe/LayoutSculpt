@@ -1,3 +1,4 @@
+import EditorSaveBar from "./EditorSaveBar.jsx";
 import "./editorWorkspace.css";
 import PlanReferenceTools from "./PlanReferenceTools.jsx";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -19,7 +20,6 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowDown,
-  Save,
   MousePointer2,
   Check,
   AlertTriangle,
@@ -3975,85 +3975,26 @@ export default function ManualEditor({
             </div>
           )}
         </div>
-        <div className="edit-save-bar">
-          <div>
-            <span>
-              <Check size={13} />
-              {draft.storageError ? "草稿仅保存在浏览器" : draft.syncStatus}
-              {draft.dirty ? " · 尚未生成此版本" : " · 与原方案一致"}
-            </span>
-            <small>
-              {reviewing
-                ? "修改后请再次对照原图确认结构"
-                : isScene
-                  ? "三维拖动或输入尺寸 → 热更新 → 保存为独立版本"
-                  : "平面绘制或输入尺寸 → 检查布局 → 保存为独立版本"}
-            </small>
-            {reviewing && (
-              <a
-                className="text-button"
-                href={job.source_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                打开原图对照 ↗
-              </a>
-            )}
-          </div>
-          {reviewing ? (
-            <label className="review-ack">
-              <input
-                type="checkbox"
-                checked={acknowledged}
-                onChange={(e) => setAcknowledged(e.target.checked)}
-                disabled={busy}
-              />
-              我已核对修改后的墙体和门窗
-            </label>
-          ) : (
-            <details className="editor-version">
-              <summary>版本设置</summary>
-              <label>
-                版本名称
-                <input
-                  aria-label="设计版本名称"
-                  value={name}
-                  maxLength={120}
-                  disabled={busy}
-                  onChange={(e) => {
-                    nameEdited.current = true;
-                    setName(e.target.value);
-                  }}
-                />
-              </label>
-            </details>
-          )}
-          <button
-            className="primary-button"
-            disabled={
-              busy ||
-              (reviewing && !acknowledged) ||
-              !!issues.length ||
-              !name.trim() ||
-              !!drawing ||
-              !!pendingDelete ||
-              !!openingKind ||
-              !!placement
-            }
-            onClick={save}
-          >
-            {busy ? (
-              <LoaderCircle size={15} className="spin" />
-            ) : (
-              <Save size={15} />
-            )}
-            {placement
-              ? "请先放置或取消家具"
-              : reviewing
-                ? "确认修改并继续生成"
-                : "保存并生成三维"}
-          </button>
-        </div>
+        <EditorSaveBar
+          draft={draft}
+          reviewing={reviewing}
+          isScene={isScene}
+          job={job}
+          acknowledged={acknowledged}
+          setAcknowledged={setAcknowledged}
+          busy={busy}
+          name={name}
+          onNameChange={(value) => {
+            nameEdited.current = true;
+            setName(value);
+          }}
+          issues={issues}
+          drawing={drawing}
+          pendingDelete={pendingDelete}
+          openingKind={openingKind}
+          placement={placement}
+          save={save}
+        />
       </div>
     </UnitContext.Provider>
   );

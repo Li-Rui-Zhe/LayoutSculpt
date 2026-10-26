@@ -15,6 +15,7 @@ import { materials, materialCategories } from "../catalog.js";
 import { useCustomTextures } from "../materials/customTextures.js";
 import MaterialSample from "./MaterialSample.jsx";
 import ModelFields from "./ModelFields.jsx";
+import OperationStatus from "./OperationStatus.jsx";
 import {
   readGenerationDraft,
   saveGenerationDraft,
@@ -25,6 +26,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
   const textureStatus = useCustomTextures();
   const [finishes, setFinishes] = useState({ walls: "", floor: "" });
   const models = useModels();
+  const modelOptions = useRef(null);
   const picker = useRef(null);
   const backupPicker = useRef(null);
   const submitLock = useRef(false);
@@ -56,6 +58,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
   const [styleDescription, setStyleDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [collaboration, setCollaboration] = useState(true);
+  const [manualReview, setManualReview] = useState(false);
   const [furnitureMode, setFurnitureMode] = useState("library");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -97,6 +100,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
         notes,
         finishes,
         collaboration,
+        manualReview,
         furnitureMode,
       })
         .then(() => setDraftError(""))
@@ -121,6 +125,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
     notes,
     finishes,
     collaboration,
+    manualReview,
     furnitureMode,
   ]);
   const styleUnsupported =
@@ -172,6 +177,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
         style_description: style === "custom" ? styleDescription.trim() : "",
         notes,
         collaboration: String(collaboration),
+        review_mode: manualReview ? "manual" : "preview",
         model: models.model,
         reasoning_effort: models.effort,
         furniture_mode: furnitureMode,
@@ -205,6 +211,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               setStyleDescription(recovery.styleDescription || "");
               setNotes(recovery.notes || "");
               setFinishes(recovery.finishes || { walls: "", floor: "" });
+              setManualReview(Boolean(recovery.manualReview));
               setCollaboration(recovery.collaboration ?? true);
               setFurnitureMode(recovery.furnitureMode || "library");
               setRecovery(null);
@@ -229,7 +236,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
         <div>
           <span className="eyebrow">开启一个新的空间</span>
           <h1>把户型图，变成你的设计。</h1>
-          <p>上传户型图，核对识别结构，再生成可编辑的三维空间。</p>
+          <p>上传户型图，查看三维空间，再按你的想法调整设计。</p>
           <input
             type="file"
             accept=".zip"
@@ -390,10 +397,34 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               </h2>
               <span>生成设置</span>
             </div>
-            <details className="model-advanced">
-              <summary>高级设置 · 模型与推理强度</summary>
-              <ModelFields models={models} />
-            </details>
+            <div
+              className="model-capability"
+              data-ready={models.ready}
+              role="status"
+            >
+              <span>
+                {models.loading
+                  ? "正在检测识图模型…"
+                  : models.ready
+                    ? `${models.selected?.name} · ${models.selected?.supports_image === true ? "支持识图" : "识图能力待确认"}`
+                    : "当前接入无法识别户型图，请选择可用的识图模型"}
+              </span>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  modelOptions.current.open = true;
+                  modelOptions.current.querySelector("select")?.focus();
+                }}
+              >
+                选择模型
+              </button>
+            </div>
+            <OperationStatus
+              active={busy}
+              label="正在上传户型并创建任务"
+              detail="提交成功后会进入任务页，请勿重复提交。"
+            />
             <div className="field">
               <label>空间风格</label>
               <div className="style-options">
@@ -464,17 +495,6 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               )}
             </div>
             <div className="field">
-              <label htmlFor="furniture-mode">家具方案</label>
-              <select
-                id="furniture-mode"
-                value={furnitureMode}
-                onChange={(e) => setFurnitureMode(e.target.value)}
-              >
-                <option value="library">精细家具 · 实木、织物与软包细节</option>
-                <option value="basic">基础几何 · 快速查看空间布局</option>
-              </select>
-            </div>
-            <div className="field">
               <h3>墙面与地板选材</h3>
               {textureStatus.error && (
                 <p role="alert">
@@ -532,18 +552,47 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 placeholder="例如：保留原图墙体与门窗，客厅使用三人沙发和原木家具。"
               />
             </div>
-            <label className="review-option">
-              <input
-                type="checkbox"
-                checked={collaboration}
-                onChange={(e) => setCollaboration(e.target.checked)}
-              />
-              <span>
-                <b>增加一次 AI 结构复核</b>
-                <small>识别后仍需你核对原图；确认前不会生成三维</small>
-              </span>
-              <ShieldCheck size={18} />
-            </label>
+
+            <details className="model-advanced" ref={modelOptions}>
+              <summary>高级设置 · 默认已配置</summary>
+              <ModelFields models={models} />
+              <div className="field">
+                <label htmlFor="furniture-mode">家具方案</label>
+                <select
+                  id="furniture-mode"
+                  value={furnitureMode}
+                  onChange={(e) => setFurnitureMode(e.target.value)}
+                >
+                  <option value="library">
+                    精细家具 · 实木、织物与软包细节
+                  </option>
+                  <option value="basic">基础几何 · 快速查看空间布局</option>
+                </select>
+              </div>
+              <label className="review-option">
+                <input
+                  type="checkbox"
+                  checked={collaboration}
+                  onChange={(e) => setCollaboration(e.target.checked)}
+                />
+                <span>
+                  <b>增加一次 AI 结构复核</b>
+                  <small>默认开启，帮助检查识别遗漏；不会代替人工核对</small>
+                </span>
+                <ShieldCheck size={18} />
+              </label>
+              <label className="review-option">
+                <input
+                  type="checkbox"
+                  checked={manualReview}
+                  onChange={(e) => setManualReview(e.target.checked)}
+                />
+                <span>
+                  <b>先人工核对，再生成三维</b>
+                  <small>默认先展示三维初稿；初稿不代表已人工核对。</small>
+                </span>
+              </label>
+            </details>
           </section>
         </fieldset>
         {error && (
@@ -566,7 +615,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               [Armchair, "家具规划"],
               [Box, "三维建模"],
             ]
-              .filter(([, label]) => collaboration || label !== "空间复核")
+              .filter(([, label]) => collaboration || label !== "核对结构")
               .map(([Icon, label]) => (
                 <span key={label}>
                   <Icon size={15} />

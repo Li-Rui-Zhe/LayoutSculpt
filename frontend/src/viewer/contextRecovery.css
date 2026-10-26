@@ -1,0 +1,20 @@
+.context-recovery {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 20px;
+  background: #eef2edef;
+  color: #304639;
+  text-align: center;
+  pointer-events: auto;
+}
+.context-recovery p {
+  max-width: 28em;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}

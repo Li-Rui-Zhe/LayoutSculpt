@@ -1,5 +1,7 @@
 # Local tasks, originals, generated models, checkpoints and audit reports
 /data/
+/artifacts/
+/logs/
 
 # Dependencies and build output
 node_modules/
@@ -16,6 +18,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.hypothesis/
+.cache/
+*.tsbuildinfo
 .coverage
 .coverage.*
 htmlcov/
@@ -33,6 +38,8 @@ test-results/
 secrets/
 credentials.json
 auth.json
+auth.json.*
+credentials.json.*
 *.key
 *.pem
 *.p12

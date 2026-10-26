@@ -20,7 +20,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import ConfigDict, Field
 
 from .config import ROOT, Settings
-from .network import codex_environment
+from .codex_environment import child_environment, environment_mode, isolated_args, isolated_home
 from .toolchain_paths import selected_tool
 
 
@@ -119,8 +119,25 @@ class CodexClient:
         self.launch_signature = None
         self.auth_status = "unknown"
         self.command_override = None
+        self.environment_override = None
+        self.home_override = None
+        self.login_completed = None
         self.maintenance = False
         self.maintenance_owner = None
+
+    @property
+    def environment_mode(self):
+        return self.environment_override or environment_mode(self.settings)
+
+    def environment(self):
+        return child_environment(self.settings, self.environment_mode, home=self.home_override)
+
+    def config_cwd(self, workspace):
+        if self.environment_mode != "isolated":
+            return workspace
+        directory = Path(self.home_override or isolated_home(self.settings)) / "workspace"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
     @property
     def command(self):
@@ -172,9 +189,8 @@ class CodexClient:
                 "stdio://",
                 "--disable",
                 "remote_plugin",
-                "-c",
-                "mcp_servers.node_repl.enabled=false",
             ]
+            args += isolated_args(self.environment_mode)
             # 这是结构化设计服务；协作由项目内 LangGraph 编排。
             for feature in [
                 "shell_tool",
@@ -196,7 +212,8 @@ class CodexClient:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     limit=128 * 1024 * 1024,
-                    env=codex_environment(),
+                    env=self.environment(),
+                    cwd=self.config_cwd(ROOT),
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
                 self.tasks = [
@@ -208,7 +225,7 @@ class CodexClient:
                     {
                         "clientInfo": {
                             "name": "habitat-studio",
-                            "title": "造个家户型工作台",
+                            "title": "LayoutSculpt户型工作台",
                             "version": "2.0.0",
                         },
                         "capabilities": {"experimentalApi": True},
@@ -343,6 +360,9 @@ class CodexClient:
                         continue
                     await self._send({"id": msg["id"], "result": reply})
                 elif "method" in msg:
+                    if msg["method"] == "account/login/completed":
+                        params = msg.get("params", {})
+                        self.login_completed = {"loginId": params.get("loginId"), "success": params.get("success") is True}
                     if msg["method"] == "account/updated":
                         self.model_catalog = None
                         self.cache_identity = None
@@ -385,7 +405,7 @@ class CodexClient:
             await self.ensure_started()
             config = (
                 await self.request(
-                    "config/read", {"includeLayers": False, "cwd": str(ROOT)}
+                    "config/read", {"includeLayers": False, "cwd": str(self.config_cwd(ROOT))}
                 )
             ).get("config", {})
             try:
@@ -404,7 +424,7 @@ class CodexClient:
             )
             if self.auth_status == "required":
                 raise CodexError(
-                    "本机 Codex 尚未登录，请先在终端执行 codex login，再重新检测。"
+                    "Codex 尚未登录，请在 AI 接入页面点击登录按钮后重试。"
                 )
             chatgpt = (account.get("account") or {}).get("type") in {
                 "chatgpt",
@@ -528,7 +548,7 @@ class CodexClient:
         if self.service_config is None:
             configuration = (
                 await self.request(
-                    "config/read", {"includeLayers": False, "cwd": str(workspace)}
+                    "config/read", {"includeLayers": False, "cwd": str(self.config_cwd(workspace))}
                 )
             ).get("config", {})
             self.service_config = {"web_search": "disabled"}
@@ -537,7 +557,7 @@ class CodexClient:
         response = await self.request(
             "thread/start",
             {
-                "cwd": str(workspace),
+                "cwd": str(self.config_cwd(workspace)),
                 "sandbox": "read-only",
                 "approvalPolicy": "never",
                 "ephemeral": True,

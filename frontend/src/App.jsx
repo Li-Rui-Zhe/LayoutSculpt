@@ -10,6 +10,7 @@ import {
   Layers,
   Grid2X2,
   PlugZap,
+  CircleHelp,
 } from "lucide-react";
 import { useProjects } from "./hooks/useProjects.js";
 import TaskRail from "./components/TaskRail.jsx";
@@ -19,6 +20,8 @@ const AiConnections = lazy(() => import("./settings/AiConnections.jsx"));
 const SurfaceStudio = lazy(() => import("./diy/SurfaceStudio.jsx"));
 const DiyStudio = lazy(() => import("./diy/DiyStudio.jsx"));
 import WorkspaceHelp from "./components/WorkspaceHelp.jsx";
+import ConnectionNotice from "./components/ConnectionNotice.jsx";
+import BuildNotice from "./components/BuildNotice.jsx";
 import { useCustomTextures } from "./materials/customTextures.js";
 import { placedDesign } from "./diy/design.js";
 import AssetLibrary from "./library/AssetLibrary.jsx";
@@ -32,7 +35,6 @@ export default function App() {
   useCustomTextures();
   const projects = useProjects();
   const [helpOpen, setHelpOpen] = useState(false);
-  const [linkNotice, setLinkNotice] = useState("");
   const [surface, setSurface] = useState(() =>
     ["diy", "library", "ai"].includes(location.hash.slice(1))
       ? location.hash.slice(1)
@@ -115,6 +117,11 @@ export default function App() {
   };
   return (
     <main className="factory result-first">
+      <BuildNotice />
+      <ConnectionNotice
+        serviceError={projects.error}
+        onRetry={projects.refresh}
+      />
       <header className="factory-header">
         <a
           className="factory-brand"
@@ -128,7 +135,7 @@ export default function App() {
             <Boxes size={24} />
           </span>
           <strong>
-            造个家<span>户型设计工厂</span>
+            LayoutSculpt<span>户型设计工厂</span>
           </strong>
         </a>
         <div className="project-heading-host" ref={setHeadingHost}>
@@ -143,21 +150,6 @@ export default function App() {
           )}
         </div>
         <div className="header-meta">
-          <button
-            className="text-button"
-            title="复制当前页面、项目和所选对象的本机链接"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(location.href);
-                setLinkNotice("已复制本机定位链接");
-              } catch {
-                setLinkNotice("请复制浏览器地址栏中的链接");
-              }
-              setTimeout(() => setLinkNotice(""), 3500);
-            }}
-          >
-            {linkNotice || "复制定位链接"}
-          </button>
           <button className="text-button" onClick={() => setHelpOpen(true)}>
             使用帮助
           </button>
@@ -261,6 +253,14 @@ export default function App() {
           >
             <PlugZap size={20} />
             <span style={{ whiteSpace: "nowrap" }}>AI 接入</span>
+          </button>
+          <button
+            className="mobile-help"
+            aria-label="使用帮助"
+            onClick={() => setHelpOpen(true)}
+          >
+            <CircleHelp size={20} />
+            <span>帮助</span>
           </button>
         </nav>
         {railOpen && (
@@ -450,12 +450,6 @@ export default function App() {
               }}
             />
           )}
-          {projects.error && (
-            <div className="connection-alert" role="alert">
-              {projects.error}
-              <button onClick={projects.refresh}>重新连接</button>
-            </div>
-          )}
           <div className="workspace-breadcrumb" hidden={!creating}>
             <span>设计工厂</span>
             <span>/</span>
@@ -496,6 +490,7 @@ export default function App() {
               job={projects.job}
               headingHost={headingHost}
               projects={projects}
+              onConnections={() => navigate("ai")}
               placementRequest={
                 placementRequest?.jobId === projects.job?.id
                   ? placementRequest

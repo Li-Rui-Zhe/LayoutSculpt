@@ -1,4 +1,5 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { contains } from "../../frontend/src/editor/geometry.js";
 
@@ -40,7 +41,7 @@ const fixture = {
   furniture: [],
   furniture_notes: [],
 };
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 const errors = [],
   checks = [];
 try {

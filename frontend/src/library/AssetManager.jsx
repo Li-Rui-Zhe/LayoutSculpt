@@ -98,14 +98,20 @@ export default function AssetManager({ onChange }) {
               </div>
               <button
                 disabled={
-                  busy || !data.usage.some((g) => g.cleanable_bytes > 0)
+                  busy ||
+                  !data.usage.some(
+                    (g) => g.name === "AI 结果缓存" && g.bytes > 0,
+                  )
                 }
                 onClick={() =>
-                  run(() => api("/library/cache/clean", { method: "POST" }))
+                  run(() => api("/maintenance/cache", { method: "POST" }))
                 }
               >
-                清理超过 30 天的 AI 缓存（
-                {size(data.usage.reduce((n, g) => n + g.cleanable_bytes, 0))}）
+                清理可重建的 AI 缓存（
+                {size(
+                  data.usage.find((g) => g.name === "AI 结果缓存")?.bytes || 0,
+                )}
+                ）
               </button>
               <p>
                 清理范围仅限可重新生成的 AI 结果缓存。方案、素材和草稿会保留。

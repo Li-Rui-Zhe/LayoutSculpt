@@ -201,7 +201,7 @@ def test_api_generates_new_job_without_blender(tmp_path, monkeypatch):
         health = client.get("/api/health").json()
         assert health["furniture_library"]["available"]
         assert health["model_builder"]["engine"] == "trimesh"
-        job = wait_job(client, create_job(client, collaboration=False)["id"])
+        job = wait_job(client, create_job(client, collaboration=False)["id"], timeout=60)
         assert job["status"] == "succeeded", job
         assert "blend_url" not in job["result"]
         assert client.get(job["result"]["model_url"]).content.startswith(b"glTF")

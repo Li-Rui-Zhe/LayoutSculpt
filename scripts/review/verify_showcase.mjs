@@ -1,4 +1,5 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 
 const showcase = JSON.parse(await readFile(new URL("../../frontend/src/showcase.json", import.meta.url), "utf8"));
@@ -6,7 +7,7 @@ const showcase = JSON.parse(await readFile(new URL("../../frontend/src/showcase.
 const base = process.env.STUDIO_BASE_URL || "http://127.0.0.1:5173";
 const output = "data/visual-review/showcase";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 const errors = [],
   checks = [];
 try {

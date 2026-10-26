@@ -1,10 +1,11 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const base = process.env.REVIEW_URL || "http://127.0.0.1:8011";
 const output = "data/visual-review/prelaunch";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 const errors = [];
 const checks = [];
 try {
@@ -23,6 +24,8 @@ try {
   await page.getByRole("button", { name: /使用示例户型/ }).click();
   await expect(page.locator(".upload-drop img")).toBeVisible();
   await page.getByLabel("任务名称").fill("浏览器验收 · 独立测试数据");
+  await page.getByText("高级设置 · 默认已配置", { exact: true }).click();
+  await page.getByRole("checkbox", { name: /先人工核对，再生成三维/ }).check();
   await expect(
     page.getByRole("button", { name: "创建并开始生成" }),
   ).toBeEnabled({ timeout: 30000 });
@@ -31,10 +34,10 @@ try {
     page.getByRole("heading", { name: "先确认结构，再生成三维" }),
   ).toBeVisible({ timeout: 30000 });
   const confirm = page.getByRole("button", {
-    name: "确认结构并继续",
+    name: "已核对，继续生成",
     exact: true,
   });
-  await expect(confirm).toBeDisabled();
+  await expect(confirm).toBeEnabled();
   await expect(page.getByAltText("用于核对的原始户型图")).toBeVisible();
   await page.screenshot({
     path: `${output}/structure-review.png`,
@@ -53,7 +56,7 @@ try {
     fullPage: true,
   });
   await page.setViewportSize({ width: 1600, height: 1050 });
-  checks.push("上传后进入人工结构核对，未勾选确认不能生成");
+  checks.push("选择人工核对后停在核对页，通过明确确认按钮继续，无重复勾选");
 
   await page.reload();
   await expect(
@@ -64,7 +67,6 @@ try {
     page.getByRole("button", { name: "确认修改并继续生成" }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "返回结构核对", exact: true }).click();
-  await page.getByRole("checkbox", { name: /我已核对墙体/ }).check();
   await confirm.click();
   await expect(page.locator("#viewport canvas")).toHaveAttribute(
     "data-model-url",
@@ -113,6 +115,44 @@ try {
   expect(
     proof.source_reviewed && proof.geometry_verified && proof.outline_verified,
   ).toBe(true);
+  await page.getByRole("button", { name: "进入人工设计", exact: true }).click();
+  await page
+    .locator(".edit-tool-tabs")
+    .getByRole("button", { name: "家具", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("设计对象列表").getByRole("button").first(),
+  ).toBeVisible({ timeout: 30000 });
+  await page.getByLabel("设计对象列表").getByRole("button").first().click();
+  await page.getByText("名称、类型与所属空间", { exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "家具名称", exact: true })
+    .fill("验收家具 · 新名称");
+  await page.getByRole("textbox", { name: "家具名称", exact: true }).blur();
+  await page.getByRole("button", { name: "返回方案预览", exact: true }).click();
+  await page.getByRole("button", { name: "交付成果", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "更新并导出成果包", exact: true }),
+  ).toBeEnabled({ timeout: 15000 });
+  const downloadReady = page.waitForEvent("download", { timeout: 90000 });
+  await page
+    .getByRole("button", { name: "更新并导出成果包", exact: true })
+    .click();
+  const updatedDownload = await downloadReady;
+  expect(await updatedDownload.failure()).toBeNull();
+  const latestLink = page.getByRole("link", {
+    name: "重新下载最新成果包",
+    exact: true,
+  });
+  await expect(latestLink).toBeVisible();
+  const latestId = (await latestLink.getAttribute("href")).split("/")[3];
+  const updatedLayout = await (
+    await page.request.get(`${base}/api/jobs/${latestId}/artifacts/layout.json`)
+  ).json();
+  expect(
+    updatedLayout.furniture.some((item) => item.name === "验收家具 · 新名称"),
+  ).toBe(true);
+  checks.push("人工修改家具后更新并导出，新模型包含最新草稿且自动下载成功");
   await page.getByRole("button", { name: /前往设计预览/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByAltText("当前任务的三维效果图")).toBeVisible();
@@ -147,6 +187,22 @@ try {
     fullPage: true,
   });
   checks.push("390 像素移动端不横向溢出，任务栏可打开并收起");
+
+  await page.getByRole("button", { name: "使用帮助", exact: true }).click();
+  await page.getByText("本机数据与备份", { exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "下次启动备份", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "下次启动备份", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "取消安排", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "取消安排", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "取消安排", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  checks.push("数据管理可安排及取消下次启动备份，不改动运行中的项目");
 
   const blocked = await browser.newPage({
     viewport: { width: 1440, height: 1000 },

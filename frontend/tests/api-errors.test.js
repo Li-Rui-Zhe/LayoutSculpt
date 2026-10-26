@@ -33,11 +33,15 @@ test("中文业务错误保留，结构化英文校验错误和缺失字段安�
 });
 
 test("接口请求保留错误状态码和中文提示，不把失败当成功", async (t) => {
-  t.mock.method(
-    globalThis,
-    "fetch",
-    async () =>
-      new Response(JSON.stringify({ detail: legacyError }), { status: 422 }),
+  t.mock.method(globalThis, "fetch", async (url) =>
+    url.startsWith("/api/client-access")
+      ? Response.json({
+          application: "layoutsculpt",
+          protocol: 1,
+          origin: "",
+          write_allowed: true,
+        })
+      : new Response(JSON.stringify({ detail: legacyError }), { status: 422 }),
   );
   await assert.rejects(api("/jobs", { method: "POST" }), (error) => {
     assert.equal(error.status, 422);

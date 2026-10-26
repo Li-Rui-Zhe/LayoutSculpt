@@ -1,4 +1,5 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 
 const showcase = JSON.parse(await readFile(new URL("../../frontend/src/showcase.json", import.meta.url), "utf8"));
@@ -7,7 +8,7 @@ const id = process.argv[2];
 if (!/^[a-f0-9]{32}$/.test(id || "")) throw Error("请提供已有成功任务 ID。");
 const output = "data/visual-review/lighting-refined";
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 const errors = [],
   checks = [];
 try {

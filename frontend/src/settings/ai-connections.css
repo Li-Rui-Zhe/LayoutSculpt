@@ -12,6 +12,175 @@
   color: var(--ai-ink);
   scrollbar-gutter: stable;
 }
+.ai-simple .ai-page-heading {
+  background: linear-gradient(115deg, #f4f8f2, #fff 68%);
+}
+.ai-simple .ai-choice-badge {
+  display: block;
+  color: #4d7256;
+  font-size: 11px;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+.ai-simple .ai-provider-card {
+  align-items: flex-start;
+  padding: 22px;
+  min-height: 145px;
+}
+.ai-simple .ai-provider-card .ai-radio {
+  margin-top: 8px;
+}
+.ai-simple .ai-provider-card[aria-pressed="true"] {
+  box-shadow: 0 0 0 1px #89a482;
+  background: #f5f9f2;
+}
+.ai-simple .ai-connection-panel {
+  padding: 26px;
+  background: #fff;
+}
+.ai-simple .ai-panel-heading h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+.ai-simple .ai-provider-card strong {
+  font-size: 16px;
+}
+.ai-simple .ai-provider-card p,
+.ai-simple .ai-guide-block p {
+  font-size: 12px;
+}
+.ai-simple .ai-field-help,
+.ai-simple .ai-save-row > span {
+  font-size: 12px;
+}
+.ai-simple .ai-key-input {
+  min-height: 48px;
+}
+.ai-simple .ai-field-help {
+  line-height: 1.8;
+}
+.ai-simple .ai-field-help > svg {
+  vertical-align: -2px;
+}
+.ai-simple .ai-feedback > span {
+  flex: 1;
+}
+.ai-simple .ai-feedback button {
+  flex-shrink: 0;
+}
+.ai-fit-note {
+  background: #f6f8f4;
+  border-left: 3px solid #a7b99a;
+  padding: 14px 16px;
+  border-radius: 0 8px 8px 0;
+  margin-top: 22px;
+}
+.ai-fit-note strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.ai-fit-note p {
+  margin: 7px 0 0;
+  font-size: 12px;
+  line-height: 1.9;
+  color: #647460;
+}
+.ai-advanced {
+  margin-top: 20px;
+  border-top: 1px solid var(--ai-line);
+  padding-top: 16px;
+  font-size: 12px;
+}
+.ai-advanced > summary {
+  cursor: pointer;
+  color: #64765d;
+  padding: 3px 0;
+}
+.ai-advanced[open] > summary {
+  margin-bottom: 15px;
+}
+.ai-advanced select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  border: 1px solid var(--ai-line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ai-ink);
+}
+.ai-codex-detected {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 17px;
+  border-radius: 9px;
+  background: #f5f8f3;
+}
+.ai-codex-detected > svg {
+  flex-shrink: 0;
+  color: #6a8b61;
+}
+.ai-codex-detected strong {
+  font-size: 13px;
+}
+.ai-codex-detected p {
+  color: #70806c;
+  font-size: 12px;
+  line-height: 1.85;
+  margin: 7px 0 0;
+}
+.ai-login-action {
+  margin: 16px 0;
+}
+.ai-login-action small {
+  display: block;
+  color: #7a846f;
+  margin-top: 8px;
+  line-height: 1.8;
+}
+.ai-login-wait {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  background: #f5f7ee;
+  border: 1px solid #dce5cf;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-top: 16px;
+}
+.ai-login-wait > div {
+  flex: 1;
+}
+.ai-login-wait p {
+  line-height: 1.8;
+  color: #6f7d66;
+}
+.ai-login-wait a {
+  color: #376342;
+}
+.ai-install-location summary {
+  font-size: 11px;
+  cursor: pointer;
+  color: #7d8c73;
+  margin-top: 12px;
+}
+.ai-install-location p {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .ai-simple .ai-provider-card {
+    min-height: 0;
+    padding: 18px;
+  }
+  .ai-simple .ai-connection-panel {
+    padding: 18px;
+  }
+  .ai-login-wait {
+    flex-wrap: wrap;
+  }
+}
 .ai-runtime-title,
 .ai-runtime-title > div,
 .ai-runtime-update-heading,
@@ -959,5 +1128,58 @@
   }
   .ai-key-label > span {
     font-size: 9px;
+  }
+}
+
+/* Keep the first connection action within the initial desktop viewport. */
+.ai-simple .ai-page-heading {
+  padding: 17px 26px;
+}
+.ai-simple .ai-page-heading h1 {
+  font-size: 22px;
+}
+.ai-simple .ai-settings-body {
+  padding-top: 16px;
+}
+.ai-simple .ai-current-source {
+  padding: 8px 13px;
+  margin-bottom: 12px;
+}
+.ai-simple .ai-provider-card {
+  min-height: 116px;
+  padding: 16px 20px;
+}
+.ai-simple .ai-choice-badge {
+  margin-bottom: 5px;
+}
+.ai-simple .ai-settings-layout {
+  margin-top: 18px;
+}
+.ai-simple .ai-connection-panel {
+  padding: 20px 24px;
+}
+.ai-simple .ai-panel-heading {
+  margin-bottom: 14px;
+}
+.ai-simple .ai-fit-note {
+  margin-top: 14px;
+  padding: 10px 13px;
+}
+.ai-simple .ai-fit-note p {
+  margin: 0;
+}
+.ai-simple .ai-save-row {
+  margin-top: 16px;
+  padding-top: 16px;
+}
+@media (max-width: 760px) {
+  .ai-simple .ai-page-heading {
+    padding: 16px;
+  }
+  .ai-simple .ai-connection-panel {
+    padding: 16px;
+  }
+  .ai-simple .ai-provider-card {
+    min-height: 0;
   }
 }

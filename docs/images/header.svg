@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
-  <title id="title">造个家 · LayoutSculpt</title>
+  <title id="title">LayoutSculpt · 户型设计工厂</title>
   <desc id="desc">从一张平面图，到一个理想的家。AI 户型识别、交互式三维空间与 GLB 导出。</desc>
   <defs>
     <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#18392f"/><stop offset="1" stop-color="#10251f"/></linearGradient>
@@ -14,7 +14,7 @@
       <path d="m21.5 7 13.4 8v14.7l-13.4 8-13.4-8V15Zm-13.4 8 13.4 8 13.4-8M21.5 23v14.7m-6.7-26.4 13.4 8v9.4l-6.7 4" fill="none" stroke="#233d35" stroke-width="2.4" stroke-linejoin="round"/>
     </g>
     <text x="112" y="73" fill="#b5ceb7" font-size="17" letter-spacing="3">LAYOUTSCULPT</text>
-    <text x="50" y="165" fill="#f5f2e7" font-size="67" font-weight="700" letter-spacing="6">造个家</text>
+    <text x="50" y="165" fill="#f5f2e7" font-size="67" font-weight="700" letter-spacing="6">LayoutSculpt</text>
     <text x="54" y="209" fill="#c9d5c5" font-size="23">从一张平面图，到一个理想的家。</text>
     <g font-size="13" text-anchor="middle" fill="#d9e4d4">
       <rect x="54" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="97" y="271">React 19</text>

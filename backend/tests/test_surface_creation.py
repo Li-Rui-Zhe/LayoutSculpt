@@ -172,6 +172,15 @@ def test_ai_cancel_conflict_failure_and_shutdown(tmp_path, monkeypatch):
         assert task["status"] == "failed" and "secret" not in task["error"]
         monkeypatch.setattr(surface_ai, "generate_material", delayed)
         third = client.post("/api/materials/generations", json=request).json()
+        # 运行中请求不自动重发；尚未执行的排队任务由新恢复用例单独覆盖。
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            rows = client.get("/api/materials/generations?category=walls").json()["items"]
+            if next(row for row in rows if row["id"] == third["id"])["status"] == "running":
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("材质任务未进入运行状态")
     with TestClient(app_for(tmp_path, FakeCodex())) as client:
         assert wait_surface(client, third["id"])["status"] == "cancelled"
 

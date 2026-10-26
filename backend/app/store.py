@@ -210,6 +210,41 @@ class Store:
         finally:
             await db.close()
 
+    async def continue_job(self, job_id, revision):
+        """只重开用户看到的失败版本；旧请求不能意外重开下一次失败。"""
+        db = await self.connect()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute("SELECT * FROM jobs WHERE id=?", (job_id,))
+            job = self.decode(await cursor.fetchone())
+            if not job or job["status"] not in {"failed", "cancelled"} or job["updated_at"] != revision:
+                await db.rollback()
+                return False
+            cursor = await db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')")
+            if (await cursor.fetchone())[0] >= 64:
+                raise HTTPException(429, "生成队列已满，请等待部分任务完成后继续")
+            result = dict(job.get("result") or {})
+            result.pop("failure", None)
+            stage = "等待继续生成"
+            stamp = now()
+            await db.execute(
+                "UPDATE jobs SET status='queued',stage=?,error=NULL,result=?,updated_at=? WHERE id=?",
+                (stage, json.dumps(result, ensure_ascii=False) if result else None, stamp, job_id),
+            )
+            await db.execute(
+                "INSERT INTO events(job_id,payload,created_at) VALUES(?,?,?)",
+                (job_id, json.dumps({
+                    "job_id": job_id, "status": "queued", "stage": stage,
+                    "progress": job["progress"], "result": result or None,
+                    "error": None, "agent": None,
+                    "message": "沿用原设置，检查已完成步骤后继续生成；已有设计版本保持保留",
+                }, ensure_ascii=False), stamp),
+            )
+            await db.commit()
+            return True
+        finally:
+            await db.close()
+
     async def recover(self):
         """Requeue interrupted work; the runner verifies and resumes checkpoints."""
         db = await self.connect()

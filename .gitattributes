@@ -1,0 +1,18 @@
+# 文本在仓库内统一为 LF；Windows 启动脚本检出为 CRLF。
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 模型、图片和字体按二进制保存，不做换行转换。
+*.glb binary
+*.blend binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.zip binary

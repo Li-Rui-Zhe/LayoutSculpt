@@ -6,12 +6,14 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from .ai_providers import DEEPSEEK_BASE, DEEPSEEK_PREFIX
 from .codex import CodexClient, CodexError
 from .codex_installer import CodexInstaller
 from .codex_runtime import CodexRuntime
+from .codex_login import CodexLogin
 from .runtime_downloads import InstallError
 
 
@@ -45,7 +47,7 @@ class SaveConnection(ConnectionRequest):
 
 class InstallAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    action: Literal["install", "rollback", "system"] = "install"
+    action: Literal["install", "isolated", "rollback", "system"] = "install"
 
 
 def install_ai_routes(app, settings, client):
@@ -55,6 +57,8 @@ def install_ai_routes(app, settings, client):
     app.state.codex_runtime = runtime
     installer = CodexInstaller(settings, runtime)
     app.state.codex_installer = installer
+    login = CodexLogin(client.local)
+    app.state.codex_login = login
 
     def public():
         try:
@@ -67,6 +71,9 @@ def install_ai_routes(app, settings, client):
             "default_provider": store.data["default_provider"],
             "warning": warning,
             "codex": {
+                "system_available": bool(shutil.which(settings.codex_command) or Path(settings.codex_command).is_file()),
+                "environment": getattr(client.local, "environment_mode", "shared"),
+                "managed": installer.snapshot()["managed"],
                 "available": bool(
                     shutil.which(runtime.command) or Path(runtime.command).is_file()
                 ),
@@ -114,6 +121,21 @@ def install_ai_routes(app, settings, client):
     async def check_codex():
         return await runtime.inspect()
 
+    @app.get("/api/ai/codex/login")
+    async def login_status():
+        return JSONResponse(login.snapshot(), headers={"Cache-Control":"no-store"})
+
+    @app.post("/api/ai/codex/login")
+    async def login_start():
+        try:
+            return JSONResponse(await login.start(), headers={"Cache-Control":"no-store"})
+        except CodexError as exc:
+            raise HTTPException(409, str(exc)) from None
+
+    @app.post("/api/ai/codex/login/cancel")
+    async def login_cancel():
+        return await login.cancel()
+
     @app.post("/api/ai/codex/reconnect")
     async def reconnect_codex():
         return await runtime.inspect(reconnect=True)
@@ -152,6 +174,7 @@ def install_ai_routes(app, settings, client):
     @app.post("/api/ai/settings")
     async def save_settings(body: SaveConnection):
         async with lock:
+            catalog = None
             if body.revision != store.data["revision"]:
                 raise HTTPException(
                     409, "AI 设置已在其他窗口更新，请刷新设置后重新保存。"
@@ -162,7 +185,7 @@ def install_ai_routes(app, settings, client):
                 store.save(provider="codex", remove=True)
             else:
                 catalog = await checked(body)
-                model = body.model or catalog["default_model"]
+                model = body.model or catalog["default_model"] or next((item["id"] for item in catalog["items"] if item.get("available") is not False), None)
                 if not any(
                     item["id"] == model and item.get("available") is not False
                     for item in catalog["items"]
@@ -182,4 +205,4 @@ def install_ai_routes(app, settings, client):
                         503, "无法安全保存本机连接，请检查本地数据目录权限后重试。"
                     ) from None
             client.remote.catalog = None
-            return public()
+            return {**public(), "catalog": catalog}

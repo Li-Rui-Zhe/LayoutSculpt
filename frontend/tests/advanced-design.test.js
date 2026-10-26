@@ -167,7 +167,7 @@ test("分组缩放包含子组、保持底面高度并拒绝非法尺寸", () =>
   );
 });
 
-test("定位链接保留中文筛选与页面，拒绝未知页签及项目标识", () => {
+test("页面地址状态保留中文筛选与页面，拒绝未知页签及项目标识", () => {
   const oldLocation = globalThis.location,
     oldHistory = globalThis.history;
   try {

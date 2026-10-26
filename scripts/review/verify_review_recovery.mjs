@@ -1,4 +1,5 @@
-import { chromium, expect } from "@playwright/test";
+import { launchReviewBrowser } from "./browser.mjs";
+import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const originalId = process.argv[2];
@@ -9,7 +10,7 @@ if (!/^[a-f0-9]{32}$/.test(originalId || ""))
 const output = "data/visual-review/review-recovery";
 await mkdir(output, { recursive: true });
 const report = { originalId, recoveredId: null, checks: [], errors: [] };
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await launchReviewBrowser();
 try {
   const page = await browser.newPage({
     viewport: { width: 1440, height: 1000 },
@@ -60,9 +61,9 @@ try {
     "AI 复核未完成",
   );
   await expect(
-    review.getByRole("button", { name: "确认结构并继续", exact: true }),
-  ).toBeDisabled();
-  await expect(review.getByRole("checkbox")).not.toBeChecked();
+    review.getByRole("button", { name: "已核对，继续生成", exact: true }),
+  ).toBeEnabled();
+  await expect(review.locator(".review-ack input")).toHaveCount(0);
   await expect(
     review.getByRole("img", { name: "识别出的墙体、房间和门窗结构图" }),
   ).toBeVisible();
@@ -90,8 +91,8 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".structure-review")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "确认结构并继续", exact: true }),
-  ).toBeDisabled();
+    page.getByRole("button", { name: "已核对，继续生成", exact: true }),
+  ).toBeEnabled();
   report.checks.push(
     "桌面和手机可恢复已识别结构",
     "保留原失败任务，新任务直接进入人工核对",

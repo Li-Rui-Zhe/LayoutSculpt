@@ -1,64 +1,86 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Activity,
-  AlertCircle,
+  Monitor,
   CheckCircle2,
-  Copy,
-  ExternalLink,
   LoaderCircle,
+  ExternalLink,
   RefreshCw,
-  Download,
+  AlertCircle,
 } from "lucide-react";
 import { api } from "../api.js";
 import CodexInstall from "./CodexInstall.jsx";
 
-const authLabels = {
-  configured: "已有本机认证",
-  not_required: "使用自定义服务认证",
-  required: "需要登录",
-  unknown: "尚未确认",
-};
-const statusLabels = {
-  unchecked: "待检测",
-  ready: "检测通过",
-  error: "需要处理",
-  no_models: "暂无模型",
-  restart_required: "需要重连",
-  disconnected: "连接已断开",
-};
-
-function localTime(value) {
-  return value
-    ? new Date(value).toLocaleString("zh-CN", { hour12: false })
-    : "尚未检测";
-}
-
 export default function CodexRuntime({
   initial,
+  connection,
   busy,
   onPhase,
   onResult,
+  onEnvironment,
+  onConnect,
   onAlternative,
 }) {
   const [report, setReport] = useState(initial);
   const [operation, setOperation] = useState("");
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState("");
-  const request = useRef(null);
-  const sequence = useRef(0);
+  const [login, setLogin] = useState({ status: "idle" });
+  const request = useRef(null),
+    sequence = useRef(0),
+    alive = useRef(true);
+  const callbacks = useRef({ onPhase, onResult, onEnvironment, onConnect });
+  callbacks.current = { onPhase, onResult, onEnvironment, onConnect };
   useEffect(() => {
     setReport(initial);
   }, [initial]);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    alive.current = true;
+    api("/ai/codex/login")
+      .then((value) => {
+        if (alive.current && value.status === "waiting") {
+          setLogin(value);
+          callbacks.current.onPhase("login");
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive.current = false;
       ++sequence.current;
       request.current?.abort();
-    },
-    [],
-  );
-
+    };
+  }, []);
+  useEffect(() => {
+    if (login.status !== "waiting") return;
+    let active = true,
+      timer,
+      controller;
+    const poll = async () => {
+      controller = new AbortController();
+      try {
+        const value = await api("/ai/codex/login", {
+          signal: controller.signal,
+        });
+        if (!active) return;
+        setLogin(value);
+        setError("");
+        if (value.status !== "waiting") {
+          callbacks.current.onPhase("idle");
+          if (value.status === "succeeded") await callbacks.current.onConnect();
+          return;
+        }
+      } catch (e) {
+        if (active) setError("暂时未读到登录结果，正在重试；无需重复登录。");
+      }
+      if (active) timer = setTimeout(poll, 2000);
+    };
+    timer = setTimeout(poll, 1000);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [login.status]);
   const run = async (action) => {
-    const current = ++sequence.current;
+    const token = ++sequence.current;
     const controller = new AbortController();
     request.current = controller;
     setOperation(action);
@@ -70,278 +92,220 @@ export default function CodexRuntime({
         signal: controller.signal,
         timeoutMs: 65000,
       });
-      if (current !== sequence.current) return;
+      if (token !== sequence.current) return;
       const diagnostics = value.diagnostics || value;
       setReport(diagnostics);
-      // An update lookup alone must not clear a manually selected model.
       onResult(value.catalog, diagnostics, action !== "updates");
     } catch (e) {
-      if (current === sequence.current) {
-        setError(e.message);
-        if (action !== "updates") onResult(null, null, true);
-      }
+      if (token === sequence.current) setError(e.message);
     } finally {
-      if (current === sequence.current) {
+      if (token === sequence.current) {
         setOperation("");
         onPhase("idle");
       }
     }
   };
-  const cancel = () => {
-    ++sequence.current;
-    request.current?.abort();
-    setOperation("");
-    onPhase("idle");
-    setError(
-      "已停止等待检测结果。正在运行的设计任务和默认来源保持原设置，可重新检测状态。",
-    );
-  };
-  const copy = async (command) => {
+  const startLogin = async () => {
+    const popup = window.open("about:blank", "_blank");
+    if (popup) popup.opener = null;
+    setError("");
+    onPhase("login");
     try {
-      await navigator.clipboard.writeText(command);
-      setCopied(command);
-    } catch {
-      setError("无法自动复制，请选中下方命令手动复制。");
+      const value = await api("/ai/codex/login", {
+        method: "POST",
+        timeoutMs: 45000,
+      });
+      if (!alive.current) {
+        popup?.close();
+        return;
+      }
+      setLogin(value);
+      if (value.url && popup) popup.location.href = value.url;
+      else popup?.close();
+    } catch (e) {
+      popup?.close();
+      if (alive.current) {
+        setError(e.message);
+        onPhase("idle");
+      }
     }
   };
-  const update = report?.update;
+  const cancelLogin = async () => {
+    try {
+      const value = await api("/ai/codex/login/cancel", { method: "POST" });
+      if (alive.current) {
+        setLogin(value);
+        onPhase("idle");
+      }
+    } catch (e) {
+      if (alive.current) setError(e.message);
+    }
+  };
+  const installed = async (value) => {
+    if (!alive.current) return;
+    setReport(value.diagnostics);
+    onResult(null, value.diagnostics, true);
+    try {
+      await onEnvironment();
+    } catch {
+      setError("环境已处理，请刷新状态确认连接。");
+    }
+  };
   const ready = report?.status === "ready";
-  const commands =
-    report?.action === "login" ? [["终端登录", "codex login"]] : [];
-
+  const isolated = connection.environment === "isolated";
+  const needLogin =
+    report?.action === "login" || report?.code === "authentication";
+  const installer = (
+    <CodexInstall
+      disabled={busy}
+      update={report?.update}
+      environment={connection.environment}
+      onBusy={(active) =>
+        onPhase(
+          active
+            ? "installing"
+            : (current) => (current === "installing" ? "idle" : current),
+        )
+      }
+      onComplete={installed}
+    />
+  );
   return (
     <div
-      className="ai-runtime"
+      className="ai-runtime ai-runtime-simple"
       aria-label="Codex CLI 运行环境"
-      aria-busy={!!operation}
     >
-      <div className="ai-runtime-title">
+      <div className="ai-codex-detected">
+        <Monitor size={22} />
         <div>
-          <Activity size={17} />
-          <h3>本机 Codex CLI</h3>
+          <strong>
+            {isolated
+              ? "使用项目独立环境"
+              : connection.available
+                ? connection.managed
+                  ? "使用项目 CLI · 沿用本机配置"
+                  : "已发现本机 Codex"
+                : "尚未发现可用的 Codex"}
+          </strong>
+          <p>
+            {isolated
+              ? "程序、配置和登录由本项目单独管理。"
+              : connection.available
+                ? "可以直接连接，不必重新安装。本机更新配置或退出登录也会影响这里。"
+                : "可以在下方一键准备独立环境；首次需要在官方页面登录。"}
+          </p>
         </div>
-        <span className={`ai-runtime-badge ${ready ? "ready" : ""}`}>
-          {ready ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
-          {statusLabels[report?.status] || "待检测"}
-        </span>
+        {ready && <CheckCircle2 size={18} />}
       </div>
-      <p className="ai-field-help">
-        沿用本机 CLI 的登录与配置，检测仅验证连接和模型目录。
-      </p>
-      <dl className="ai-runtime-facts">
-        <div>
-          <dt>当前安装版本</dt>
-          <dd>{report?.version || "待检测"}</dd>
-        </div>
-        <div>
-          <dt>运行平台</dt>
-          <dd>
-            {[
-              report?.platform,
-              report?.architecture_label ||
-                {
-                  AMD64: "x64（64 位）",
-                  x86_64: "x64（64 位）",
-                  aarch64: "ARM64",
-                  arm64: "ARM64",
-                }[report?.architecture] ||
-                report?.architecture,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "待检测"}
-          </dd>
-        </div>
-        <div>
-          <dt>认证状态</dt>
-          <dd>{authLabels[report?.auth_status] || authLabels.unknown}</dd>
-        </div>
-        <div>
-          <dt>最近检测</dt>
-          <dd>{localTime(report?.checked_at)}</dd>
-        </div>
-      </dl>
-      <div
-        className={`ai-runtime-message ${ready ? "ready" : ""}`}
-        role="status"
-      >
-        {report?.message || "先检测环境，确认本机 CLI 可以连接。"}
-        {report?.retry_count > 0 && <small>临时连接故障已自动重试一次。</small>}
-        {report?.history_warning && <small>{report.history_warning}</small>}
-      </div>
-      <div className="ai-runtime-actions">
-        <button
-          className="secondary-button"
-          disabled={busy}
-          onClick={() => run("check")}
-        >
-          {operation === "check" ? (
-            <LoaderCircle size={14} className="spin" />
-          ) : (
-            <Activity size={14} />
-          )}
-          {operation === "check" ? "正在检测…" : "检测环境并读取模型"}
-        </button>
-        <button
-          className="ai-text-button"
-          disabled={busy || report?.active_tasks > 0}
-          onClick={() => run("reconnect")}
-        >
-          {operation === "reconnect" ? (
-            <LoaderCircle size={14} className="spin" />
-          ) : (
-            <RefreshCw size={14} />
-          )}
-          {operation === "reconnect" ? "正在重连…" : "安全重连"}
-        </button>
-        {operation === "check" && (
-          <button className="ai-text-button" onClick={cancel}>
-            取消等待
-          </button>
-        )}
-      </div>
-      <small className="ai-runtime-note">
-        安全重连仅重启本项目的 CLI 连接；有任务运行时会拒绝重连。
-      </small>
-      {error && (
-        <p className="ai-feedback error" role="alert">
-          {error}
+      {report?.message && !ready && (
+        <p className="ai-field-help">
+          {needLogin ? "需要先登录，再读取可用模型。" : report.message}
         </p>
       )}
-      {onAlternative &&
-        ["error", "no_models", "restart_required", "disconnected"].includes(
-          report?.status,
-        ) && (
-          <div className="ai-runtime-fallback">
-            <p>
-              也可以检查已配置的 DeepSeek
-              备用连接。保存为默认后，新任务才会使用它。
-            </p>
-            <button
-              className="secondary-button"
-              disabled={busy}
-              onClick={onAlternative}
-            >
-              检查 DeepSeek 备用连接
-            </button>
-          </div>
-        )}
-      {commands.map(([label, command]) => (
-        <div className="ai-runtime-command" key={command}>
-          <span>{label}</span>
-          <code>{command}</code>
+      {needLogin && login.status !== "waiting" && (
+        <div className="ai-login-action">
           <button
-            type="button"
-            aria-label={`复制${label}命令`}
-            onClick={() => copy(command)}
+            className="secondary-button"
+            disabled={busy}
+            onClick={startLogin}
           >
-            <Copy size={13} />
-            {copied === command ? "已复制" : "复制"}
+            <ExternalLink size={15} />
+            登录并连接 Codex
+          </button>
+          {!isolated && (
+            <small>
+              此操作使用本机共享登录；需要完全分开时，请使用下方独立环境。
+            </small>
+          )}
+        </div>
+      )}
+      {login.status === "waiting" && (
+        <div className="ai-login-wait" role="status">
+          <LoaderCircle size={16} className="spin" />
+          <div>
+            <strong>等待官方页面登录</strong>
+            <p>完成后自动检测并连接。浏览器没有打开时，可点击下方入口。</p>
+            <a href={login.url} target="_blank" rel="noreferrer">
+              前往官方登录 <ExternalLink size={12} />
+            </a>
+          </div>
+          <button className="ai-text-button" onClick={cancelLogin}>
+            取消登录
           </button>
         </div>
-      ))}
-      <div className="ai-runtime-update">
-        <div className="ai-runtime-update-heading">
-          <strong>
-            <Download size={14} />
-            版本更新
-          </strong>
+      )}
+      {login.status === "failed" && (
+        <p role="alert" className="ai-feedback error">
+          {login.message}
+        </p>
+      )}
+      {error && (
+        <p className="ai-feedback error" role="alert">
+          <AlertCircle size={15} />
+          {error}
+          <button aria-label="关闭 Codex 提示" onClick={() => setError("")}>
+            ×
+          </button>
+        </p>
+      )}
+      {!connection.available && installer}
+      <details className="ai-advanced">
+        <summary>环境、更新与恢复</summary>
+        <dl className="ai-runtime-facts">
+          <div>
+            <dt>当前版本</dt>
+            <dd>{report?.version || "连接后检测"}</dd>
+          </div>
+          <div>
+            <dt>配置方式</dt>
+            <dd>{isolated ? "项目独立" : "复用本机"}</dd>
+          </div>
+        </dl>
+        <div className="ai-runtime-actions">
+          <button
+            className="ai-text-button"
+            disabled={busy}
+            onClick={() => run("check")}
+          >
+            {operation === "check" ? "正在检测…" : "检查连接"}
+          </button>
+          <button
+            className="ai-text-button"
+            disabled={busy || report?.active_tasks > 0}
+            onClick={() => run("reconnect")}
+          >
+            <RefreshCw size={13} />
+            重新连接
+          </button>
           <button
             className="ai-text-button"
             disabled={busy}
             onClick={() => run("updates")}
           >
-            {operation === "updates" && (
-              <LoaderCircle size={13} className="spin" />
-            )}
-            {operation === "updates" ? "正在查询…" : "检查更新"}
+            {operation === "updates" ? "正在检查…" : "检查更新"}
           </button>
         </div>
-        <p>
-          {update?.status === "ok"
-            ? update.available === true
-              ? `有新版本 ${update.latest_version}，可在当前页面下载安装并自动重连。`
-              : update.available === false
-                ? `npm 稳定版为 ${update.latest_version}，当前安装版本无需升级。`
-                : `npm 稳定版为 ${update.latest_version}；检测本机版本后可进行比较。`
-            : update?.message || "按需查询官方 npm 包的稳定版本。"}
-        </p>
-        {update?.checked_at && (
-          <small>查询时间：{localTime(update.checked_at)} · 结果短时缓存</small>
-        )}
-        <CodexInstall
-          disabled={busy}
-          update={update}
-          onBusy={(active) =>
-            onPhase(
-              active
-                ? "installing"
-                : (current) => (current === "installing" ? "idle" : current),
-            )
-          }
-          onComplete={async (value) => {
-            setReport(value.diagnostics);
-            let catalog = null;
-            if (
-              value.job?.status === "succeeded" &&
-              value.diagnostics?.status === "ready"
-            ) {
-              onPhase("checking");
-              try {
-                catalog = await api("/models?provider=codex&refresh=true");
-              } catch (e) {
-                setError(e.message);
-              } finally {
-                onPhase("idle");
-              }
-            }
-            onResult(
-              catalog,
-              value.diagnostics,
-              value.job?.status === "succeeded",
-            );
-          }}
-        />
-        <details>
-          <summary>查看手动升级方法</summary>
-          <p>也可以使用原来的安装方式升级，完成后点击「安全重连」重新检测。</p>
-          {[
-            ["npm 安装", "npm install -g @openai/codex@latest"],
-            ...(report?.platform === "Darwin"
-              ? [["Homebrew 安装", "brew upgrade --cask codex"]]
-              : []),
-          ].map(([label, command]) => (
-            <div className="ai-runtime-command" key={command}>
-              <span>{label}</span>
-              <code>{command}</code>
-              <button
-                type="button"
-                aria-label={`复制${label}升级命令`}
-                onClick={() => copy(command)}
-              >
-                <Copy size={13} />
-                {copied === command ? "已复制" : "复制"}
-              </button>
-            </div>
-          ))}
-          <p>
-            手动安装请查看官方说明。如果新版本检测失败，可通过原安装工具恢复之前的版本，再重新检测。
+        {report?.update && (
+          <p className="ai-field-help">
+            {report.update.status === "ok"
+              ? `官方稳定版本：${report.update.latest_version}${report.update.available ? "，可按需更新。" : "。"}`
+              : report.update.message}
           </p>
-          {report?.last_verified && (
-            <p>
-              本机最近通过协议检测：{report.last_verified.version} ·{" "}
-              {localTime(report.last_verified.checked_at)}
-              。这不代表该版本已在所有系统或模型上完成验证。
-            </p>
-          )}
-          <a
-            href={report?.docs_url || "https://developers.openai.com/codex/cli"}
-            target="_blank"
-            rel="noreferrer"
-          >
-            官方安装说明 <ExternalLink size={12} />
-          </a>
-        </details>
-      </div>
+        )}
+        {connection.available && installer}
+        <p className="ai-field-help">
+          更新先下载校验，等当前任务结束再启用；失败保留原版本。复用本机配置时不会自动复制登录信息到独立环境。
+        </p>
+      </details>
+      {onAlternative && !ready && (
+        <button
+          className="ai-text-button"
+          disabled={busy}
+          onClick={onAlternative}
+        >
+          想简单一点？改用 DeepSeek API
+        </button>
+      )}
     </div>
   );
 }

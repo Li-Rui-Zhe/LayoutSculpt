@@ -7,6 +7,7 @@ import {
 import { useCustomTextures } from "../materials/customTextures.js";
 import { StudioScene } from "../viewer/StudioScene.js";
 import { useViewportRuntime } from "../viewer/ViewportRuntime.jsx";
+import ContextRecovery from "../viewer/ContextRecovery.jsx";
 
 export default forwardRef(function Viewport(
   {
@@ -82,5 +83,13 @@ export default forwardRef(function Viewport(
     }),
     [],
   );
-  return <div ref={host} id="viewport" aria-label="可旋转的三维户型模型" />;
+  return (
+    <>
+      <div ref={host} id="viewport" aria-label="可旋转的三维户型模型" />
+      <ContextRecovery
+        target={() => engine.current?.renderer.domElement}
+        onRestored={() => engine.current?.recoverContext()}
+      />
+    </>
+  );
 });

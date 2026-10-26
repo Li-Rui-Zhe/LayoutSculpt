@@ -1,4 +1,5 @@
 import { apiErrorMessage } from "./apiErrors.js";
+import { guardedFetch } from "./connectionGuard.js";
 
 export async function api(path, options = {}) {
   const controller = new AbortController();
@@ -10,7 +11,7 @@ export async function api(path, options = {}) {
   options.signal?.addEventListener("abort", cancel, { once: true });
   if (options.signal?.aborted) controller.abort();
   try {
-    const response = await fetch(`/api${path}`, {
+    const response = await guardedFetch(`/api${path}`, {
       ...options,
       signal: controller.signal,
     });

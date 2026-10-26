@@ -34,6 +34,7 @@ class DiyService:
             registry,
         )
         self.tasks = {}
+        self.closing = False
         self.semaphore = asyncio.Semaphore(1)
 
     async def initialize(self):
@@ -48,7 +49,7 @@ class DiyService:
                 "CREATE TABLE IF NOT EXISTS diy_versions (asset_id TEXT NOT NULL,revision INTEGER NOT NULL,design TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(asset_id,revision))"
             )
             await db.execute(
-                "UPDATE diy_assets SET status='failed', error='服务重启，生成已中断；可按原参数重新生成', updated_at=? WHERE status IN ('queued','running') AND archived=0",
+                "UPDATE diy_assets SET status='failed', error='服务重启，生成已中断；可按原参数重新生成', updated_at=? WHERE status='running' AND archived=0",
                 (now(),),
             )
             await db.commit()
@@ -61,6 +62,21 @@ class DiyService:
         task = asyncio.create_task(self.generate(asset_id, request))
         self.tasks[asset_id] = task
         task.add_done_callback(lambda _: self.tasks.pop(asset_id, None))
+
+    async def resume_queued(self):
+        db = await self.store.connect()
+        try:
+            cursor = await db.execute("SELECT id,request FROM diy_assets WHERE status='queued' AND archived=0 ORDER BY created_at,id")
+            rows = await cursor.fetchall()
+        finally:
+            await db.close()
+        for row in rows:
+            try:
+                request = DiyGenerate.model_validate_json(row["request"])
+            except ValueError:
+                await self.transition(row["id"], "failed", error="排队参数无法恢复，请重新填写家具要求")
+                continue
+            self.schedule(row["id"], request)
 
     @staticmethod
     def decode(row):
@@ -302,6 +318,8 @@ class DiyService:
                     asset_id, "ready", design=design, expected=("running",)
                 )
         except asyncio.CancelledError:
+            if self.closing and (await self.get(asset_id))["status"] == "queued":
+                raise
             await self.transition(
                 asset_id, "cancelled", error="生成已中断，可按原参数重新生成"
             )
@@ -352,6 +370,7 @@ class DiyService:
         return await self.get(asset_id)
 
     async def close(self):
+        self.closing = True
         tasks = list(self.tasks.values())
         for task in tasks:
             task.cancel()

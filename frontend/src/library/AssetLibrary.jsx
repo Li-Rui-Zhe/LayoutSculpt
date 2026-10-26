@@ -271,6 +271,22 @@ export default function AssetLibrary({
     ],
   );
   const selected = visible.find((i) => i.id === selectedId) || visible[0];
+  const [cardLimit, setCardLimit] = useState(48);
+  useEffect(
+    () => setCardLimit(48),
+    [
+      source,
+      category,
+      family,
+      style,
+      query,
+      sort,
+      favoritesOnly,
+      archivedOnly,
+      recentOnly,
+      maxWidth,
+    ],
+  );
   const variants =
     selected?.family && selected.source === "builtin"
       ? items.filter(
@@ -464,7 +480,12 @@ export default function AssetLibrary({
       ) : (
         <>
           {preferences.error && (
-            <p className="form-error">素材偏好同步失败：{preferences.error}</p>
+            <p className="form-error" role="status">
+              收藏已保留在当前页面，正在等待同步。
+              <button className="text-button" onClick={preferences.reload}>
+                重试同步
+              </button>
+            </p>
           )}
           <div className="library-filters">
             <div
@@ -620,7 +641,7 @@ export default function AssetLibrary({
                 <span>选择素材，查看三维细节</span>
               </div>
               <div className="library-cards" aria-label="GLB 素材列表">
-                {visible.map((item) => (
+                {visible.slice(0, cardLimit).map((item) => (
                   <button
                     className="library-card"
                     key={item.id}
@@ -648,6 +669,15 @@ export default function AssetLibrary({
                   </button>
                 ))}
               </div>
+              {visible.length > cardLimit && (
+                <button
+                  className="secondary-button"
+                  onClick={() => setCardLimit((n) => n + 48)}
+                >
+                  加载更多素材（已显示 {Math.min(cardLimit, visible.length)} /{" "}
+                  {visible.length}）
+                </button>
+              )}
               {!loading && !visible.length && (
                 <div className="library-empty">
                   <Boxes size={36} />

@@ -27,6 +27,9 @@ export function useProjects() {
   const [health, setHealth] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const selectedActive = jobs.some(
+    (item) => item.id === selectedId && !terminal(item.status),
+  );
   const selection = useRef(selectedId);
   useEffect(() => writeContext({ project: selectedId }), [selectedId]);
   const listRequest = useRef(0);
@@ -50,12 +53,21 @@ export function useProjects() {
   };
   const merge = useCallback((items) => {
     setJobs((previous) => {
+      if (!items.length) return previous;
       const map = new Map(previous.map((item) => [item.id, item]));
+      let changed = false;
       for (const item of items) {
         const old = map.get(item.id);
-        if (!old || Date.parse(item.updated_at) >= Date.parse(old.updated_at))
+        if (
+          !old ||
+          (Date.parse(item.updated_at) >= Date.parse(old.updated_at) &&
+            JSON.stringify(old) !== JSON.stringify(item))
+        ) {
           map.set(item.id, item);
+          changed = true;
+        }
       }
+      if (!changed) return previous;
       return [...map.values()].sort(
         (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
       );
@@ -73,10 +85,14 @@ export function useProjects() {
       ]);
       if (token !== listRequest.current) return;
       if (h) {
-        setHealth(h);
+        setHealth((old) =>
+          JSON.stringify(old) === JSON.stringify(h) ? old : h,
+        );
         healthTime.current = Date.now();
       }
-      setMetadata(m.items);
+      setMetadata((old) =>
+        JSON.stringify(old) === JSON.stringify(m.items) ? old : m.items,
+      );
       if (j.initial) {
         initialized.current = true;
         setHistoryBefore(j.before);
@@ -181,16 +197,18 @@ export function useProjects() {
       addEvents([event]);
       api(`/jobs/${selectedId}`)
         .then((item) => {
-          if (alive) merge([item]);
+          if (alive) {
+            merge([item]);
+            if (terminal(item.status)) stream.close();
+          }
         })
         .catch(() => {});
-      if (terminal(event.status)) stream.close();
     };
     return () => {
       alive = false;
       stream.close();
     };
-  }, [selectedId, merge, refresh]);
+  }, [selectedId, selectedActive, merge, refresh]);
   const create = async (form, importing = false) => {
     const signature = await formSignature(form);
     const type = importing ? "import" : "create";
@@ -285,6 +303,7 @@ export function useProjects() {
     importProject: (form) => create(form, true),
     refresh,
     cancel: (id) => action(id, "cancel"),
+    continue: (id, changes) => action(id, "continue", changes),
     retry: (id, changes) => action(id, "retry", changes),
     rebuild: (id) => action(id, "rebuild"),
     refine: (id) => action(id, "rebuild?replan=true"),
@@ -298,7 +317,7 @@ export function useProjects() {
       merge([item]);
       return item;
     },
-    edit: async (id, document) => {
+    edit: async (id, document, { selectResult = true } = {}) => {
       const item = await api(`/jobs/${id}/edit`, {
         method: "POST",
         headers: {
@@ -312,7 +331,7 @@ export function useProjects() {
       });
       finishOperation(`edit:${id}`);
       merge([item]);
-      if (selection.current === id) select(item);
+      if (selectResult && selection.current === id) select(item);
       return item;
     },
     check: async () => {

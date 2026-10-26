@@ -31,12 +31,12 @@ export default function RetryDialog({ job, projects, onClose }) {
   };
   return (
     <Modal
-      title="选择模型并重试"
+      title="更换模型重新生成"
       onClose={() => !busy && onClose()}
       className="retry-dialog"
     >
       <p className="field-note">
-        沿用原户型图和设计要求，创建独立的新任务。可以更换生成模型和推理强度。
+        沿用原图和设计要求，使用所选模型建立新版本。原任务与人工修改保留；只想接着完成时，请使用“继续生成”。
       </p>
       <fieldset disabled={busy} className="retry-model-fields">
         <ModelFields models={models} idPrefix="retry" />
@@ -52,7 +52,7 @@ export default function RetryDialog({ job, projects, onClose }) {
         disabled={busy || !models.ready}
         onClick={submit}
       >
-        {busy ? "正在创建重试任务…" : "创建重试任务"}
+        {busy ? "正在创建新版本…" : "使用所选模型生成新版本"}
       </button>
     </Modal>
   );
