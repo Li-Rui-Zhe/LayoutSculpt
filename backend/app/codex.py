@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from collections import deque
@@ -20,12 +21,35 @@ from pydantic import ConfigDict, Field
 
 from .config import ROOT, Settings
 from .network import codex_environment
+from .toolchain_paths import selected_tool
 
 
 class CodexError(RuntimeError):
     def __init__(self, message, *, detail=None):
         super().__init__(message)
         self.detail = detail if detail is not None else message
+
+
+def codex_command_args(command):
+    """Use one shell-free launcher for version checks and the app server."""
+    if command.lower().endswith(".js"):
+        return ["node", command]
+    if os.name == "nt" and command.lower().endswith((".cmd", ".ps1")):
+        script = Path(command).parent / "node_modules/@openai/codex/bin/codex.js"
+        if not script.is_file():
+            raise CodexError("CODEX_CMD 请指向 codex.exe 或已安装的 npm codex.cmd")
+        return ["node", str(script)]
+    return [command]
+
+
+def codex_command_signature(command):
+    args = codex_command_args(command)
+    path = Path(args[-1] if len(args) > 1 else (shutil.which(command) or command))
+    try:
+        stat = path.stat()
+        return [str(path.resolve()), stat.st_mtime_ns, stat.st_size]
+    except OSError:
+        return None
 
 
 def unsupported_model(error):
@@ -91,6 +115,20 @@ class CodexClient:
         self.thread_models = {}
         self.cache_identity = None
         self.service_config = None
+        self.active_generations = 0
+        self.launch_signature = None
+        self.auth_status = "unknown"
+        self.command_override = None
+        self.maintenance = False
+        self.maintenance_owner = None
+
+    @property
+    def command(self):
+        return (
+            self.command_override
+            or selected_tool(self.settings.data_dir, "codex")
+            or self.settings.codex_command
+        )
 
     def record_model_rejection(self, error):
         model = unsupported_model(error)
@@ -119,30 +157,15 @@ class CodexClient:
         )
 
     async def ensure_started(self):
+        if self.maintenance and self.maintenance_owner is not asyncio.current_task():
+            raise CodexError("本机 Codex 正在更新 CLI，请等待更新完成后重试。")
         async with self.lock:
             if self.alive:
                 return
             await self.stop()
-            command = self.settings.codex_command
-            if command.lower().endswith(".js"):
-                args = ["node", command]
-            elif os.name == "nt" and command.lower().endswith((".cmd", ".ps1")):
-                # 用 npm 包的 Node 入口，避免 cmd.exe 拼接和路径转义。
-                script = (
-                    Path(command).parent
-                    / "node_modules"
-                    / "@openai"
-                    / "codex"
-                    / "bin"
-                    / "codex.js"
-                )
-                if not script.exists():
-                    raise CodexError(
-                        "CODEX_CMD 请指向 codex.exe 或已安装的 npm codex.cmd"
-                    )
-                args = ["node", str(script)]
-            else:
-                args = [command]
+            self.stderr.clear()
+            args = codex_command_args(self.command)
+            signature = codex_command_signature(self.command)
             args += [
                 "app-server",
                 "--listen",
@@ -194,16 +217,31 @@ class CodexClient:
                 )
                 await self._send({"method": "initialized", "params": {}})
                 self.initialized = True
+                self.launch_signature = signature
+            except asyncio.CancelledError:
+                await self.stop()
+                raise
             except Exception as exc:
                 await self.stop()
                 raise CodexError(
                     f"无法启动本地 Codex 服务，请检查 CODEX_CMD 和 codex login：{exc}"
                 ) from exc
 
+    async def reconnect(self):
+        if self.maintenance:
+            raise CodexError("本机 Codex 正在更新 CLI，请等待更新完成后重试。")
+        async with self.lock:
+            if self.active_generations or self.threads or self.pending:
+                raise CodexError("本机 Codex 正在处理任务，请等待任务结束后再重连。")
+            await self.stop()
+        await self.ensure_started()
+
     async def stop(self):
         self.initialized = False
         self.cache_identity = None
         self.service_config = None
+        self.auth_status = "unknown"
+        self.launch_signature = None
         self.model_catalog = None
         self.model_rejections.clear()
         if self.process and self.process.returncode is None:
@@ -308,6 +346,7 @@ class CodexClient:
                     if msg["method"] == "account/updated":
                         self.model_catalog = None
                         self.cache_identity = None
+                        self.auth_status = "unknown"
                     elif msg["method"] == "error":
                         self.record_model_rejection(
                             msg.get("params", {}).get("error", {})
@@ -354,6 +393,19 @@ class CodexClient:
             except CodexError:
                 # Older/custom app servers may not implement account/read.
                 account = {}
+            self.auth_status = (
+                "configured"
+                if account.get("account")
+                else "not_required"
+                if account.get("requiresOpenaiAuth") is False
+                else "required"
+                if account.get("requiresOpenaiAuth") is True
+                else "unknown"
+            )
+            if self.auth_status == "required":
+                raise CodexError(
+                    "本机 Codex 尚未登录，请先在终端执行 codex login，再重新检测。"
+                )
             chatgpt = (account.get("account") or {}).get("type") in {
                 "chatgpt",
                 "chatgptAuthTokens",
@@ -364,7 +416,7 @@ class CodexClient:
             # The cache only receives a fingerprint, never account identity,
             # provider credentials, or the unfiltered local configuration.
             context = {
-                "command": self.settings.codex_command,
+                "command": self.command,
                 "provider": provider_id,
                 "base_url": provider.get("base_url"),
                 "wire_api": provider.get("wire_api"),
@@ -374,10 +426,7 @@ class CodexClient:
                 },
                 "default_effort": config.get("model_reasoning_effort"),
             }
-            command_path = Path(self.settings.codex_command)
-            if command_path.is_file():
-                stat = command_path.stat()
-                context["cli_revision"] = [stat.st_mtime_ns, stat.st_size]
+            context["cli_revision"] = codex_command_signature(self.command)
             models, seen, cursor = {}, set(), None
             while True:
                 page = await self.request(
@@ -454,7 +503,16 @@ class CodexClient:
             ).hexdigest()
             return self.model_catalog
 
-    async def generate(
+    async def generate(self, **kwargs):
+        if self.maintenance:
+            raise CodexError("本机 Codex 正在更新环境，请等待更新完成后重试。")
+        self.active_generations += 1
+        try:
+            return await self._generate(**kwargs)
+        finally:
+            self.active_generations -= 1
+
+    async def _generate(
         self,
         *,
         workspace: Path,

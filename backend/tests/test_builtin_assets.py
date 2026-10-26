@@ -20,7 +20,7 @@ KINDS = [entry["kind"] for entry in CATALOG_DATA["items"]]
 @pytest.mark.parametrize("kind", KINDS)
 def test_builtin_geometry_and_thumbnail(kind):
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    assert catalog["version"] == "3.1.0"
+    assert catalog["version"] == "3.2.0"
     assert {e["kind"] for e in catalog["items"]} == set(KINDS)
     entry = next(e for e in catalog["items"] if e["kind"] == kind)
     w, d, h = entry["dimensions"]

@@ -7,7 +7,7 @@
     "start": "node scripts/backend.mjs start",
     "dev": "vite --config frontend/vite.config.js",
     "dev:api": "node scripts/backend.mjs dev",
-    "dev:all": "python scripts/dev.py",
+    "dev:all": "node scripts/backend.mjs all",
     "build": "vite build --config frontend/vite.config.js",
     "preview": "vite preview --config frontend/vite.config.js --host 127.0.0.1",
     "test:backend": "node scripts/backend.mjs test",

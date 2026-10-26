@@ -7,6 +7,8 @@ import "./styles/factory.css";
 import "./styles/editor.css";
 import "./styles/result.css";
 import "./styles/usability.css";
+import "./styles/creative-workspace.css";
+import "./settings/ai-source.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

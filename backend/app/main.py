@@ -21,7 +21,9 @@ from pydantic import ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .architecture import validate_generated_structure
-from .codex import CodexClient
+from .ai_providers import AIClientRouter, model_provider
+from .ai_routes import install_ai_routes
+from .codex import CodexClient, CodexError
 from .config import ROOT, Settings
 from .consistency import source_hash, structure_hash
 from .deliverables import install_delivery_routes
@@ -101,7 +103,7 @@ def normalize_image(content: bytes) -> bytes:
 def create_app(settings=None, *, client=None, model_builder=None):
     settings = settings or Settings()
     store = Store(settings.db_path)
-    codex = client or CodexClient(settings)
+    codex = AIClientRouter(settings, client or CodexClient(settings))
     registry = SkillRegistry(settings.skills_dir)
     diy = DiyService(settings, store, codex, registry)
     library = LibraryService(settings, store, diy)
@@ -131,6 +133,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             try:
                 yield
             finally:
+                await app.state.codex_installer.close()
                 await surfaces.close()
                 await app.state.runner.close()
                 await diy.close()
@@ -165,8 +168,10 @@ def create_app(settings=None, *, client=None, model_builder=None):
 
     app.state.store = store
     app.state.settings = settings
+    app.state.ai_client = codex
     app.state.diy = diy
     app.state.surface_generations = surfaces
+    install_ai_routes(app, settings, codex)
     install_idempotency(app, store, lambda job: public(job))
     app.add_middleware(RequestLimits)
     app.add_middleware(
@@ -254,15 +259,16 @@ def create_app(settings=None, *, client=None, model_builder=None):
         return {
             "status": "ok",
             "api_version": "2.1.0",
-            "capabilities": ["custom_style", "project_restore", "atomic_creation", "surface_model_selection"],
+            "capabilities": ["custom_style", "project_restore", "atomic_creation", "surface_model_selection", "ai_provider_selection"],
             "codex": {
                 "available": bool(
-                    shutil.which(settings.codex_command)
-                    or Path(settings.codex_command).is_file()
+                    shutil.which(getattr(codex.local, "command", settings.codex_command))
+                    or Path(getattr(codex.local, "command", settings.codex_command)).is_file()
                 ),
                 "connected": codex.alive,
                 "model": settings.codex_model or "使用本地 Codex 配置",
             },
+            "ai": {"provider": codex.connections.data["default_provider"], "deepseek_configured": bool(codex.connections.data.get("secret")) and not codex.connections.error},
             "model_builder": {"available": True, "engine": "trimesh"},
             "furniture_library": asset_status,
             "architecture": ["React", "FastAPI", "LangChain", "LangGraph", "SQLite"],
@@ -272,7 +278,10 @@ def create_app(settings=None, *, client=None, model_builder=None):
     @app.post("/api/runtime/check")
     async def check_runtime():
         try:
-            await codex.ensure_started()
+            if codex.connections.data["default_provider"] == "deepseek":
+                await codex.list_models(provider="deepseek")
+            else:
+                await codex.ensure_started()
         except Exception as exc:
             raise HTTPException(503, str(exc)) from exc
         return await health()
@@ -287,14 +296,16 @@ def create_app(settings=None, *, client=None, model_builder=None):
         return {key: data[key] for key in ["version", "license", "items"]}
 
     @app.get("/api/models")
-    async def models(refresh: bool = False):
+    async def models(refresh: bool = False, provider: str | None = None):
         try:
-            return await codex.list_models(refresh=refresh)
-        except Exception as exc:
-            raise HTTPException(503, f"无法读取本地 Codex 模型：{exc}") from exc
+            return await codex.list_models(refresh=refresh, provider=provider)
+        except CodexError as exc:
+            raise HTTPException(503, str(exc)) from None
+        except Exception:
+            raise HTTPException(503, "无法读取模型，请在 AI 接入中检查连接后重试。") from None
 
     async def resolve_model(options, require_image=True):
-        catalog = await models()
+        catalog = await models(provider=model_provider(options.model) if options.model else None)
         selected = options.model or catalog["default_model"]
         item = next((m for m in catalog["items"] if m["id"] == selected), None)
         if not item:

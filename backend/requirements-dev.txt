@@ -3,3 +3,5 @@ pytest>=8,<10
 pytest-asyncio>=1,<2
 httpx>=0.28,<1
 ruff>=0.12,<1
+# Offline furniture authoring uses trimesh convex hulls for rounded parts.
+scipy>=1.14,<2

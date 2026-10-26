@@ -26,6 +26,7 @@ FAMILY_BY_KIND = {
     "cleaning_cabinet": "家政柜",
     "utility_sink": "洗衣柜",
     "drying_rack": "晾衣架",
+    "drying_rack_single": "晾衣架",
     "coat_rack": "衣帽架",
     "floor_mirror": "穿衣镜",
     "plant": "绿植",
@@ -72,11 +73,19 @@ def enrich(entry, room, family, variant, role="oak"):
         "bed_bunk": "上下独立床垫、侧面梯口、宽踏板与圆角护栏。",
         "side_c_table": "薄木圆角桌面与开口钢管底架，可用于沙发侧边。",
         "balcony_table": "薄边圆桌面、三点外撇木腿与连接撑。",
-        "drying_rack": "水平主晾晒架、两侧折叠翼、交叉铰链与防滑脚套；不含折叠动画。",
+        "drying_rack": "两端 X 型交叉落地支架、顶部双挂衣横杆、中部连接撑与防滑脚套，适合使用衣架悬挂长衣。",
+        "drying_rack_single": "单根加粗挂衣横杆、双侧伸缩立柱、锁紧套与 T 型防滑底脚，保留衣物悬挂空间。",
+        "desktop_computer": "窄边框显示器与内嵌壁纸、金属底座、侧透主机及内部风扇/显卡/主板、散热格栅、USB 接口、真实键位与字标、曲面鼠标；默认底部离地 75 cm，可调整以匹配桌面。",
+        "laptop": "轻薄圆角铝合金机身、窄边屏幕与内嵌壁纸、独立转轴、错位键盘及字标、玻璃触控板、扬声器开孔、散热口、USB-C/USB-A/HDMI 接口及摄像头；默认底部离地 75 cm，可调整以匹配桌面。",
         "coffee_table": "圆角岩板桌面、内收置物层与四点实木支撑。",
     }
     if entry["kind"] in details:
         entry["description"] += details[entry["kind"]]
+    if entry["kind"] in {"desktop_computer", "laptop"}:
+        entry["default_elevation"] = 0.75
+        entry["tags"].extend(["电脑", "计算机", "办公设备", "桌面摆件"])
+        entry["tags"].extend(["台式机", "显示器", "主机", "键盘", "鼠标"]
+                             if entry["kind"] == "desktop_computer" else ["笔记本", "手提电脑"])
     if family == "床":
         entry["description"] += "床体尺寸不等同于床垫采购规格。"
     if room == "儿童房":
@@ -88,7 +97,12 @@ def enrich(entry, room, family, variant, role="oak"):
     if entry["kind"] == "desk_standing":
         entry["description"] += "当前展示为坐姿高度，不含升降动画。"
     if entry["kind"] == "sofa_daybed":
-        entry["description"] += "固定日床造型，不含展开动画。"
+        entry["rooms"] = ["客厅", "卧室", "书房"]
+        entry["tags"].extend(["日床", "躺卧", "整张软垫", "木条围框"])
+        entry["description"] = (
+            "整张长软垫搭配通透木条围框、可移位头枕和床尾搭毯，适合靠坐或单人小憩。"
+            "整体尺寸 210 × 95 × 78 cm，可在人工设计中调整。固定日床造型，不含展开动画。"
+        )
     return entry
 
 

@@ -1,0 +1,54 @@
+/* Compact provider control shared by every generation form. */
+.ai-source-field .field-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ai-source-field .field-heading > label {
+  margin: 0;
+}
+.ai-connection-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #748b72;
+}
+.ai-source-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid #dfe6da;
+  background: #f2f5ef;
+  border-radius: 8px;
+}
+.ai-source-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 5px;
+  color: #81917a;
+  border-radius: 5px;
+  font-size: 11px;
+}
+.ai-source-switch button[aria-pressed="true"] {
+  background: #fff;
+  color: #315f4e;
+  box-shadow: 0 1px 5px #29452e12;
+  font-weight: 600;
+}
+.ai-source-switch button:focus-visible,
+.ai-connection-link:focus-visible {
+  outline: 2px solid #749379;
+  outline-offset: 2px;
+}
+.diy-models .ai-source-field {
+  margin-bottom: 14px;
+}
+.ai-source-field + .field .field-error {
+  line-height: 1.7;
+}

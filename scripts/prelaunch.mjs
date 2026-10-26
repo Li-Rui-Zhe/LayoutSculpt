@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execFileSync } from "node:child_process";
+import { findPython } from "./python.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 if (!existsSync(path.join(root, "dist", "index.html")))
@@ -13,13 +14,8 @@ try {
 } catch (error) {
   if (error.message.includes("8011 已被占用")) throw error;
 }
-const local = path.join(
-  root,
-  ".venv",
-  process.platform === "win32" ? "Scripts/python.exe" : "bin/python",
-);
 const child = spawn(
-  existsSync(local) ? local : "python",
+  findPython(root),
   [
     "-m",
     "uvicorn",

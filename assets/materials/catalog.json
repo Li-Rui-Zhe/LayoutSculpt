@@ -1,19 +1,25 @@
 {
   "categories": {
     "walls": [
+      "wall-white",
       "wall-matte",
+      "wall-light-gray",
       "wall-lime",
       "wall-cement",
       "wall-oak",
       "wall-walnut",
-      "wall-cloth"
+      "wall-cloth",
+      "wall-white-tile",
+      "wall-marble"
     ],
     "floor": [
       "floor-oak",
+      "floor-light-oak",
       "floor-walnut",
       "floor-herringbone",
       "floor-ivory-tile",
       "floor-gray-tile",
+      "floor-marble-tile",
       "floor-travertine",
       "floor-terrazzo",
       "floor-cement"
@@ -162,6 +168,20 @@
       "legacy": true
     },
     {
+      "id": "wall-white",
+      "name": "纯白乳胶漆",
+      "sub": "干净白色 · 细腻哑光",
+      "color": "#f4f3ef",
+      "surface": "plaster",
+      "texture": "plaster",
+      "type": "walls",
+      "family": "乳胶漆",
+      "finish": "哑光",
+      "usage": "客厅、卧室、书房和过道的通用白墙",
+      "roughness": 0.92,
+      "normalStrength": 0.08
+    },
+    {
       "id": "wall-matte",
       "name": "暖白乳胶漆",
       "sub": "细腻哑光 · 通用墙面",
@@ -172,6 +192,20 @@
       "family": "乳胶漆",
       "finish": "哑光",
       "usage": "客厅、卧室的日常墙面",
+      "roughness": 0.92,
+      "normalStrength": 0.08
+    },
+    {
+      "id": "wall-light-gray",
+      "name": "浅灰乳胶漆",
+      "sub": "中性浅灰 · 细腻哑光",
+      "color": "#d6d5d0",
+      "surface": "plaster",
+      "texture": "plaster",
+      "type": "walls",
+      "family": "乳胶漆",
+      "finish": "哑光",
+      "usage": "客厅、卧室和书房的浅色墙面，可搭配白色顶面与木地板",
       "roughness": 0.92,
       "normalStrength": 0.08
     },
@@ -246,6 +280,34 @@
       "normalStrength": 0.23
     },
     {
+      "id": "wall-white-tile",
+      "name": "瓷白亮光墙砖",
+      "sub": "白色瓷砖 · 细缝铺贴",
+      "color": "#f0efea",
+      "surface": "tiles",
+      "texture": "tiles",
+      "type": "walls",
+      "family": "墙砖",
+      "finish": "亮光",
+      "usage": "厨房、卫生间的墙面，白色砖面搭配浅灰砖缝",
+      "roughness": 0.24,
+      "normalStrength": 0.12
+    },
+    {
+      "id": "wall-marble",
+      "name": "浅米大理石纹墙砖",
+      "sub": "仿石瓷砖 · 自然细纹",
+      "color": "#e5dfd3",
+      "surface": "marble",
+      "texture": "marble",
+      "type": "walls",
+      "family": "墙砖",
+      "finish": "柔光",
+      "usage": "卫生间、厨房墙面，也可用于客厅局部背景墙",
+      "roughness": 0.4,
+      "normalStrength": 0.06
+    },
+    {
       "id": "floor-oak",
       "name": "原木直铺",
       "sub": "橡木地板 · 错缝直铺",
@@ -258,6 +320,20 @@
       "usage": "客厅、卧室、书房",
       "roughness": 0.57,
       "normalStrength": 0.2
+    },
+    {
+      "id": "floor-light-oak",
+      "name": "浅色橡木地板",
+      "sub": "浅木色 · 错缝直铺",
+      "color": "#dec9a6",
+      "surface": "boards",
+      "texture": "boards",
+      "type": "floor",
+      "family": "木地板",
+      "finish": "哑光",
+      "usage": "卧室、客厅和书房，适合浅色原木搭配",
+      "roughness": 0.66,
+      "normalStrength": 0.18
     },
     {
       "id": "floor-walnut",
@@ -314,6 +390,20 @@
       "usage": "厨房、浴室、阳台",
       "roughness": 0.79,
       "normalStrength": 0.15
+    },
+    {
+      "id": "floor-marble-tile",
+      "name": "浅灰大理石纹地砖",
+      "sub": "仿石瓷砖 · 细纹柔光",
+      "color": "#d4d3cd",
+      "surface": "marble_tiles",
+      "texture": "marble_tiles",
+      "type": "floor",
+      "family": "瓷砖",
+      "finish": "柔光",
+      "usage": "客厅、餐厅、玄关和过道；可在人工设计中设置实际铺贴尺寸",
+      "roughness": 0.43,
+      "normalStrength": 0.12
     },
     {
       "id": "floor-travertine",

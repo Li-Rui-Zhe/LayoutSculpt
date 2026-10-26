@@ -10,9 +10,10 @@ from PIL import Image
 from trimesh.visual.material import PBRMaterial
 
 from tools.furniture_refinement import plate, refined, soft
+from tools.home_office import equipment
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 
 # key, 中文名, 放置类型, 空间, 品类, 款式, 宽深高, 造型, 配色
 SPECS = [
@@ -73,11 +74,11 @@ SPECS = [
     ),
     (
         "sofa_daybed",
-        "木框客卧两用日床",
+        "原木软垫休闲日床",
         "sofa",
         "客厅",
         "沙发",
-        "日床款",
+        "整垫躺卧款",
         (2.1, 0.95, 0.78),
         "daybed",
         "sage",
@@ -623,14 +624,26 @@ SPECS = [
     ),
     (
         "drying_rack",
-        "折叠翼型落地晾衣架",
+        "不锈钢 X 型双杆落地晾衣架",
         "model",
         "阳台",
         "洗衣与清洁",
-        "翼型晾衣架",
-        (1.5, 0.6, 1.0),
-        "rack",
+        "X 型双杆晾衣架",
+        (1.6, 0.72, 1.65),
+        "hanging_rack",
         "steel",
+    ),
+    (
+        "drying_rack_single", "伸缩单杆落地晾衣架", "model", "阳台",
+        "晾衣架", "单杆晾衣架", (1.6, 0.55, 1.65), "single_rack", "steel",
+    ),
+    (
+        "desktop_computer", "台式电脑显示器主机键鼠套装", "model", "书房",
+        "电脑", "台式电脑套装", (0.94, 0.48, 0.49), "desktop", "charcoal",
+    ),
+    (
+        "laptop", "轻薄笔记本电脑（展开）", "model", "书房",
+        "电脑", "笔记本电脑", (0.35, 0.27, 0.245), "laptop", "steel",
     ),
     (
         "balcony_table",
@@ -706,6 +719,10 @@ COLORS = {
     "dark": [38, 44, 45],
     "mirror": [154, 178, 184],
     "terracotta": [186, 123, 100],
+    "aluminum": [195, 201, 207],
+    "screen": [38, 91, 128],
+    "screen_light": [94, 168, 192],
+    "keycap": [66, 72, 80],
 }
 
 
@@ -715,7 +732,7 @@ def material(role):
         name=f"家居系列_{role}",
         baseColorFactor=[*COLORS[role], 255],
         roughnessFactor=0.8 if role in {"linen", "cream", "sage"} else 0.45,
-        metallicFactor=0.75 if role in {"steel", "brass", "mirror"} else 0,
+        metallicFactor=0.75 if role in {"steel", "brass", "mirror", "aluminum"} else 0,
     )
     texture = {
         "oak": "veneer_color.png",
@@ -732,6 +749,8 @@ def material(role):
             kwargs["baseColorFactor"] = [255] * 4
     if role == "mirror":
         kwargs["roughnessFactor"] = 0.12
+    if role in {"screen", "screen_light"}:
+        kwargs.update(roughnessFactor=0.22, emissiveFactor=[0.025, 0.055, 0.075])
     return PBRMaterial(**kwargs)
 
 
@@ -898,9 +917,9 @@ class FurnitureMesh:
 def construct(spec):
     key, name, base, room, family, variant, (w, d, h), shape, role = spec
     m = FurnitureMesh()
-    if refined(m, spec):
+    if equipment(m, spec) or refined(m, spec):
         pass
-    elif shape in {"sofa", "sofa_left", "sofa_right", "daybed", "lounge"}:
+    elif shape in {"sofa", "sofa_left", "sofa_right", "lounge"}:
         seats = 1 if shape == "lounge" else 4 if w > 3 else 3 if w > 2.15 else 2
         arm = 0.13 if w < 2 else 0.18
         seat_d = min(d, 0.95)
@@ -910,7 +929,7 @@ def construct(spec):
             "承重底座",
             [0, 0.21, -d / 2 + seat_d / 2],
             [w - 0.09, 0.18, seat_d - 0.02],
-            "oak" if shape == "daybed" else role,
+            role,
             0.065,
         )
         for i in range(seats):
@@ -951,7 +970,7 @@ def construct(spec):
                 "扶手",
                 [x, 0.43, -d / 2 + seat_d / 2],
                 [arm, 0.52, seat_d],
-                "oak" if shape == "daybed" else role,
+                role,
                 0.06,
             )
         if seats > 1:

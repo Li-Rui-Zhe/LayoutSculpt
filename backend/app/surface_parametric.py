@@ -203,7 +203,7 @@ async def generate_material(service, identifier, request):
             instructions=instructions,
             response_schema=MaterialParameters.model_json_schema(),
             model_name=request.model,
-            reasoning_effort=request.reasoning_effort or service.settings.codex_effort,
+            reasoning_effort=request.reasoning_effort,
         )
         chain = (
             ChatPromptTemplate.from_messages(

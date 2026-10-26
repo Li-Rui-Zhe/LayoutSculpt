@@ -7,6 +7,12 @@ import {
   Download,
   Sparkles,
   ArrowUpRight,
+  Palette,
+  Star,
+  Clock3,
+  SlidersHorizontal,
+  Upload,
+  Check,
 } from "lucide-react";
 import { api } from "../api.js";
 import DiyPreview from "../diy/DiyPreview.jsx";
@@ -311,19 +317,28 @@ export default function AssetLibrary({
   return (
     <section className="asset-library-page" aria-label="素材库页面">
       <header className="diy-page-heading">
-        <div>
-          <span>为每一种日常，找到合适的家具</span>
-          <h1>
-            素材库{" "}
-            <small>
-              {assetType === "models" ? `${items.length} 个模型` : "装修材质"}
-            </small>
-          </h1>
-          <p>按空间挑选，比较不同款式，再放进你的家。</p>
+        <div className="library-title-group">
+          <span className="creative-page-mark">
+            <Boxes size={25} strokeWidth={1.5} />
+          </span>
+          <div>
+            <span className="creative-eyebrow">YOUR MATERIAL COLLECTION</span>
+            <h1>
+              素材库{" "}
+              <small>
+                {assetType === "models" ? `${items.length} 个模型` : "装修材质"}
+              </small>
+            </h1>
+            <p>为你的空间，挑选一点灵感。</p>
+          </div>
         </div>
         <div className="library-actions">
+          <AssetManager onChange={() => setRevision((r) => r + 1)} />
           <details className="library-import" hidden={assetType !== "models"}>
-            <summary>导入外部素材</summary>
+            <summary>
+              <Upload size={14} />
+              导入素材
+            </summary>
             <div>
               <select
                 aria-label="导入模型朝向"
@@ -403,20 +418,39 @@ export default function AssetLibrary({
           </button>
         </div>
       </header>
-      <AssetManager onChange={() => setRevision((r) => r + 1)} />
-      <div className="library-tabs library-type-tabs" aria-label="素材类型">
-        <button
-          aria-pressed={assetType === "models"}
-          onClick={() => setAssetType("models")}
-        >
-          三维模型
-        </button>
-        <button
-          aria-pressed={assetType === "materials"}
-          onClick={() => setAssetType("materials")}
-        >
-          装修材质
-        </button>
+      <div className="library-navigation">
+        <div className="library-tabs library-type-tabs" aria-label="素材类型">
+          <button
+            aria-pressed={assetType === "models"}
+            onClick={() => setAssetType("models")}
+          >
+            <Box size={16} />
+            三维模型
+          </button>
+          <button
+            aria-pressed={assetType === "materials"}
+            onClick={() => setAssetType("materials")}
+          >
+            <Palette size={16} />
+            装修材质
+          </button>
+        </div>
+        {assetType === "models" && source === "builtin" && (
+          <div className="library-collection-summary">
+            <div>
+              <strong>家庭家具系列</strong>
+            </div>
+            <span>
+              <b>{official.length}</b> 款家具
+            </span>
+            <span>
+              <b>
+                {new Set(official.map((i) => i.family).filter(Boolean)).size}
+              </b>{" "}
+              个品类
+            </span>
+          </div>
+        )}
       </div>
       {assetType === "materials" ? (
         <MaterialLibrary
@@ -432,59 +466,11 @@ export default function AssetLibrary({
           {preferences.error && (
             <p className="form-error">素材偏好同步失败：{preferences.error}</p>
           )}
-          {source === "builtin" && (
-            <div className="library-collection-summary">
-              <div>
-                <strong>家庭家具系列</strong>
-                <span>原木、织物与日常收纳，统一真实尺度</span>
-              </div>
-              <span>
-                <b>{official.length}</b> 款家具
-              </span>
-              <span>
-                <b>
-                  {new Set(official.map((i) => i.family).filter(Boolean)).size}
-                </b>{" "}
-                个品类
-              </span>
-              <span className="library-series-hint">款式均有独立三维模型</span>
-            </div>
-          )}
           <div className="library-filters">
-            <button
-              aria-pressed={archivedOnly}
-              onClick={() => setArchivedOnly(!archivedOnly)}
+            <div
+              className="library-tabs library-source-tabs"
+              aria-label="素材来源"
             >
-              已归档
-            </button>
-            <button
-              aria-pressed={recentOnly}
-              onClick={() => setRecentOnly(!recentOnly)}
-            >
-              最近使用
-            </button>
-            <label>
-              最大宽度{" "}
-              <input
-                aria-label="素材最大宽度（米）"
-                type="number"
-                min=".1"
-                max="60"
-                step=".1"
-                value={maxWidth}
-                placeholder="不限"
-                onChange={(e) => setMaxWidth(e.target.value)}
-                style={{ width: 75 }}
-              />{" "}
-              m
-            </label>
-            <button
-              aria-pressed={favoritesOnly}
-              onClick={() => setFavoritesOnly(!favoritesOnly)}
-            >
-              {favoritesOnly ? "★ 我的收藏" : "☆ 只看收藏"}
-            </button>
-            <div className="library-tabs" aria-label="素材来源">
               {Object.entries(sources).map(([id, name]) => (
                 <button
                   key={id}
@@ -505,68 +491,118 @@ export default function AssetLibrary({
                 </button>
               ))}
             </div>
-            <label className="library-search">
-              <Search size={15} />
-              <input
-                type="search"
-                aria-label="搜索 GLB 素材"
-                placeholder="搜家具、款式、空间，如：沙发 左贵妃"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
-            <select
-              aria-label="家具用途分类"
-              value={category}
-              onChange={(e) => {
-                setCategory(e.target.value);
-                setFamily("all");
-                setStyle("all");
-              }}
-            >
-              <option value="all">全部空间</option>
-              {categories.map((label) => (
-                <option key={label} value={label}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="家具品类"
-              value={family}
-              onChange={(e) => setFamily(e.target.value)}
-            >
-              <option value="all">全部品类</option>
-              {families.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="家具风格"
-              value={style}
-              onChange={(e) => setStyle(e.target.value)}
-            >
-              <option value="all">全部风格</option>
-              {styles.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="素材排序"
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-            >
-              <option value="source">按来源排列</option>
-              <option value="recent">最近更新</option>
-              <option value="name">按名称排列</option>
-            </select>
-            <button className="text-button" onClick={resetFilters}>
-              重置筛选
-            </button>
+            <div className="library-filter-main">
+              <label className="library-search">
+                <Search size={15} />
+                <input
+                  type="search"
+                  aria-label="搜索 GLB 素材"
+                  placeholder="搜家具、款式、空间，如：沙发 左贵妃"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </label>
+              <select
+                aria-label="家具用途分类"
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  setFamily("all");
+                  setStyle("all");
+                }}
+              >
+                <option value="all">全部空间</option>
+                {categories.map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="家具品类"
+                value={family}
+                onChange={(e) => setFamily(e.target.value)}
+              >
+                <option value="all">全部品类</option>
+                {families.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="家具风格"
+                value={style}
+                onChange={(e) => setStyle(e.target.value)}
+              >
+                <option value="all">全部风格</option>
+                {styles.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="素材排序"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+              >
+                <option value="source">按来源排列</option>
+                <option value="recent">最近更新</option>
+                <option value="name">按名称排列</option>
+              </select>
+            </div>
+            <div className="library-filter-options">
+              <button
+                aria-pressed={favoritesOnly}
+                onClick={() => setFavoritesOnly(!favoritesOnly)}
+              >
+                <Star
+                  size={14}
+                  fill={favoritesOnly ? "currentColor" : "none"}
+                />
+                我的收藏
+              </button>
+              <details className="library-extra-filters">
+                <summary>
+                  <SlidersHorizontal size={14} />
+                  更多筛选
+                </summary>
+                <div>
+                  <button
+                    aria-pressed={archivedOnly}
+                    onClick={() => setArchivedOnly(!archivedOnly)}
+                  >
+                    已归档
+                  </button>
+                  <button
+                    aria-pressed={recentOnly}
+                    onClick={() => setRecentOnly(!recentOnly)}
+                  >
+                    <Clock3 size={14} />
+                    最近使用
+                  </button>
+                  <label>
+                    最大宽度{" "}
+                    <input
+                      aria-label="素材最大宽度（米）"
+                      type="number"
+                      min=".1"
+                      max="60"
+                      step=".1"
+                      value={maxWidth}
+                      placeholder="不限"
+                      onChange={(e) => setMaxWidth(e.target.value)}
+                      style={{ width: 75 }}
+                    />{" "}
+                    m
+                  </label>
+                </div>
+              </details>
+              <button className="text-button" onClick={resetFilters}>
+                重置筛选
+              </button>
+            </div>
           </div>
           {error && (
             <div className="diy-error" role="alert">
@@ -578,7 +614,10 @@ export default function AssetLibrary({
           <div className="library-content">
             <div className="library-browser">
               <div className="library-result-label">
-                找到 {visible.length} 个模型 · 点击查看款式与三维细节
+                <h2>
+                  发现好设计 <span>{visible.length}</span>
+                </h2>
+                <span>选择素材，查看三维细节</span>
               </div>
               <div className="library-cards" aria-label="GLB 素材列表">
                 {visible.map((item) => (
@@ -589,6 +628,11 @@ export default function AssetLibrary({
                     onClick={() => choose(item.id)}
                   >
                     <div className={`library-card-symbol ${item.source}`}>
+                      {selected?.id === item.id && (
+                        <i className="library-card-check" aria-hidden="true">
+                          <Check size={12} />
+                        </i>
+                      )}
                       <Thumbnail item={item} />
                     </div>
                     <strong>{item.name}</strong>

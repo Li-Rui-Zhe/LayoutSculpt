@@ -10,6 +10,14 @@ import {
   Save,
   LoaderCircle,
   ArrowLeft,
+  Armchair,
+  Box,
+  ImagePlus,
+  MousePointer2,
+  SlidersHorizontal,
+  Palette,
+  Table2,
+  PanelsTopLeft,
 } from "lucide-react";
 import ModelFields from "../components/ModelFields.jsx";
 import NumberField from "../editor/NumberField.jsx";
@@ -503,6 +511,14 @@ export default function DiyStudio({
       key === "y" || e.shiftKey ? redo() : undo();
     }
   };
+  const startTemplate = (id) =>
+    guard(() => {
+      loadValue(null);
+      const next = furnitureTemplate(id);
+      commit(next);
+      setPartId(next.parts[0].id);
+      setRequestExpanded(false);
+    });
   return (
     <section
       className="diy-page"
@@ -511,9 +527,9 @@ export default function DiyStudio({
     >
       <header className="diy-page-heading">
         <div>
-          <span>创作工作台</span>
+          <span className="creative-eyebrow">FURNITURE STUDIO</span>
           <h1>家具 DIY</h1>
-          <p>从一个想法，到可放入户型的三维家具。</p>
+          <p>让生活里的灵感，成为家中的一件家具。</p>
         </div>
         <button
           className="secondary-button"
@@ -547,144 +563,32 @@ export default function DiyStudio({
         )}
         <div className="diy-columns">
           <aside className="diy-library">
-            <h3>我的素材库</h3>
-            <details>
-              <summary
-                onClick={() =>
-                  api("/diy/assets?archived=true")
-                    .then((v) => setArchivedItems(v.items))
-                    .catch((e) => setError(e.message))
-                }
-              >
-                已移出素材 · 可恢复
-              </summary>
-              {archivedItems.map((i) => (
-                <div key={i.id}>
-                  <span>{i.name}</span>
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      act(async () => {
-                        await api(`/diy/assets/${i.id}/restore`, {
-                          method: "POST",
-                        });
-                        setArchivedItems((v) => v.filter((a) => a.id !== i.id));
-                        await refresh();
-                      })
-                    }
-                  >
-                    恢复
-                  </button>
-                </div>
-              ))}
-            </details>
-            <p>素材独立保存，可反复放入不同方案。</p>
-            <button
-              className="primary-button diy-new"
-              disabled={busy}
-              onClick={() => startNew()}
-            >
-              <Sparkles size={14} />
-              新建 AI 设计
-            </button>
-            <input
-              type="search"
-              aria-label="搜索 DIY 素材"
-              placeholder="搜索素材名称"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <button
-              className="secondary-button"
-              disabled={busy}
-              onClick={createBlank}
-            >
-              <Plus size={14} />
-              手动新建素材
-            </button>
-            <details className="diy-templates">
-              <summary>从模板开始</summary>
-              {[
-                ["table", "餐桌"],
-                ["cabinet", "玄关柜"],
-                ["chair", "餐椅"],
-              ].map(([id, title]) => (
-                <button
-                  key={id}
-                  onClick={() =>
-                    guard(() => {
-                      loadValue(null);
-                      const d = furnitureTemplate(id);
-                      commit(d);
-                      setPartId(d.parts[0].id);
-                      setRequestExpanded(false);
-                    })
-                  }
-                >
-                  {title}
-                </button>
-              ))}
-            </details>
-            <div className="diy-assets">
-              {items
-                .filter((i) => i.name.includes(search))
-                .map((i) => (
-                  <button
-                    key={i.id}
-                    disabled={busy}
-                    aria-pressed={asset?.id === i.id}
-                    onClick={() => open(i)}
-                  >
-                    <strong>{i.name}</strong>
-                    <small>
-                      {labels[i.status]}{" "}
-                      {i.dimensions?.map((n) => n.toFixed(2)).join(" × ")}
-                      {i.dimensions ? " m" : ""}
-                    </small>
-                  </button>
-                ))}
+            <div className="creative-panel-heading">
+              <Sparkles size={16} />
+              <h3>设计助手</h3>
+              <span>AI 创作</span>
             </div>
-            {!items.length && (
-              <p>还没有素材。右侧输入描述开始生成，也可以手动搭建。</p>
-            )}
-            {!!items.length && !items.some((i) => i.name.includes(search)) && (
-              <p>没有匹配的素材，试试其他名称。</p>
-            )}
-          </aside>
-          <section className="diy-workbench">
-            {recoverable && (
-              <div className="workspace-note">
-                另有本机草稿尚未应用。
-                {design
-                  ? `当前显示的是${dirty ? "正在编辑的内容" : "已保存版本"}。`
-                  : "可恢复后继续创作。"}
-                <button
-                  onClick={() => {
-                    if (!commit(recoverable.document)) return;
-                    setPartId(recoverable.document.parts[0].id);
-                    setDraftMeta({
-                      key: draftKey,
-                      revision: recoverable.revision,
-                    });
-                    setRecoverable(null);
-                  }}
-                >
-                  恢复草稿继续编辑
-                </button>
-                <button
-                  onClick={() => {
-                    setDraftMeta({
-                      key: draftKey,
-                      revision: recoverable.revision,
-                    });
-                    setRecoverable(null);
-                  }}
-                >
-                  保留当前内容
-                </button>
-              </div>
-            )}
-            {draftSync.error && <p role="alert">{draftSync.error}</p>}
+            <p className="diy-sidebar-intro">
+              描述灵感，或用模板开始一件新家具。
+            </p>
+            <div className="diy-creation-actions">
+              <button
+                className="primary-button diy-new"
+                disabled={busy}
+                onClick={() => startNew()}
+              >
+                <Sparkles size={14} />
+                新建 AI 设计
+              </button>
+              <button
+                className="secondary-button"
+                disabled={busy}
+                onClick={createBlank}
+              >
+                <Plus size={14} />
+                空白设计
+              </button>
+            </div>
             <details
               className="diy-request-shell"
               open={requestExpanded}
@@ -703,6 +607,9 @@ export default function DiyStudio({
                 </label>
                 <textarea
                   id={`${formId}-prompt`}
+                  aria-label={
+                    design ? "告诉 AI 还想怎么改" : "描述想设计的家具"
+                  }
                   maxLength={3000}
                   disabled={busy || generating}
                   value={prompt}
@@ -722,13 +629,19 @@ export default function DiyStudio({
                     ))}
                   </div>
                 )}
-                <DiyReferenceImage
-                  key={`${asset?.id || "new"}:${referenceVersion}`}
-                  value={referenceId}
-                  onChange={setReferenceId}
-                  disabled={busy || generating}
-                  onBusyChange={setReferenceUploading}
-                />
+                <details className="diy-reference-disclosure">
+                  <summary>
+                    <ImagePlus size={14} />
+                    添加参考图片 <small>可选</small>
+                  </summary>
+                  <DiyReferenceImage
+                    key={`${asset?.id || "new"}:${referenceVersion}`}
+                    value={referenceId}
+                    onChange={setReferenceId}
+                    disabled={busy || generating}
+                    onBusyChange={setReferenceUploading}
+                  />
+                </details>
                 {design && asset?.request?.prompt && (
                   <details className="diy-original-request">
                     <summary>查看原始设计要求</summary>
@@ -737,9 +650,14 @@ export default function DiyStudio({
                 )}
                 <details className="diy-models">
                   <summary>
-                    模型与推理强度 · {models.model || "正在读取"}
+                    {models.provider === "deepseek" ? "DeepSeek" : "Codex"} ·{" "}
+                    {models.selected?.name || "模型与推理强度"}
                   </summary>
-                  <ModelFields models={models} idPrefix={formId} purpose="diy" />
+                  <ModelFields
+                    models={models}
+                    idPrefix={formId}
+                    purpose="diy"
+                  />
                 </details>
                 <div className="diy-generate-row">
                   <button
@@ -790,16 +708,164 @@ export default function DiyStudio({
                   </p>
                 )}
                 {["failed", "cancelled"].includes(asset?.status) && (
-                  <div><p role="alert">{asset.error} 修改描述后可重新生成。</p>
-                    <button disabled={busy} onClick={() => guard(() => act(async () => {
-                      const value = await api(`/diy/assets/${asset.id}/retry`, json({}));
-                      loadValue(value);
-                      await refresh();
-                    }))}>按原参数重新生成</button>
+                  <div>
+                    <p role="alert">{asset.error} 修改描述后可重新生成。</p>
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        guard(() =>
+                          act(async () => {
+                            const value = await api(
+                              `/diy/assets/${asset.id}/retry`,
+                              json({}),
+                            );
+                            loadValue(value);
+                            await refresh();
+                          }),
+                        )
+                      }
+                    >
+                      按原参数重新生成
+                    </button>
                   </div>
                 )}
               </div>
             </details>
+            <div className="diy-templates">
+              <h4>
+                从模板开始 <span>无需等待</span>
+              </h4>
+              <div>
+                {[
+                  ["table", "餐桌", Table2],
+                  ["cabinet", "玄关柜", PanelsTopLeft],
+                  ["chair", "餐椅", Armchair],
+                ].map(([id, title, Icon]) => (
+                  <button
+                    key={id}
+                    disabled={busy || generating}
+                    onClick={() => startTemplate(id)}
+                  >
+                    <Icon size={22} />
+                    <span>{title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="diy-personal-heading">
+              <h3>我的素材</h3>
+              <span>{items.length}</span>
+            </div>
+            <input
+              type="search"
+              aria-label="搜索 DIY 素材"
+              placeholder="搜索已保存的素材"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="diy-assets">
+              {items
+                .filter((i) => i.name.includes(search))
+                .map((i) => (
+                  <button
+                    key={i.id}
+                    disabled={busy}
+                    aria-pressed={asset?.id === i.id}
+                    onClick={() => open(i)}
+                  >
+                    <strong>{i.name}</strong>
+                    <small>
+                      {labels[i.status]}{" "}
+                      {i.dimensions?.map((n) => n.toFixed(2)).join(" × ")}
+                      {i.dimensions ? " m" : ""}
+                    </small>
+                  </button>
+                ))}
+            </div>
+            {!items.length && (
+              <p className="diy-library-empty">
+                <Box size={20} />
+                保存后的家具会出现在这里，随时继续创作。
+              </p>
+            )}
+            {!!items.length && !items.some((i) => i.name.includes(search)) && (
+              <p>没有匹配的素材，试试其他名称。</p>
+            )}
+            <details>
+              <summary
+                onClick={() =>
+                  api("/diy/assets?archived=true")
+                    .then((v) => setArchivedItems(v.items))
+                    .catch((e) => setError(e.message))
+                }
+              >
+                已移出素材 · 可恢复
+              </summary>
+              {archivedItems.map((i) => (
+                <div key={i.id}>
+                  <span>{i.name}</span>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      act(async () => {
+                        await api(`/diy/assets/${i.id}/restore`, {
+                          method: "POST",
+                        });
+                        setArchivedItems((v) => v.filter((a) => a.id !== i.id));
+                        await refresh();
+                      })
+                    }
+                  >
+                    恢复
+                  </button>
+                </div>
+              ))}
+            </details>{" "}
+          </aside>
+          <section className="diy-workbench">
+            <div className="diy-canvas-heading">
+              <span>
+                <Box size={16} />
+                三维预览
+              </span>
+              <small>
+                <i />
+                {design ? "实时编辑" : "你的创作空间"}
+              </small>
+            </div>
+            {recoverable && (
+              <div className="workspace-note">
+                另有本机草稿尚未应用。
+                {design
+                  ? `当前显示的是${dirty ? "正在编辑的内容" : "已保存版本"}。`
+                  : "可恢复后继续创作。"}
+                <button
+                  onClick={() => {
+                    if (!commit(recoverable.document)) return;
+                    setPartId(recoverable.document.parts[0].id);
+                    setDraftMeta({
+                      key: draftKey,
+                      revision: recoverable.revision,
+                    });
+                    setRecoverable(null);
+                  }}
+                >
+                  恢复草稿继续编辑
+                </button>
+                <button
+                  onClick={() => {
+                    setDraftMeta({
+                      key: draftKey,
+                      revision: recoverable.revision,
+                    });
+                    setRecoverable(null);
+                  }}
+                >
+                  保留当前内容
+                </button>
+              </div>
+            )}
+            {draftSync.error && <p role="alert">{draftSync.error}</p>}
             {design && (
               <label className="diy-modify-scope">
                 <input
@@ -826,6 +892,28 @@ export default function DiyStudio({
               </button>
             )}
             <DiyPreview
+              emptyContent={
+                <div className="diy-canvas-welcome">
+                  <div className="diy-welcome-symbol">
+                    <Armchair size={42} strokeWidth={1.3} />
+                    <Sparkles size={16} />
+                  </div>
+                  <span className="creative-eyebrow">MADE BY YOU</span>
+                  <h2>好家具，从一个想法开始</h2>
+                  <p>
+                    在左侧描述理想中的家具，
+                    <br />
+                    或选一个模板，让灵感先有个样子。
+                  </p>
+                  <button
+                    className="secondary-button"
+                    disabled={busy || generating}
+                    onClick={() => startTemplate("cabinet")}
+                  >
+                    试试玄关柜模板 <Plus size={14} />
+                  </button>
+                </div>
+              }
               assetKey={asset?.id || "draft"}
               design={compareBase ? asset.request.base : design}
               selected={compareBase ? null : partId}
@@ -866,14 +954,26 @@ export default function DiyStudio({
             </div>
           </section>
           <aside className="diy-properties">
-            <ColorDesigner
-              key={`${asset?.id || "draft"}:${baseline}`}
-              design={design}
-              partId={partId}
-              disabled={busy || generating}
-              onCommit={commit}
-            />
-            <h3>微调素材</h3>
+            <div className="creative-panel-heading">
+              <SlidersHorizontal size={16} />
+              <h3>设计属性</h3>
+            </div>
+            {design && (
+              <details className="diy-finish-panel">
+                <summary>
+                  <Palette size={15} />
+                  材质与饰面 <span>展开搭配</span>
+                </summary>
+                <ColorDesigner
+                  key={`${asset?.id || "draft"}:${baseline}`}
+                  design={design}
+                  partId={partId}
+                  disabled={busy || generating}
+                  onCommit={commit}
+                />
+              </details>
+            )}
+            {design && <h3 className="diy-detail-heading">部件与尺寸</h3>}
             {!!versions.length && (
               <label>
                 历史版本
@@ -904,7 +1004,36 @@ export default function DiyStudio({
               </label>
             )}
             {!design ? (
-              <p>生成后可点选三维部件，调整尺寸、位置和材质。</p>
+              <div className="diy-inspector-empty">
+                <div className="diy-inspector-symbol">
+                  <SlidersHorizontal size={26} strokeWidth={1.4} />
+                </div>
+                <h4>让细节，恰到好处</h4>
+                <p>创建设计后，在这里完善每一处细节。</p>
+                <ol>
+                  <li>
+                    <MousePointer2 size={17} />
+                    <div>
+                      <strong>选中一个部件</strong>
+                      <span>在三维画面中直接点选</span>
+                    </div>
+                  </li>
+                  <li>
+                    <SlidersHorizontal size={17} />
+                    <div>
+                      <strong>调整造型与尺寸</strong>
+                      <span>移动、旋转，找到合适的比例</span>
+                    </div>
+                  </li>
+                  <li>
+                    <Palette size={17} />
+                    <div>
+                      <strong>搭配喜欢的材质</strong>
+                      <span>木材、布艺与金属，自由组合</span>
+                    </div>
+                  </li>
+                </ol>
+              </div>
             ) : (
               <fieldset disabled={busy || generating}>
                 <label>

@@ -117,6 +117,7 @@ export default function DiyPreview({
   assetKey,
   modelUrl,
   onInfo,
+  emptyContent,
   onObjectSelect,
   cutaway = false,
   night = false,
@@ -1045,8 +1046,12 @@ export default function DiyPreview({
       )}
       {!design && !modelUrl && !modelDocument && (
         <div className="diy-preview-empty">
-          <strong>从一个想法开始</strong>
-          <span>输入描述让 AI 设计，或从左侧选择已有素材。</span>
+          {emptyContent || (
+            <>
+              <strong>从一个想法开始</strong>
+              <span>输入描述让 AI 设计，或从左侧选择已有素材。</span>
+            </>
+          )}
         </div>
       )}
     </div>

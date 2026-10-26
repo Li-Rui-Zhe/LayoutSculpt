@@ -21,11 +21,16 @@ def test_wall_material_validation_and_legacy_default():
             Wall.model_validate({**wall, "wall_material": identifier})
 
 
-def test_each_wall_keeps_its_material_and_openings_in_real_glb(tmp_path):
+@pytest.mark.parametrize("first,second", [
+    ("wall-oak", "wall-lime"),
+    ("wall-white", "wall-light-gray"),
+    ("wall-white-tile", "wall-marble"),
+])
+def test_each_wall_keeps_its_material_and_openings_in_real_glb(tmp_path, first, second):
     data = layout_data()
     original = json.loads(json.dumps(data))
-    data["walls"][0]["wall_material"] = "wall-oak"
-    data["walls"][1]["wall_material"] = "wall-lime"
+    data["walls"][0]["wall_material"] = first
+    data["walls"][1]["wall_material"] = second
     data = Layout.model_validate(data).model_dump()
     data.update(style="natural", furniture_mode="basic", furniture=[])
     Builder(data, Settings().furniture_catalog).build(tmp_path)
@@ -41,8 +46,8 @@ def test_each_wall_keeps_its_material_and_openings_in_real_glb(tmp_path):
             for wall_id in meta["wall_ids"]:
                 exported[wall_id] = mesh.visual.material.name
     assert exported == {
-        data["walls"][0]["id"]: "墙面_素材_wall-oak",
-        data["walls"][1]["id"]: "墙面_素材_wall-lime",
+        data["walls"][0]["id"]: f"墙面_素材_{first}",
+        data["walls"][1]["id"]: f"墙面_素材_{second}",
     }
     assert data["walls"][2]["wall_material"] is None
     assert data["openings"][0]["offset"] == original["openings"][0]["offset"]
@@ -67,7 +72,7 @@ def test_floor_catalog_validation_and_legacy_compatibility():
             floor_material(invalid)
 
 
-@pytest.mark.parametrize("bedroom_material", ["charcoal", "color:#739ac4", "floor-herringbone", "floor-ivory-tile", "floor-travertine"])
+@pytest.mark.parametrize("bedroom_material", ["charcoal", "color:#739ac4", "floor-herringbone", "floor-ivory-tile", "floor-travertine", "floor-light-oak", "floor-marble-tile"])
 def test_different_room_floors_survive_real_glb_export(tmp_path, bedroom_material):
     data = layout_data()
     def polygon(x0, x1):

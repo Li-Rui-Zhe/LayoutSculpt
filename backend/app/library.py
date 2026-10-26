@@ -100,6 +100,7 @@ class LibraryService:
                            ("family", "variant", "style", "tags", "rooms", "description")},
                         "category": registered.get("category") if registered else None,
                         "revision": registered.get("revision") if registered else None,
+                        "default_elevation": registered.get("default_elevation", 0) if registered else 0,
                         "dimensions": registered.get("dimensions")
                         if registered
                         else None,
@@ -184,6 +185,7 @@ class LibraryService:
 
     async def placement(self, identifier):
         """返回独立家具模板；GLB 固定为内容地址副本。"""
+        elevation = 0
         if identifier.startswith("diy:"):
             asset = await self.diy.get(identifier[4:])
             if asset["status"] != "ready":
@@ -221,6 +223,7 @@ class LibraryService:
                 raise HTTPException(422, f"无法放置此模型：{exc}") from exc
             content = {"kind": entry["item"]["furniture_kind"], "asset_id": asset_id}
             name = entry["item"]["name"]
+            elevation = entry["item"].get("default_elevation", 0)
         else:
             raise HTTPException(
                 422, "请从家具或 DIY 素材中选择，整套户型不能作为家具放置"
@@ -238,7 +241,7 @@ class LibraryService:
             depth=depth,
             height=height,
             rotation=0,
-            elevation=1.05 if content["kind"] == "wall_television" else 0,
+            elevation=1.05 if content["kind"] == "wall_television" else elevation,
             **content,
         ).model_dump()
 
@@ -267,7 +270,7 @@ class LibraryService:
                     "dimensions": dimensions,
                     "category": item.get("category"),
                     **{key: item.get(key) for key in ("family", "variant", "style", "tags", "rooms", "description")},
-                    "default_elevation": 1.05 if kind == "wall_television" else 0,
+                    "default_elevation": 1.05 if kind == "wall_television" else item.get("default_elevation", 0),
                 }
             )
         return result

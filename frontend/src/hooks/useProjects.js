@@ -102,6 +102,18 @@ export function useProjects() {
       listRequest.current += 1;
     };
   }, [refresh]);
+  useEffect(() => {
+    const changed = () => {
+      healthTime.current = 0;
+      void refresh();
+    };
+    window.addEventListener("habitat:ai-changed", changed);
+    window.addEventListener("habitat:runtime-changed", changed);
+    return () => {
+      window.removeEventListener("habitat:ai-changed", changed);
+      window.removeEventListener("habitat:runtime-changed", changed);
+    };
+  }, [refresh]);
   const select = useCallback((item) => {
     const id = item?.id || "sample";
     selection.current = id;

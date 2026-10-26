@@ -11,6 +11,24 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
 
+def find_codex_command():
+    if os.getenv("CODEX_CMD"):
+        return os.environ["CODEX_CMD"]
+    found = shutil.which("codex.exe") or shutil.which("codex")
+    if found:
+        return found
+    # GUI-launched processes on macOS may not inherit the terminal's PATH.
+    for candidate in (
+        Path("/opt/homebrew/bin/codex"),
+        Path("/usr/local/bin/codex"),
+        Path.home() / ".local/bin/codex",
+        Path.home() / ".npm-global/bin/codex",
+    ):
+        if candidate.is_file():
+            return str(candidate)
+    return "codex"
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path = field(
@@ -19,14 +37,7 @@ class Settings:
         ).resolve()
     )
     skills_dir: Path = ROOT / "skills"
-    codex_command: str = field(
-        default_factory=lambda: (
-            os.getenv("CODEX_CMD")
-            or shutil.which("codex.exe")
-            or shutil.which("codex")
-            or "codex"
-        )
-    )
+    codex_command: str = field(default_factory=find_codex_command)
     codex_model: str | None = field(
         default_factory=lambda: os.getenv("CODEX_MODEL") or None
     )
@@ -37,10 +48,14 @@ class Settings:
         default_factory=lambda: int(os.getenv("CODEX_TIMEOUT_SECONDS", "600"))
     )
     review_timeout: float = field(
-        default_factory=lambda: max(1, float(os.getenv("AI_REVIEW_TIMEOUT_SECONDS", "300")))
+        default_factory=lambda: max(
+            1, float(os.getenv("AI_REVIEW_TIMEOUT_SECONDS", "300"))
+        )
     )
     ai_cache_enabled: bool = field(
-        default_factory=lambda: os.getenv("AI_CACHE_ENABLED", "true").lower() in {"1", "true", "yes"}
+        default_factory=lambda: (
+            os.getenv("AI_CACHE_ENABLED", "true").lower() in {"1", "true", "yes"}
+        )
     )
     furniture_catalog: Path = ROOT / "assets" / "furniture" / "catalog.json"
     model_timeout: int = field(

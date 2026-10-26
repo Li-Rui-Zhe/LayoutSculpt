@@ -13,13 +13,21 @@ const effortLabels = {
   ultra: "最高",
 };
 export const effortLabel = (value) =>
-  effortLabels[value] || value || "本地默认";
+  effortLabels[value] || value || "服务默认";
 
 export function useModels({
   initialModel,
   initialEffort,
   requiresImage = true,
 } = {}) {
+  const initialProvider = initialModel
+    ? initialModel.startsWith("deepseek::")
+      ? "deepseek"
+      : "codex"
+    : "";
+  const [provider, setProvider] = useState(initialProvider);
+  const providerRef = useRef(initialProvider);
+  const manualChoice = useRef(Boolean(initialModel));
   const [catalog, setCatalog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -53,10 +61,33 @@ export function useModels({
       setLoading(true);
       setError("");
       try {
-        const next = await api(`/models${force ? "?refresh=true" : ""}`);
+        let source = providerRef.current;
+        if (!source) {
+          const settings = await api("/ai/settings");
+          if (token !== sequence.current) return;
+          source = settings.default_provider;
+          providerRef.current = source;
+          setProvider(source);
+        }
+        const next = await api(
+          `/models?provider=${source}${force ? "&refresh=true" : ""}`,
+          { timeoutMs: 55000 },
+        );
         if (token !== sequence.current) return;
         setCatalog(next);
-        setModel((current) => chooseModel(next, current, requiresImage));
+        setModel((current) => {
+          let saved = "";
+          try {
+            saved = localStorage.getItem(`habitat-model:${source}`) || "";
+          } catch {}
+          return chooseModel(
+            next,
+            !manualChoice.current && next.configured_default
+              ? next.default_model
+              : current || saved,
+            requiresImage,
+          );
+        });
       } catch (e) {
         if (token !== sequence.current) return;
         setError(e.message);
@@ -73,10 +104,29 @@ export function useModels({
       sequence.current += 1;
     };
   }, [refresh]);
+  const selectProvider = useCallback(
+    (value) => {
+      if (!["codex", "deepseek"].includes(value)) return;
+      providerRef.current = value;
+      manualChoice.current = false;
+      setProvider(value);
+      setModel("");
+      setCatalog(null);
+      void refresh();
+    },
+    [refresh],
+  );
+  useEffect(() => {
+    const changed = (event) => selectProvider(event.detail.provider);
+    window.addEventListener("habitat:ai-changed", changed);
+    return () => window.removeEventListener("habitat:ai-changed", changed);
+  }, [selectProvider]);
   const select = (id) => {
+    manualChoice.current = true;
     setModel(id);
     try {
       localStorage.setItem("habitat-model", id);
+      localStorage.setItem(`habitat-model:${providerRef.current}`, id);
     } catch {
       /* Model selection still works for this session. */
     }
@@ -99,6 +149,8 @@ export function useModels({
     }
   };
   return {
+    provider,
+    selectProvider,
     catalog,
     loading,
     error,

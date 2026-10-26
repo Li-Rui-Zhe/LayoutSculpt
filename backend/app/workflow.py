@@ -190,7 +190,7 @@ def create_graph(
         enabled = (
             settings.ai_cache_enabled
             and bool(trace["model"])
-            and (not isinstance(client, CodexClient) or bool(client.cache_identity))
+            and (client.cache_ready(trace["model"]) if hasattr(client, "cache_ready") else (not isinstance(client, CodexClient) or bool(client.cache_identity)))
             and not (state.get("refine_of") or state.get("restructure_of"))
         )
 

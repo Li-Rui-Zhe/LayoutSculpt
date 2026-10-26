@@ -14,7 +14,7 @@ def tiled_material(material, room):
     # Built-in swatches contain several planks/tiles. Extract a single face
     # before repeating it at the requested physical size, avoiding false joints.
     if image is not None:
-        if surface == "tiles" or (result.name or "").endswith(("_tile", "_stone")):
+        if surface in {"tiles", "marble_tiles"} or (result.name or "").endswith(("_tile", "_stone")):
             w, h = image.size
             image = image.crop(
                 (max(1, round(w * 0.006)), max(1, round(h * 0.006)), w // 2, h // 2)

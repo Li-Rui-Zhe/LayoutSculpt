@@ -1,5 +1,5 @@
 {
-  "version": "3.1.0",
+  "version": "3.2.0",
   "blender_version": "4.5.9 LTS",
   "library": "habitat-furniture.blend",
   "sha256": "18e4d9a512ab37cf0ce26c9636377fe4ab823c87e3b293ecc26a4e790943ce09",
@@ -887,6 +887,46 @@
       "description": "升降桌 · 坐姿，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。当前展示为坐姿高度，不含升降动画。"
     },
     {
+      "id": "habitat_desktop_computer",
+      "kind": "desktop_computer",
+      "furniture_kind": "model",
+      "name": "台式电脑显示器主机键鼠套装",
+      "dimensions": [
+        0.94,
+        0.48,
+        0.49
+      ],
+      "revision": "3.2.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 42934,
+      "sha256": "f88709b1a7818563284b432af990ff017c2029f0417700757c18280ce213bbf3",
+      "category": "书房",
+      "family": "电脑",
+      "variant": "台式电脑套装",
+      "style": "现代简约",
+      "tags": [
+        "书房",
+        "电脑",
+        "台式电脑套装",
+        "电脑",
+        "计算机",
+        "办公设备",
+        "桌面摆件",
+        "台式机",
+        "显示器",
+        "主机",
+        "键盘",
+        "鼠标"
+      ],
+      "rooms": [
+        "书房"
+      ],
+      "description": "台式电脑套装，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。窄边框显示器与内嵌壁纸、金属底座、侧透主机及内部风扇/显卡/主板、散热格栅、USB 接口、真实键位与字标、曲面鼠标；默认底部离地 75 cm，可调整以匹配桌面。",
+      "default_elevation": 0.75
+    },
+    {
       "id": "habitat_dining_bench",
       "kind": "dining_bench",
       "furniture_kind": "bench",
@@ -946,31 +986,61 @@
       "id": "habitat_drying_rack",
       "kind": "drying_rack",
       "furniture_kind": "model",
-      "name": "折叠翼型落地晾衣架",
+      "name": "不锈钢 X 型双杆落地晾衣架",
       "dimensions": [
-        1.5,
-        0.6,
-        1.0
+        1.6,
+        0.72,
+        1.65
       ],
-      "revision": "3.1.0",
+      "revision": "3.2.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
-      "triangles": 5472,
-      "sha256": "1d96eddc56473e28e38a92ea90bdab4ebae80a3c0b292d7ff6ed31aa5316c3ad",
+      "triangles": 2912,
+      "sha256": "aa1c5b5d513c8a7ef7be66cd22d8f8a8f9dcb12345021d8a9b4f94dd56014dc3",
       "category": "阳台",
       "family": "晾衣架",
-      "variant": "翼型晾衣架",
+      "variant": "X 型双杆晾衣架",
       "style": "现代简约",
       "tags": [
         "阳台",
         "晾衣架",
-        "翼型晾衣架"
+        "X 型双杆晾衣架"
       ],
       "rooms": [
         "阳台"
       ],
-      "description": "翼型晾衣架，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。水平主晾晒架、两侧折叠翼、交叉铰链与防滑脚套；不含折叠动画。"
+      "description": "X 型双杆晾衣架，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。两端 X 型交叉落地支架、顶部双挂衣横杆、中部连接撑与防滑脚套，适合使用衣架悬挂长衣。"
+    },
+    {
+      "id": "habitat_drying_rack_single",
+      "kind": "drying_rack_single",
+      "furniture_kind": "model",
+      "name": "伸缩单杆落地晾衣架",
+      "dimensions": [
+        1.6,
+        0.55,
+        1.65
+      ],
+      "revision": "3.2.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 2432,
+      "sha256": "238bffb0da9b4fd839460831dae0b6aebaf7006a851bbb461ed5876e4c760213",
+      "category": "阳台",
+      "family": "晾衣架",
+      "variant": "单杆晾衣架",
+      "style": "现代简约",
+      "tags": [
+        "阳台",
+        "晾衣架",
+        "单杆晾衣架"
+      ],
+      "rooms": [
+        "阳台"
+      ],
+      "description": "单杆晾衣架，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。单根加粗挂衣横杆、双侧伸缩立柱、锁紧套与 T 型防滑底脚，保留衣物悬挂空间。"
     },
     {
       "id": "habitat_entry_console",
@@ -1181,6 +1251,43 @@
         "厨房"
       ],
       "description": "独立岛台，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+    },
+    {
+      "id": "habitat_laptop",
+      "kind": "laptop",
+      "furniture_kind": "model",
+      "name": "轻薄笔记本电脑（展开）",
+      "dimensions": [
+        0.35,
+        0.27,
+        0.245
+      ],
+      "revision": "3.2.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 33622,
+      "sha256": "01411849105549dfa1e67c47197a483e0fb60350163924ecbf0a339b557cd7da",
+      "category": "书房",
+      "family": "电脑",
+      "variant": "笔记本电脑",
+      "style": "现代简约",
+      "tags": [
+        "书房",
+        "电脑",
+        "笔记本电脑",
+        "电脑",
+        "计算机",
+        "办公设备",
+        "桌面摆件",
+        "笔记本",
+        "手提电脑"
+      ],
+      "rooms": [
+        "书房"
+      ],
+      "description": "笔记本电脑，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。轻薄圆角铝合金机身、窄边屏幕与内嵌壁纸、独立转轴、错位键盘及字标、玻璃触控板、扬声器开孔、散热口、USB-C/USB-A/HDMI 接口及摄像头；默认底部离地 75 cm，可调整以匹配桌面。",
+      "default_elevation": 0.75
     },
     {
       "id": "habitat_laundry_tower",
@@ -1839,31 +1946,37 @@
       "id": "habitat_sofa_daybed",
       "kind": "sofa_daybed",
       "furniture_kind": "sofa",
-      "name": "木框客卧两用日床",
+      "name": "原木软垫休闲日床",
       "dimensions": [
         2.1,
         0.95,
         0.78
       ],
-      "revision": "3.1.0",
+      "revision": "3.2.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
-      "triangles": 12864,
-      "sha256": "e776691354788515e624f97c885192806c64c86eba7f020e8a04e4649ae6a561",
+      "triangles": 24860,
+      "sha256": "20b92b66e74d23ee0d0009e70eee4ff4085d1857a4e7d609bff27f34710f95d8",
       "category": "客厅",
       "family": "沙发",
-      "variant": "日床款",
+      "variant": "整垫躺卧款",
       "style": "自然清新",
       "tags": [
         "客厅",
         "沙发",
-        "日床款"
+        "整垫躺卧款",
+        "日床",
+        "躺卧",
+        "整张软垫",
+        "木条围框"
       ],
       "rooms": [
-        "客厅"
+        "客厅",
+        "卧室",
+        "书房"
       ],
-      "description": "日床款，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。固定日床造型，不含展开动画。"
+      "description": "整张长软垫搭配通透木条围框、可移位头枕和床尾搭毯，适合靠坐或单人小憩。整体尺寸 210 × 95 × 78 cm，可在人工设计中调整。固定日床造型，不含展开动画。"
     },
     {
       "id": "habitat_sofa_modular",

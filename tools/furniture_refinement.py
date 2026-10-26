@@ -73,7 +73,7 @@ def piping(m, name, p, w, d, role="cream", radius=0.06, thickness=0.0025):
         )
 
 
-def cloth(m, name, width, depth, y, z, role, drop=0.09):
+def cloth(m, name, width, depth, y, z, role, drop=0.09, *, x=0):
     nx, nz = 32, 32
     vertices = []
     for lower in [False, True]:
@@ -85,7 +85,7 @@ def cloth(m, name, width, depth, y, z, role, drop=0.09):
                     zz * 19 - xx * 6
                 )
                 yy = y - drop * max(edge, foot) + wrinkle - (0.017 if lower else 0)
-                vertices.append([xx * width / 2, yy, z + zz * depth / 2])
+                vertices.append([x + xx * width / 2, yy, z + zz * depth / 2])
     faces = []
     n = nx * nz
     for j in range(nz - 1):
@@ -434,9 +434,72 @@ def rack(m, w, d, h):
         )
 
 
+def daybed(m, w, d, h, role):
+    """A continuous lounging surface on an open, connected timber frame."""
+    m.legs(w - 0.08, d - 0.08, 0.25, "oak", inset=0.09)
+    plate(m, "实木承重底座", [0, 0.28, 0], [w, 0.10, d], "oak", 0.055)
+    plate(
+        m, "内缩床垫托板", [0, 0.335, 0.01], [w - 0.10, 0.025, d - 0.09], "oak", 0.045
+    )
+
+    mw, md, mz = w - 0.16, d - 0.13, 0.015
+    soft(m, "整张躺卧软垫", [0, 0.423, mz], [mw, 0.18, md], role, 0.34)
+    for y in [0.362, 0.484]:
+        piping(
+            m,
+            "软垫细滚边",
+            [0, y, mz],
+            mw - 0.024,
+            md - 0.024,
+            role,
+            radius=0.055,
+            thickness=0.002,
+        )
+
+    rear, front, side = -d / 2 + 0.035, d / 2 - 0.035, w / 2 - 0.035
+    top, arm = h - 0.025, 0.61
+    for x in [-side, side]:
+        m.box(
+            "后围框立柱",
+            [x, (0.30 + top) / 2, rear],
+            [0.05, top - 0.30, 0.05],
+            "oak",
+            0.008,
+        )
+        m.box(
+            "端部前立柱",
+            [x, (0.30 + arm) / 2, front],
+            [0.05, arm - 0.30, 0.05],
+            "oak",
+            0.008,
+        )
+        m.rod("圆润侧扶手", [x, arm, rear], [x, arm, front], 0.025, "oak")
+        m.box("侧围框下横撑", [x, 0.37, 0], [0.035, 0.04, d - 0.07], "oak", 0.007)
+        for z in [-d * 0.26, 0, d * 0.26]:
+            m.box("通透侧围木条", [x, 0.49, z], [0.025, 0.22, 0.028], "oak", 0.006)
+    m.rod("圆润后围扶手", [-side, top, rear], [side, top, rear], 0.025, "oak")
+    m.box("后围框下横撑", [0, 0.37, rear], [w - 0.07, 0.04, 0.035], "oak", 0.007)
+    for x in np.linspace(-side + 0.10, side - 0.10, 15):
+        m.box(
+            "通透靠背木条",
+            [x, (0.39 + top - 0.01) / 2, rear],
+            [0.026, top - 0.40, 0.028],
+            "oak",
+            0.006,
+        )
+
+    # Place the head pillow at one end instead of across the lounging surface.
+    soft(
+        m, "可移位头枕", [-w * 0.315, 0.575, mz], [0.46, 0.17, md * 0.73], "cream", 0.55
+    )
+    cloth(m, "床尾轻搭毯", 0.43, d - 0.10, 0.523, mz, "linen", drop=0.055, x=w * 0.28)
+
+
 def refined(m, spec):
     key, _, _, _, _, _, (w, d, h), shape, role = spec
-    if shape in {"bed", "platform"}:
+    if shape == "daybed":
+        daybed(m, w, d, h, role)
+    elif shape in {"bed", "platform"}:
         bed(m, w, d, h, shape, role)
     elif shape in {"bunk", "crib"}:
         nursery(m, w, d, h, shape)

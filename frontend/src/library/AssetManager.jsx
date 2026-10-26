@@ -1,10 +1,32 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Settings2, X } from "lucide-react";
 import { api } from "../api.js";
 import { loadCustomTextures } from "../materials/customTextures.js";
 
 const size = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 export default function AssetManager({ onChange }) {
   const [open, setOpen] = useState(false);
+  const root = useRef(null),
+    trigger = useRef(null),
+    panelId = useId();
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event) => {
+      if (!root.current?.contains(event.target)) setOpen(false);
+    };
+    const escape = (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        trigger.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -38,18 +60,27 @@ export default function AssetManager({ onChange }) {
       setEditing(null);
     });
   return (
-    <section className="asset-manager">
+    <section className="asset-manager" ref={root}>
       <button
+        ref={trigger}
+        aria-controls={panelId}
         aria-expanded={open}
         onClick={() => {
           setOpen(!open);
           if (!open) void run();
         }}
       >
-        管理本机素材与空间
+        <Settings2 size={14} />
+        素材管理
       </button>
       {open && (
-        <div>
+        <div id={panelId} role="region" aria-label="本机素材与空间">
+          <header className="asset-manager-heading">
+            <h2>本机素材与空间</h2>
+            <button aria-label="关闭素材管理" onClick={() => setOpen(false)}>
+              <X size={17} />
+            </button>
+          </header>
           <p>
             归档会从选材目录中隐藏素材，已有方案仍可正常显示；可随时恢复。DIY
             家具请在创作页管理。

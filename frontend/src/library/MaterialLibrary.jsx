@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Search, Upload, Star, Check } from "lucide-react";
 import { materials, materialCategories } from "../catalog.js";
 import {
   loadCustomTextures,
@@ -68,22 +69,39 @@ export default function MaterialLibrary({
         }}
       />
       {uploadError && <p role="alert">{uploadError}</p>}
-      {textureStatus.error && <p role="alert">素材同步失败：{textureStatus.error} <button onClick={() => loadCustomTextures(true)}>重试</button></p>}
-      {!!textureStatus.unavailable.length && <p role="status">有 {textureStatus.unavailable.length} 份材质记录损坏或贴图缺失，其他素材仍可正常使用。</p>}
-      <div className="library-filters">
+      {textureStatus.error && (
+        <p role="alert">
+          素材同步失败：{textureStatus.error}{" "}
+          <button onClick={() => loadCustomTextures(true)}>重试</button>
+        </p>
+      )}
+      {!!textureStatus.unavailable.length && (
+        <p role="status">
+          有 {textureStatus.unavailable.length}{" "}
+          份材质记录损坏或贴图缺失，其他素材仍可正常使用。
+        </p>
+      )}
+      <div className="library-filters library-material-filters">
         <button
+          className="secondary-button"
           disabled={uploading}
           onClick={() => texturePicker.current.click()}
         >
-          {uploading ? "正在导入贴图…" : "导入墙地面贴图"}
+          <Upload size={14} />
+          {uploading ? "正在导入贴图…" : "导入贴图"}
         </button>
         <button
+          className="material-favorite-button"
           aria-pressed={onlyFavorites}
           onClick={() => setOnlyFavorites(!onlyFavorites)}
         >
-          收藏材质
+          <Star size={14} fill={onlyFavorites ? "currentColor" : "none"} />
+          我的收藏
         </button>
-        <div className="library-tabs" aria-label="材质用途">
+        <div
+          className="library-tabs library-material-tabs"
+          aria-label="材质用途"
+        >
           {Object.entries(labels)
             .filter(([id]) => (floorOnly ? id === "floor" : id !== "fabric"))
             .map(([id, label]) => (
@@ -96,19 +114,27 @@ export default function MaterialLibrary({
               </button>
             ))}
         </div>
-        <input
-          className="material-search"
-          aria-label="搜索材质"
-          placeholder="搜索木地板、瓷砖、木饰面、墙布"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <label className="library-search">
+          <Search size={15} />
+          <input
+            type="search"
+            className="material-search"
+            aria-label="搜索材质"
+            placeholder="搜索木地板、瓷砖、木饰面、墙布"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
       </div>
       <div className="library-content">
         <div className="library-browser">
           <div className="library-result-label">
-            {options.length} 款{labels[category]}
-            {category === "fabric" ? "搭配" : "材质"} · 与工作台选材同步
+            <h2>
+              {labels[category]}
+              {category === "fabric" ? "搭配" : "材质"}{" "}
+              <span>{options.length}</span>
+            </h2>
+            <span>为房间选一种喜欢的质感</span>
           </div>
           <div className="library-cards" aria-label="材质样板列表">
             {options.map((m) => (
@@ -118,7 +144,14 @@ export default function MaterialLibrary({
                 aria-pressed={selected?.id === m.id}
                 onClick={() => setSelectedId(m.id)}
               >
-                <MaterialSample material={m} className="material-sample" />
+                <div className="library-material-swatch">
+                  <MaterialSample material={m} className="material-sample" />
+                  {selected?.id === m.id && (
+                    <i className="library-card-check" aria-hidden="true">
+                      <Check size={12} />
+                    </i>
+                  )}
+                </div>
                 <strong>{m.name}</strong>
                 <small>{m.sub}</small>
               </button>

@@ -96,7 +96,7 @@
 | Node.js | 22+ |
 | pnpm | 前端依赖和项目命令，使用 `pnpm-lock.yaml` |
 | Python | 3.11+；当前固定依赖在 Windows、Python 3.13.5 下验证 |
-| Codex CLI | 使用本机已经安装并登录的版本，账号及模型需支持图片输入 |
+| AI 来源 | 本机已登录的 Codex CLI，或在「AI 接入」中连接 DeepSeek API；户型识别需支持图片理解的模型 |
 | Microsoft Edge | 仅浏览器自动验收需要；日常可用支持 WebGL 的浏览器 |
 
 项目不安装另一份 Codex CLI，不复制登录凭据，也不修改全局模型配置。Blender 仅用于可选的离线家具源工程制作。
@@ -120,6 +120,26 @@ pnpm start
 `pnpm start` 使用单个 FastAPI 进程同时提供构建页面和 API，只监听本机。修改前端后需重新 `pnpm build`。关闭服务使用 Ctrl+C；不要同时启动多个使用相同数据目录的后端进程。
 
 同为 Windows、Python 3.13.5 的环境，可用 `backend/requirements.lock.txt` 替代范围依赖文件安装，复现已验证的 Python 包版本。其他环境使用 `requirements-dev.txt` 并运行测试。
+
+macOS 安装时，请在项目目录重新创建 Python 环境，不要复制 Windows 的 `.venv`：
+
+```sh
+pnpm install --frozen-lockfile
+python3 -m venv .venv
+.venv/bin/python -m pip install -r backend/requirements-dev.txt
+pnpm build
+pnpm start
+```
+
+启动脚本优先使用项目 `.venv`，找不到时在 macOS 优先查找 `python3`。本机 Codex 优先读取 `CODEX_CMD` / PATH，并补充常见 Homebrew 安装路径；需要时在 `.env` 中指定完整路径。当前自动化验证在 Windows 完成，macOS Intel / Apple Silicon 尚未完成实机验收。
+
+### 选择 AI 来源
+
+左侧「素材库」下方的 **AI 接入** 页面支持本机 Codex 与 DeepSeek 官方 API：测试连接、读取实时模型目录、选择默认模型，再保存并设为默认。生成表单仍可临时选择来源；已有任务保留原来的模型，不会自动换用另一家服务。
+
+DeepSeek 密钥通过本机后端加密保存，页面不回显，也不写入任务和设计文件。文字模型可用于无参考图的家具、墙地面材质设计；户型识别及带图复核需要支持图片理解的模型。设置和排错详见 [AI 接入说明](docs/ai-connections.md)。
+
+本机 Codex 面板还支持 CLI 版本与认证诊断、协议和模型目录检查、安全重连，以及点击后直接下载安装稳定版。页面显示进度，下载校验后自动重连，失败恢复原连接，并提供版本恢复入口。项目专用 CLI 保存在 `data/runtime/`，沿用本机登录与配置，原本机安装保持不变；不在后台静默升级或切换到其他 AI 服务。
 
 ### 开发模式
 
@@ -154,7 +174,7 @@ Copy-Item .env.example .env
 
 Windows 下，未显式设置 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY` 时，CLI 子进程继承启用的系统手动代理；不修改系统设置。修改代理后重启项目。
 
-生成页面从本机 CLI 获取模型目录，可手动刷新。模型必须支持图片，实际权限取决于账号及服务商。重试可更换模型和推理强度，创建独立任务；不会静默替换模型。`.env`、登录文件及 API 密钥不得提交仓库。
+生成页面从所选 AI 来源获取实时模型目录，可手动刷新。户型识别要求模型支持图片，实际权限取决于账号及服务商。重试可更换模型和推理强度，创建独立任务；不会静默替换模型。`.env`、登录文件及 API 密钥不得提交仓库。
 
 </details>
 

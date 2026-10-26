@@ -222,7 +222,7 @@ def install_surface_creation_routes(app, settings, service, resolve_model=None):
     @app.post("/api/materials/generations", status_code=202)
     async def generate(request: SurfaceGenerate):
         try:
-            if resolve_model and (request.model or request.reasoning_effort):
+            if resolve_model:
                 from .schemas import JobOptions
                 options = await resolve_model(JobOptions(model=request.model, reasoning_effort=request.reasoning_effort), require_image=False)
                 request = request.model_copy(update={"model": options.model, "reasoning_effort": options.reasoning_effort})

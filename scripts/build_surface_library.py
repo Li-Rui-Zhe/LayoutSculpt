@@ -82,5 +82,28 @@ def build():
     save("wool", 238 + fleece * 3 + grain * 2, fleece * .08 + grain * .09)
 
 
+def build_common():
+    """Neutral stone prints: colour veins stay flat, joints have shallow relief."""
+    ROOT.mkdir(parents=True, exist_ok=True)
+    y, x = np.mgrid[:SIZE, :SIZE] / SIZE * 2 * np.pi
+    grain = np.random.default_rng(106).normal(0, 1, (SIZE, SIZE))
+    warp = 0.35 * noise(31, 12)
+    veins = np.exp(-np.square(np.sin(x + 2 * y + warp) / 0.065))
+    fine = np.exp(-np.square(np.sin(3 * x - y + warp * 0.6) / 0.035))
+    color = 247 + noise(32) * 1.5 - veins * 24 - fine * 7 + grain * 0.25
+    height = grain * 0.004
+    save("marble", color, height)
+    yy, xx = np.mgrid[:SIZE, :SIZE]
+    joints = (xx % (SIZE // 2) < 2) | (yy % (SIZE // 2) < 2)
+    save("marble_tiles", color - joints * 30, height - joints * 0.28)
+
+
 if __name__ == "__main__":
-    build()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--common-only", action="store_true")
+    args = parser.parse_args()
+    if not args.common_only:
+        build()
+    build_common()

@@ -6,11 +6,16 @@ import {
   PanelLeftOpen,
   Home,
   Sparkles,
+  Armchair,
+  Layers,
+  Grid2X2,
+  PlugZap,
 } from "lucide-react";
 import { useProjects } from "./hooks/useProjects.js";
 import TaskRail from "./components/TaskRail.jsx";
 import TaskWorkspace from "./components/TaskWorkspace.jsx";
 import GenerationForm from "./components/GenerationForm.jsx";
+const AiConnections = lazy(() => import("./settings/AiConnections.jsx"));
 const SurfaceStudio = lazy(() => import("./diy/SurfaceStudio.jsx"));
 const DiyStudio = lazy(() => import("./diy/DiyStudio.jsx"));
 import WorkspaceHelp from "./components/WorkspaceHelp.jsx";
@@ -29,7 +34,7 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [linkNotice, setLinkNotice] = useState("");
   const [surface, setSurface] = useState(() =>
-    ["diy", "library"].includes(location.hash.slice(1))
+    ["diy", "library", "ai"].includes(location.hash.slice(1))
       ? location.hash.slice(1)
       : "workspace",
   );
@@ -66,7 +71,7 @@ export default function App() {
   };
   useEffect(() => {
     const change = () => {
-      const next = ["diy", "library"].includes(location.hash.slice(1))
+      const next = ["diy", "library", "ai"].includes(location.hash.slice(1))
         ? location.hash.slice(1)
         : "workspace";
       setSurface(next);
@@ -131,7 +136,9 @@ export default function App() {
             <strong>
               {surface === "diy"
                 ? "DIY 设计 · 家具与墙地面"
-                : "素材库 · 模型与材质"}
+                : surface === "ai"
+                  ? "AI 接入 · 模型与连接"
+                  : "素材库 · 模型与材质"}
             </strong>
           )}
         </div>
@@ -157,9 +164,13 @@ export default function App() {
           <span className={`connection ${projects.health ? "online" : ""}`}>
             <i />
             {projects.health
-              ? projects.health.codex?.connected
-                ? "服务在线 · AI 已连接"
-                : "服务在线 · AI 待连接"
+              ? projects.health.ai?.provider === "deepseek"
+                ? projects.health.ai.deepseek_configured
+                  ? "服务在线 · DeepSeek 已配置"
+                  : "服务在线 · DeepSeek 待配置"
+                : projects.health.codex?.connected
+                  ? "服务在线 · AI 已连接"
+                  : "服务在线 · AI 待连接"
               : "正在连接本机服务"}
           </span>
           {!!(activeCount || reviewCount) && (
@@ -241,6 +252,16 @@ export default function App() {
             <Boxes size={20} />
             <span>素材库</span>
           </button>
+          <button
+            aria-label="打开 AI 接入"
+            title="AI 接入 · Codex 与 DeepSeek"
+            className={surface === "ai" ? "active" : ""}
+            aria-current={surface === "ai" ? "page" : undefined}
+            onClick={() => navigate("ai")}
+          >
+            <PlugZap size={20} />
+            <span style={{ whiteSpace: "nowrap" }}>AI 接入</span>
+          </button>
         </nav>
         {railOpen && (
           <button
@@ -255,21 +276,33 @@ export default function App() {
           open={railOpen}
           onSelect={select}
         />
-        <section className="factory-workspace">
+        <section
+          className={`factory-workspace ${surface === "diy" || surface === "library" || surface === "ai" ? "creation-workspace" : ""}`}
+        >
+          {surface === "ai" && (
+            <Suspense fallback={<p role="status">正在打开 AI 接入…</p>}>
+              <AiConnections />
+            </Suspense>
+          )}
           {surface === "diy" && (
             <div className="diy-hub-nav">
+              <div className="creative-nav-title">
+                <Sparkles size={19} />
+                <strong>DIY 创作</strong>
+              </div>
               <div role="tablist" aria-label="DIY 设计类型">
                 {[
-                  ["furniture", "家具 DIY"],
-                  ["walls", "墙面 DIY"],
-                  ["floor", "地板 DIY"],
-                ].map(([id, title]) => (
+                  ["furniture", "家具 DIY", Armchair],
+                  ["walls", "墙面 DIY", Layers],
+                  ["floor", "地板 DIY", Grid2X2],
+                ].map(([id, title, Icon]) => (
                   <button
                     key={id}
                     role="tab"
                     aria-selected={diyMode === id}
                     onClick={() => setDiyMode(id)}
                   >
+                    <Icon size={15} />
                     {title}
                   </button>
                 ))}
