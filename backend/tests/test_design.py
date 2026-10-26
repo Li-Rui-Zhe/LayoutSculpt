@@ -9,9 +9,9 @@ from backend.tests.test_workflow import (
     FakeCodex,
     app_for,
     create_job,
-    wait_job,
-    layout_data,
     furniture_data,
+    layout_data,
+    wait_job,
 )
 
 
@@ -21,6 +21,56 @@ def document():
         "layout": layout_data(),
         "furniture": furniture_data(),
     }
+
+
+def test_manual_save_keeps_clearance_advice_without_moving_furniture(tmp_path):
+    codex = FakeCodex()
+    with TestClient(app_for(tmp_path, codex)) as client:
+        source = wait_job(client, create_job(client)["id"])
+        calls = len(codex.calls)
+        body = document()
+        body["layout"]["rooms"][0].update(kind="bathroom", name="卫生间")
+        body["furniture"]["items"] = [
+            {
+                "kind": "shower",
+                "name": "淋浴间",
+                "room_id": "living",
+                "x": 4,
+                "y": 1,
+                "width": 1,
+                "depth": 1,
+                "height": 2.1,
+                "rotation": 0,
+                "elevation": 0,
+            },
+            {
+                "kind": "toilet",
+                "name": "坐便器",
+                "room_id": "living",
+                "x": 4.35,
+                "y": 1.95,
+                "width": 0.4,
+                "depth": 0.6,
+                "height": 0.76,
+                "rotation": 0,
+                "elevation": 0,
+            },
+        ]
+        checked = client.post("/api/design/check", json=body)
+        assert checked.status_code == 200, checked.text
+        assert any("入口受阻" in item["text"] for item in checked.json()["issues"])
+        response = client.post(f"/api/jobs/{source['id']}/edit", json=body)
+        assert response.status_code == 201, response.text
+        result = wait_job(client, response.json()["id"])
+        assert result["status"] == "succeeded", result
+        saved = client.get(result["result"]["layout_url"]).json()
+        assert [(item["x"], item["y"]) for item in saved["furniture"]] == [
+            (4, 1),
+            (4.35, 1.95),
+        ]
+        quality = client.get(result["result"]["quality_url"]).json()
+        assert any("入口受阻" in text for text in quality["issues"])
+        assert len(codex.calls) == calls
 
 
 def test_all_objects_can_be_removed_and_lights_furniture_changes_persist(tmp_path):

@@ -3,11 +3,20 @@ import { X } from "lucide-react";
 
 export default function Modal({ title, children, onClose, className = "" }) {
   const ref = useRef(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   const titleId = useId();
   useEffect(() => {
     const element = ref.current;
     element.showModal();
-    return () => element.close();
+    const leave = () => close.current();
+    window.addEventListener("hashchange", leave);
+    window.addEventListener("popstate", leave);
+    return () => {
+      window.removeEventListener("hashchange", leave);
+      window.removeEventListener("popstate", leave);
+      element.close();
+    };
   }, []);
   return (
     <dialog
@@ -32,7 +41,7 @@ export default function Modal({ title, children, onClose, className = "" }) {
     >
       <div className="dialog-title">
         <h2 id={titleId}>{title}</h2>
-        <button onClick={onClose} aria-label="关闭">
+        <button type="button" onClick={onClose} aria-label="关闭">
           <X size={20} />
         </button>
       </div>

@@ -229,6 +229,7 @@ export default function SurfaceAiCreator({ category, onSelection }) {
         </div>
         <button
           className="primary-button surface-generate-button"
+          type="submit"
           disabled={
             busy || !!running || !models.ready || prompt.trim().length < 3
           }

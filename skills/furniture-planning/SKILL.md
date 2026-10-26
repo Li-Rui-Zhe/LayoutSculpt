@@ -9,6 +9,8 @@ description: 根据已校验的户型结构安排可建模的家具，保持房�
 
 输入 layout 使用紧凑坐标格式：outline/rooms.polygon 的点是 [x,y]；墙体 a=start、b=end、t=thickness、h=height、ext=exterior。几何信息和米制精度完整保留。仅输出 Furnishing，不重复输出已确定的房间、墙体或门窗。
 
+furniture_assets 已由程序按空间用途、标准尺寸及风格筛选，是本次完整候选范围。styles 是可兼容的风格编号列表，同一素材可用于多个风格；style 是原有中文饰面标签。先满足用途、尺寸与通行，再在候选中选风格合适的款式。小尺寸备选用于空间不足，不能为风格牺牲可用空间。选择真实 GLB 时优先使用 dimensions 原始宽深高，家电、电脑、电视、晾衣架等设备保持原始比例，不能逐轴压扁。默认使用 default_elevation，桌面电脑和笔记本需放在匹配高度的桌面上。不得输出 source_asset_id 或 asset_family 等管理字段；程序在选定素材后自动保留来源。
+
 每件家具使用房间 ID、米制中心 x/y、宽 width、深 depth、高 height、顺时针角度 rotation（度）。width 为未旋转时 X 尺寸，depth 为未旋转时 Y 尺寸。中心与旋转后的四角都要在所属房间 polygon 内。家具与墙留出至少 0.1 米余量，门前预留通行位置。
 
 elevation 是家具底部离地高度（米），普通落地家具设为 0。wall_television 是独立壁挂电视，默认 elevation=1.05，机身高约0.71米，挂架位于背部。靠完整墙面安装，背部与墙面约留0.01米安装缝，正面面向房间；避开门、窗、通道，顶部不得超过安装墙高度。它可与较矮的 tv_console 共用平面位置，但二者垂直区间不能相交。不要用带支架的 television 代替 wall_television，也不要把壁挂电视放在房间中央。

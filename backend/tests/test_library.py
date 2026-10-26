@@ -192,7 +192,10 @@ def test_ai_selects_from_shared_catalog_and_persists_snapshot(tmp_path, source):
 
     codex = LibraryCodex()
     with TestClient(app_for(tmp_path, codex)) as client:
-        client.post("/api/diy/assets", json={"design": design_data()})
+        asset = client.post("/api/diy/assets", json={"design": design_data()}).json()
+        if source == "diy":
+            client.post("/api/drafts/library:new", json={"revision": 0,
+                "document": {"aiEnabled": [f"diy:{asset['id']}"]}})
         job = wait_job(client, create_job(client)["id"])
         assert job["status"] == "succeeded", job
         document = client.get(job["result"]["layout_url"]).json()

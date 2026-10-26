@@ -1,0 +1,37 @@
+{
+  "styles": {
+    "natural": {
+      "name": "原木自然",
+      "labels": ["原木自然", "自然清新", "胡桃木质"]
+    },
+    "cream": { "name": "奶油简约", "labels": ["奶油简约"] },
+    "modern": { "name": "现代简约", "labels": ["现代简约", "胡桃木质"] }
+  },
+  "shared_families": [
+    "电脑",
+    "电视",
+    "洗衣机",
+    "冰箱",
+    "洗碗机",
+    "烤箱",
+    "晾衣架",
+    "淋浴",
+    "坐便器",
+    "洗衣柜"
+  ],
+  "model_styles": {
+    "sofa": ["natural", "modern"],
+    "sofa_compact": ["cream", "modern"],
+    "sofa_modular": ["cream", "modern"],
+    "sofa_daybed": ["natural"],
+    "sofa_chaise_left": ["natural", "modern"],
+    "sofa_chaise_right": ["natural", "modern"],
+    "bed": ["natural", "cream", "modern"],
+    "bed_queen": ["cream", "modern"],
+    "bed_platform": ["natural", "modern"],
+    "bed_bunk": ["natural", "cream"],
+    "crib": ["natural", "cream"],
+    "coffee_table": ["natural", "cream", "modern"],
+    "coffee_nested": ["cream", "modern"]
+  }
+}

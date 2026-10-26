@@ -5,13 +5,14 @@ import DiyPreview from "../diy/DiyPreview.jsx";
 import { createPreviewQueue } from "./previewQueue.js";
 import { selectionFromHit, liveObjects } from "./liveModel.js";
 import { apiErrorMessage } from "../apiErrors.js";
-import OperationStatus from "../components/OperationStatus.jsx";
+import SceneSyncStatus from "./SceneSyncStatus.jsx";
 
 export default function LivePreview({
   document,
   committedDocument,
   jobId,
   selected,
+  selectionType = null,
   active = true,
   busy,
   editError,
@@ -26,8 +27,7 @@ export default function LivePreview({
   onPlacementMove,
   onPlacementConfirm,
 }) {
-  const [night, setNight] = useState(false),
-    [cutaway, setCutaway] = useState(true);
+  const [cutaway, setCutaway] = useState(true);
   const [rotationOpen, setRotationOpen] = useState(false);
   useEffect(
     () => setRotationOpen(false),
@@ -51,7 +51,7 @@ export default function LivePreview({
         revision.current = value.revision;
         setState(value);
       },
-      build: async (snapshot, signal) => {
+      build: async (snapshot, signal, report) => {
         const response = await guardedFetch(`/api/jobs/${jobId}/preview`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -62,6 +62,7 @@ export default function LivePreview({
           const value = await response.json().catch(() => ({}));
           throw Error(apiErrorMessage(value.detail, response.status));
         }
+        report({ phase: "downloading" });
         return response.blob();
       },
       publish: ({ result, document: snapshot, revision: value }) => {
@@ -130,9 +131,6 @@ export default function LivePreview({
                 {rotationOpen ? "收起旋转" : "旋转家具"}
               </button>
             )}
-          <button aria-pressed={night} onClick={() => setNight(!night)}>
-            {night ? "夜晚" : "白天"}
-          </button>
           <button aria-pressed={!cutaway} onClick={() => setCutaway(!cutaway)}>
             {cutaway ? "剖切墙体" : "完整墙体"}
           </button>
@@ -157,17 +155,7 @@ export default function LivePreview({
           )}
         </div>
       )}
-      <OperationStatus
-        active={!dragging && !["ready", "error"].includes(state.phase)}
-        label={
-          state.phase === "loading" ? "正在载入精细模型" : "正在更新三维设计"
-        }
-        detail={
-          selected
-            ? `正在同步：${itemLabel}；位置已按当前设计保留。`
-            : "按当前设计生成，可继续编辑。"
-        }
-      />
+      <SceneSyncStatus state={state} hidden={dragging} hasModel={hasVisibleModel} />
       {rotationOpen &&
         !placement &&
         selected?.type === "furniture" &&
@@ -189,12 +177,13 @@ export default function LivePreview({
         )}
       {model ? (
         <DiyPreview
-          night={night}
+          night={false}
           cutaway={cutaway}
           modelUrl={model.url}
           modelDocument={model.document}
           liveDocument={document}
           liveSelection={selected}
+          selectionType={selectionType}
           liveEditable={!busy && active && hasVisibleModel && !placement}
           placement={active && !busy && hasVisibleModel ? placement : null}
           onPlacementMove={onPlacementMove}
@@ -208,7 +197,10 @@ export default function LivePreview({
             )
               setState({ phase: "ready", revision: model.revision });
           }}
-          onModelError={(message) => setState({ phase: "error", message })}
+          onModelError={(message) => {
+            if (model?.revision === revision.current)
+              setState({ phase: "error", revision: model.revision, message });
+          }}
           onObjectSelect={(data, visibleSnapshot) => {
             const selection = selectionFromHit(
               data,

@@ -634,6 +634,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
             </button>
             <button
               className="primary-button"
+              type="submit"
               disabled={
                 busy ||
                 styleUnsupported ||

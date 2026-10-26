@@ -29,7 +29,7 @@ try {
     operations = saved.filter(
       (op) =>
         op &&
-        ["favorites", "archived", "recent"].includes(op.key) &&
+        ["favorites", "archived", "recent", "aiEnabled"].includes(op.key) &&
         typeof op.id === "string" &&
         typeof op.enabled === "boolean",
     );
@@ -102,7 +102,7 @@ function load() {
   return loading;
 }
 const change = (key, id) => {
-  if (!["favorites", "archived", "recent"].includes(key)) return;
+  if (!["favorites", "archived", "recent", "aiEnabled"].includes(key)) return;
   const op = { key, id, enabled: !(state.value[key] || []).includes(id) };
   operations = operations.filter((old) => old.key !== key || old.id !== id);
   operations.push(op);

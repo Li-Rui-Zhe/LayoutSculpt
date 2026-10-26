@@ -20,6 +20,7 @@ from .ai_contracts import (
 )
 from .ai_failures import ai_failure_message, classify_ai_error
 from .ai_requests import asset_input, furnishing_schema, layout_input, review_schema
+from .asset_selection import select_candidates
 from .architecture import structure_issues, validate_generated_structure
 from .codex import CodexChatModel, CodexClient, CodexError
 from .consistency import matches_confirmation, source_hash, structure_hash
@@ -448,11 +449,21 @@ def create_graph(
         if state["options"].get("furniture_mode", "library") == "library":
             catalog = json.loads(settings.furniture_catalog.read_text(encoding="utf-8"))
             asset_items = [
-                {key: item[key] for key in ["kind", "name", "dimensions"]}
+                {**item, "catalog_kind": item["kind"]}
                 for item in catalog["items"]
             ]
             if library:
-                asset_items = await library.catalog()
+                asset_items = await library.catalog(for_ai=True)
+            available_count = len(asset_items)
+            asset_items = select_candidates(
+                asset_items, layout, state["options"]["style"],
+                state["options"].get("notes", "") + " " + state["options"].get("style_description", ""),
+            )
+            (settings.workspace(state["job_id"]) / "furnishing-candidates.json").write_text(
+                json.dumps({"available": available_count, "selected": len(asset_items),
+                            "style": state["options"]["style"], "items": asset_input(asset_items)},
+                           ensure_ascii=False, indent=2), encoding="utf-8",
+            )
         allowed_assets = {
             item["asset_id"]: item for item in asset_items if "asset_id" in item
         }

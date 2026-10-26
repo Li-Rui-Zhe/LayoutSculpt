@@ -1,3 +1,9 @@
+import presets from "../../../assets/furniture/style-presets.json" with { type: "json" };
+
+function styleLabels(item) {
+  return [...new Set([item.style, ...(item.styles || []).map(id => presets.styles[id]?.name)].filter(Boolean))];
+}
+
 export const roomOrder = [
   "客厅",
   "卧室",
@@ -38,6 +44,7 @@ export function matchesCatalog(
     item.family,
     item.variant,
     item.style,
+    ...styleLabels(item),
     ...(item.tags || []),
     ...(item.rooms || []),
   ]
@@ -47,7 +54,7 @@ export function matchesCatalog(
     (source === "all" || item.source === source) &&
     inRoom(item, category) &&
     (family === "all" || item.family === family) &&
-    (style === "all" || item.style === style) &&
+    (style === "all" || styleLabels(item).includes(style)) &&
     (!maxWidth ||
       Boolean(item.dimensions && item.dimensions[0] <= Number(maxWidth))) &&
     words.every((word) => text.includes(word))
@@ -75,7 +82,7 @@ export function catalogFacets(items, source, category = "all") {
     families: [...new Set(scoped.map((i) => i.family).filter(Boolean))].sort(
       (a, b) => a.localeCompare(b, "zh-CN"),
     ),
-    styles: [...new Set(scoped.map((i) => i.style).filter(Boolean))].sort(
+    styles: [...new Set(scoped.flatMap(styleLabels))].sort(
       (a, b) => a.localeCompare(b, "zh-CN"),
     ),
   };

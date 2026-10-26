@@ -310,7 +310,11 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
                 onChange={(e) => setName(e.target.value)}
               />
             </label>
-            <button className="primary-button" disabled={busy || !name.trim()}>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={busy || !name.trim()}
+            >
               保存名称
             </button>
           </form>

@@ -487,6 +487,37 @@
 .surface-replace-prompt button {
   margin-right: 12px;
 }
+.surface-replace-dialog {
+  width: min(430px, calc(100vw - 36px));
+  box-sizing: border-box;
+  padding: 22px;
+  border: 1px solid #dbe5d7;
+  border-radius: 15px;
+  color: #36543e;
+  background: #fff;
+  box-shadow: 0 18px 70px #1d38252e;
+}
+.surface-replace-dialog::backdrop {
+  background: #19352355;
+}
+.surface-replace-dialog p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #7a8976;
+}
+.surface-replace-dialog .dialog-title h2 {
+  font-size: 16px;
+}
+.surface-replace-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+.surface-continue-error {
+  font-size: 12px;
+  color: #a25d38;
+}
 .surface-studio > [role="status"] {
   padding: 10px 16px;
   background: #e8f0e4;

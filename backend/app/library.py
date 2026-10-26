@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from .config import ROOT
 from .library_models import save_snapshot, snapshot_file
 from .schemas import Furnishing, Furniture
+from .asset_selection import asset_styles
 
 
 class LibraryService:
@@ -111,6 +112,10 @@ class LibraryService:
                         "model_url": f"/api/library/files/{identifier}/model.glb?v={stat.st_mtime_ns}",
                     },
                 }
+                files[identifier]["item"]["styles"] = asset_styles({
+                    **files[identifier]["item"],
+                    **({"styles": registered["styles"]} if registered and registered.get("styles") else {}),
+                })
                 if source == "imported":
                     meta_path = path.with_suffix(".json")
                     if meta_path.is_file():
@@ -186,6 +191,7 @@ class LibraryService:
     async def placement(self, identifier):
         """返回独立家具模板；GLB 固定为内容地址副本。"""
         elevation = 0
+        family = None
         if identifier.startswith("diy:"):
             asset = await self.diy.get(identifier[4:])
             if asset["status"] != "ready":
@@ -223,6 +229,7 @@ class LibraryService:
                 raise HTTPException(422, f"无法放置此模型：{exc}") from exc
             content = {"kind": entry["item"]["furniture_kind"], "asset_id": asset_id}
             name = entry["item"]["name"]
+            family = entry["item"].get("family")
             elevation = entry["item"].get("default_elevation", 0)
         else:
             raise HTTPException(
@@ -233,6 +240,8 @@ class LibraryService:
             max(minimum, n * factor) for n, minimum in zip(dimensions, [0.1, 0.1, 0.02])
         ]
         return Furniture(
+            source_asset_id=identifier,
+            asset_family=family,
             name=name[:60],
             room_id="unplaced",
             x=0,
@@ -245,11 +254,24 @@ class LibraryService:
             **content,
         ).model_dump()
 
-    async def catalog(self):
+    async def catalog(self, *, for_ai=False):
         """AI 与人工使用同一索引，目录仅包含有效的可放置素材。"""
         result = []
+        preferences = {}
+        if for_ai and self.store is not None:
+            db = await self.store.connect()
+            try:
+                async with db.execute("SELECT document FROM workspace_drafts WHERE key=?", ("library:new",)) as cursor:
+                    row = await cursor.fetchone()
+                if row:
+                    preferences = json.loads(row[0])
+            finally:
+                await db.close()
         for item in (await self.listing())["items"]:
             if not item.get("placeable") or item.get("archived"):
+                continue
+            if for_ai and (item["id"] in preferences.get("archived", []) or
+                (item.get("source") != "builtin" and item["id"] not in preferences.get("aiEnabled", []))):
                 continue
             try:
                 if item.get("dimensions"):
@@ -269,6 +291,9 @@ class LibraryService:
                     "kind": "model" if kind == "custom" else kind,
                     "dimensions": dimensions,
                     "category": item.get("category"),
+                    "source": item.get("source"),
+                    "catalog_kind": item.get("catalog_kind"),
+                    "styles": asset_styles(item),
                     **{key: item.get(key) for key in ("family", "variant", "style", "tags", "rooms", "description")},
                     "default_elevation": 1.05 if kind == "wall_television" else item.get("default_elevation", 0),
                 }
@@ -292,7 +317,7 @@ class LibraryService:
                 else:
                     template = await self.placement(asset_id)
                     item.update(
-                        {key: template[key] for key in ["kind", "diy", "asset_id"]}
+                        {key: template[key] for key in ["kind", "diy", "asset_id", "source_asset_id", "asset_family"]}
                     )
             items.append(item)
         return Furnishing.model_validate({"items": items, "notes": document["notes"]})

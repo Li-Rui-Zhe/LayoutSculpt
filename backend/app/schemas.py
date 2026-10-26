@@ -315,6 +315,10 @@ class Furniture(EditableObject):
     elevation: float = Field(default=0, ge=0, le=3)
     rotation: float = Field(ge=-360, le=360)
     diy: DiyDesign | None = None
+    source_asset_id: str | None = Field(
+        default=None, pattern=r"^(file:[a-f0-9]{24}|diy:[a-f0-9]{32})$"
+    )
+    asset_family: str | None = Field(default=None, max_length=60)
     asset_id: str | None = Field(
         default=None,
         pattern=r"^(file:[a-f0-9]{24}|diy:[a-f0-9]{32}|snapshot:[a-f0-9]{64})$",

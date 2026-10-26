@@ -610,3 +610,6 @@
 .managed-assets > div { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #e2e7de; flex-wrap: wrap; }
 .managed-assets > div > span { flex: 1; min-width: 180px; }
 .managed-assets form { display: flex; flex-wrap: wrap; gap: 8px; }
+.library-ai-option { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; margin: 12px 0; }
+.library-ai-option input { width: auto; }
+.library-ai-option small { flex-basis: 100%; color: #7d8979; }

@@ -17,6 +17,7 @@ import {
 import { api } from "../api.js";
 import DiyPreview from "../diy/DiyPreview.jsx";
 import "./library.css";
+import "./libraryWorkspace.css";
 import { useLibraryPreferences } from "../hooks/useLibraryPreferences.js";
 import MaterialLibrary from "./MaterialLibrary.jsx";
 import AssetManager from "./AssetManager.jsx";
@@ -91,6 +92,7 @@ export default function AssetLibrary({
             selectedId: readContext("libraryAsset", saved.selectedId),
             query: readContext("q", saved.query),
             source: readContext("librarySource", saved.source),
+            sort: readContext("librarySort", saved.sort),
             category: readContext("category", saved.category),
             family: readContext("family", saved.family),
             style: readContext("furnitureStyle", saved.style),
@@ -113,9 +115,31 @@ export default function AssetLibrary({
   const [assetType, setAssetType] = useState(
     onClose ? initialAssetType : savedContext.assetType || initialAssetType,
   );
+  const [materialCategory, setMaterialCategory] = useState(
+    floorOnly ? "floor" : readContext("materialCategory", "walls"),
+  );
   const [targetId, setTargetId] = useState(currentJobId);
   const [placing, setPlacing] = useState(false),
     [placeError, setPlaceError] = useState("");
+  const [opening, setOpening] = useState(false),
+    [openError, setOpenError] = useState("");
+  const [openOrigin, setOpenOrigin] = useState("header");
+  const openLock = useRef(false);
+  const openAction = async (callback, origin = "header") => {
+    if (openLock.current) return;
+    openLock.current = true;
+    setOpening(true);
+    setOpenError("");
+    setOpenOrigin(origin);
+    try {
+      await callback();
+    } catch (error) {
+      setOpenError(`打开失败：${error.message}`);
+    } finally {
+      openLock.current = false;
+      setOpening(false);
+    }
+  };
   const [scale, setScale] = useState("100");
   const placeLock = useRef(false);
   const pendingPlacement = useRef(null);
@@ -158,6 +182,7 @@ export default function AssetLibrary({
         category,
         family,
         furnitureStyle: style,
+        librarySort: sort,
       });
   }, [
     active,
@@ -166,6 +191,7 @@ export default function AssetLibrary({
     selectedId,
     query,
     source,
+    sort,
     category,
     family,
     style,
@@ -296,9 +322,9 @@ export default function AssetLibrary({
             !preferences.value.archived?.includes(i.id),
         )
       : [];
-  const official = items.filter((i) => i.source === "builtin");
   useEffect(() => {
     setPlaceError("");
+    setOpenError("");
     setScale("100");
   }, [selected?.id]);
   const place = async () => {
@@ -331,21 +357,40 @@ export default function AssetLibrary({
   };
   useEffect(() => setInfo(null), [selected?.model_url]);
   return (
-    <section className="asset-library-page" aria-label="素材库页面">
-      <header className="diy-page-heading">
+    <section
+      className="asset-library-page library-workspace"
+      aria-label="素材库页面"
+    >
+      <header className="diy-page-heading library-heading">
         <div className="library-title-group">
           <span className="creative-page-mark">
             <Boxes size={25} strokeWidth={1.5} />
           </span>
           <div>
-            <span className="creative-eyebrow">YOUR MATERIAL COLLECTION</span>
             <h1>
               素材库{" "}
               <small>
                 {assetType === "models" ? `${items.length} 个模型` : "装修材质"}
               </small>
             </h1>
-            <p>为你的空间，挑选一点灵感。</p>
+          </div>
+        </div>
+        <div className="library-navigation">
+          <div className="library-tabs library-type-tabs" aria-label="素材类型">
+            <button
+              aria-pressed={assetType === "models"}
+              onClick={() => setAssetType("models")}
+            >
+              <Box size={16} />
+              三维模型
+            </button>
+            <button
+              aria-pressed={assetType === "materials"}
+              onClick={() => setAssetType("materials")}
+            >
+              <Palette size={16} />
+              装修材质
+            </button>
           </div>
         </div>
         <div className="library-actions">
@@ -429,45 +474,31 @@ export default function AssetLibrary({
             <RotateCcw size={14} />
             刷新素材
           </button>
-          <button className="primary-button" onClick={onCreate}>
-            <Sparkles size={14} />去 DIY 创作
+          <button
+            className="primary-button"
+            disabled={!onCreate || opening}
+            onClick={() =>
+              openAction(() =>
+                onCreate(
+                  assetType === "materials"
+                    ? floorOnly
+                      ? "floor"
+                      : materialCategory
+                    : "furniture",
+                ),
+              )
+            }
+          >
+            <Sparkles size={14} />
+            {opening ? "正在打开…" : "去 DIY 创作"}
           </button>
         </div>
       </header>
-      <div className="library-navigation">
-        <div className="library-tabs library-type-tabs" aria-label="素材类型">
-          <button
-            aria-pressed={assetType === "models"}
-            onClick={() => setAssetType("models")}
-          >
-            <Box size={16} />
-            三维模型
-          </button>
-          <button
-            aria-pressed={assetType === "materials"}
-            onClick={() => setAssetType("materials")}
-          >
-            <Palette size={16} />
-            装修材质
-          </button>
-        </div>
-        {assetType === "models" && source === "builtin" && (
-          <div className="library-collection-summary">
-            <div>
-              <strong>家庭家具系列</strong>
-            </div>
-            <span>
-              <b>{official.length}</b> 款家具
-            </span>
-            <span>
-              <b>
-                {new Set(official.map((i) => i.family).filter(Boolean)).size}
-              </b>{" "}
-              个品类
-            </span>
-          </div>
-        )}
-      </div>
+      {openError && openOrigin === "header" && (
+        <p className="diy-error" role="alert">
+          {openError}
+        </p>
+      )}
       {assetType === "materials" ? (
         <MaterialLibrary
           rooms={materialRooms}
@@ -475,7 +506,11 @@ export default function AssetLibrary({
           targetName={materialTargetName || targetName || "当前方案"}
           floorOnly={floorOnly}
           initialRoomId={materialRoomId}
-          initialCategory={readContext("materialCategory", "walls")}
+          initialCategory={materialCategory}
+          onCategoryChange={(category) => {
+            setMaterialCategory(category);
+            if (!onClose) writeContext({ materialCategory: category });
+          }}
         />
       ) : (
         <>
@@ -487,7 +522,7 @@ export default function AssetLibrary({
               </button>
             </p>
           )}
-          <div className="library-filters">
+          <div className="library-filters library-model-filters">
             <div
               className="library-tabs library-source-tabs"
               aria-label="素材来源"
@@ -636,7 +671,7 @@ export default function AssetLibrary({
             <div className="library-browser">
               <div className="library-result-label">
                 <h2>
-                  发现好设计 <span>{visible.length}</span>
+                  素材 <span>{visible.length}</span>
                 </h2>
                 <span>选择素材，查看三维细节</span>
               </div>
@@ -753,6 +788,24 @@ export default function AssetLibrary({
                         ? `${selected.category} / ${selected.family} / ${selected.variant}`
                         : selected.filename}
                     </p>
+                    {["imported", "diy"].includes(selected.source) && (
+                      <label className="library-ai-option">
+                        <input
+                          type="checkbox"
+                          disabled={!preferences.ready || !!preferences.error}
+                          checked={
+                            preferences.value.aiEnabled?.includes(
+                              selected.id,
+                            ) || false
+                          }
+                          onChange={() =>
+                            preferences.change("aiEnabled", selected.id)
+                          }
+                        />
+                        允许 AI 自动使用此素材
+                        <small>关闭后仍可手动放置，已有方案保留。</small>
+                      </label>
+                    )}
                   </div>
                   <DiyPreview
                     modelUrl={selected.model_url}
@@ -892,7 +945,13 @@ export default function AssetLibrary({
                     {selected.source === "diy" && onEditDiy && (
                       <button
                         className="primary-button"
-                        onClick={() => onEditDiy(selected.asset_id)}
+                        disabled={opening || !selected.asset_id}
+                        onClick={() =>
+                          openAction(
+                            () => onEditDiy(selected.asset_id),
+                            "selection",
+                          )
+                        }
                       >
                         <Sparkles size={14} />
                         编辑 DIY 部件
@@ -901,14 +960,26 @@ export default function AssetLibrary({
                     {selected.source === "generated" && onOpenJob && (
                       <button
                         className="primary-button"
-                        onClick={() => onOpenJob(selected.job_id)}
+                        disabled={opening || !selected.job_id}
+                        onClick={() =>
+                          openAction(
+                            () => onOpenJob(selected.job_id),
+                            "selection",
+                          )
+                        }
                       >
                         <ArrowUpRight size={14} />
-                        打开方案
+                        {opening ? "正在打开方案…" : "打开方案"}
                       </button>
                     )}
                   </div>
                   <p className="library-note">
+                    {openError && openOrigin === "selection" && (
+                      <span role="alert">
+                        {openError}
+                        <br />
+                      </span>
+                    )}
                     展示实际 GLB 网格及材质。DIY
                     素材支持部件编辑；家具放置在人工设计页完成。
                   </p>

@@ -1,5 +1,6 @@
 import EditorSaveBar from "./EditorSaveBar.jsx";
 import "./editorWorkspace.css";
+import "./editorPolish.css";
 import PlanReferenceTools from "./PlanReferenceTools.jsx";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -27,6 +28,9 @@ import {
   Copy,
   Hand,
   Sparkles,
+  Box,
+  LockKeyhole,
+  UnlockKeyhole,
 } from "lucide-react";
 import { wallSides, calibrate, snapFurniture } from "./designTools.js";
 import { batchFurniture } from "./batch.js";
@@ -45,11 +49,14 @@ import { UnitContext } from "./UnitContext.js";
 import WallElevation from "./WallElevation.jsx";
 import LightGroupControls from "./LightGroupControls.jsx";
 import FloorTiling from "./FloorTiling.jsx";
+import FloorRoomTarget from "./FloorRoomTarget.jsx";
 import NumberField from "./NumberField.jsx";
 const DiyStudio = lazy(() => import("../diy/DiyStudio.jsx"));
+const SurfaceStudio = lazy(() => import("../diy/SurfaceStudio.jsx"));
 import SurfaceFinishPicker from "./SurfaceFinishPicker.jsx";
 import SurfaceTransfer from "./SurfaceTransfer.jsx";
 import AssetLibrary from "../library/AssetLibrary.jsx";
+import FurnitureReplacement from "./FurnitureReplacement.jsx";
 import {
   placeLibraryFurniture,
   validateFurnitureTemplate,
@@ -60,11 +67,11 @@ import { updatePlacedDesign, placedDesign } from "../diy/design.js";
 import OpeningComposer from "./OpeningComposer.jsx";
 import { validateOpening } from "./openingPlacement.js";
 import RotationControl from "./RotationControl.jsx";
-import { showerKinds, showerProblems } from "./showerPlacement.js";
+import { showerKinds } from "./showerPlacement.js";
+import { manualDesignChecks, feedbackKey } from "./manualValidation.js";
 import PolygonFields from "./PolygonFields.jsx";
 import { useDesignCheck } from "./useDesignCheck.js";
 import { useEditDraft } from "./useEditDraft.js";
-import { materials, materialCategories } from "../catalog.js";
 import { applySurfaceDraft, floorColor } from "../materials/assignments.js";
 import { resolveMaterial } from "../materials/custom.js";
 import { usePlanNavigation } from "./usePlanNavigation.js";
@@ -112,7 +119,7 @@ const tools = [
 ];
 const hints = {
   lights:
-    "支持灯泡、吊灯、落地灯、吸顶灯、筒灯和台灯，可调整位置、高度、亮度、色温及灯组。三维切换夜晚查看效果。",
+    "支持灯泡、吊灯、落地灯、吸顶灯、筒灯和台灯，可调整位置、高度、亮度、色温及灯组。保存后可在设计预览查看灯光效果。",
   furniture: "拖动家具移动，拖动绿色手柄旋转；右侧精确调整位置、尺寸和角度。",
   walls:
     "拖动墙线移动整面墙，拖两端圆点调整长度；相连墙角与邻近地板角点会联动，户型轮廓自动适配。",
@@ -210,6 +217,7 @@ export default function ManualEditor({
   }, [editorView, isActive, job.id, designMode]);
 
   const [diyOpen, setDiyOpen] = useState(null);
+  const [surfaceClipboard, setSurfaceClipboard] = useState(null);
   const reviewing = job.status === "awaiting_review";
   const draft = useEditDraft(job.id, reviewing);
   const locked = draft.document
@@ -415,13 +423,10 @@ export default function ManualEditor({
       return null;
     return deriveOutline(document.layout).issue;
   }, [document, draft.base]);
-  const issues = document
-    ? [
-        ...(outlineIssue ? [outlineIssue] : []),
-        ...problems(document),
-        ...showerProblems(document),
-      ]
-    : [];
+  const { errors: issues, warnings: placementWarnings } = manualDesignChecks(
+    document,
+    outlineIssue,
+  );
   const serverCheck = useDesignCheck(
     draft.document,
     isActive && !reviewing && !issues.length,
@@ -432,24 +437,30 @@ export default function ManualEditor({
     : document?.layout.walls[0]?.id || "";
   const hasFeedback = !!(
     issues.length ||
+    placementWarnings.length ||
     serverCheck.issues.length ||
     error ||
     draft.storageError
   );
   // 同一问题可能同时来自操作错误、前端校验和服务端检查，优先保留可定位的条目。
-  const feedbackTexts = new Set(issues.map((issue) => issue.text.trim()));
+  const feedbackTexts = new Set(
+    [...issues, ...placementWarnings].map((issue) => feedbackKey(issue.text)),
+  );
   const detailError =
-    error && error !== draft.storageError && !feedbackTexts.has(error.trim())
+    error &&
+    error !== draft.storageError &&
+    !feedbackTexts.has(feedbackKey(error))
       ? error
       : "";
-  if (error) feedbackTexts.add(error.trim());
-  if (draft.storageError) feedbackTexts.add(draft.storageError.trim());
+  if (error) feedbackTexts.add(feedbackKey(error));
+  if (draft.storageError) feedbackTexts.add(feedbackKey(draft.storageError));
   const feedbackSuggestions = serverCheck.issues.filter((issue) => {
-    const text = issue.text.trim();
+    const text = feedbackKey(issue.text);
     if (feedbackTexts.has(text)) return false;
     feedbackTexts.add(text);
     return true;
   });
+  const adviceCount = placementWarnings.length + feedbackSuggestions.length;
   useEffect(() => {
     setPickingWall(false);
   }, [tool]);
@@ -1233,11 +1244,23 @@ export default function ManualEditor({
         targetName={job.name}
         onClose={() => setLibraryOpen(false)}
         onPlace={useLibrary}
-        onCreate={() => {
+        onCreate={(mode) => {
           setLibraryOpen(false);
-          setDiyOpen({ mode: "add" });
+          setDiyOpen({ mode: mode === "floor" ? "surface" : "add" });
         }}
       />
+    );
+  if (diyOpen?.mode === "surface")
+    return (
+      <Suspense fallback={<p role="status">正在打开地板材质创作…</p>}>
+        <SurfaceStudio
+          category="floor"
+          onLibrary={() => {
+            setDiyOpen(null);
+            setLibraryOpen("materials");
+          }}
+        />
+      </Suspense>
     );
   if (diyOpen)
     return (
@@ -1278,6 +1301,7 @@ export default function ManualEditor({
       active={isActive}
       busy={busy || !!drawing || pickingWall}
       selected={selected}
+      selectionType={tool === "rooms" ? "rooms" : null}
       onRotate={rotate}
       onRotationPreview={previewRotation}
       onRotationFinish={finishRotation}
@@ -1346,26 +1370,6 @@ export default function ManualEditor({
         className={`manual-editor editor-view-${editorView}${focusCanvas ? " canvas-focused" : ""}`}
         ref={root}
       >
-        <nav className="editor-page-nav" aria-label="人工设计页面">
-          <div>
-            {[
-              ["plan", "平面设计"],
-              ["scene", "三维设计"],
-            ].map(([view, label]) => (
-              <button
-                key={view}
-                aria-current={editorView === view ? "page" : undefined}
-                disabled={busy}
-                onClick={() => setEditorView(view)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <span>
-            {isScene ? "三维模型编辑 · 实时更新" : "平面图编辑 · 精确绘制"}
-          </span>
-        </nav>
         {placement && (
           <section
             className="furniture-placement-bar"
@@ -1426,6 +1430,26 @@ export default function ManualEditor({
           </section>
         )}
         <div className="edit-toolbar">
+          <nav className="editor-page-nav" aria-label="人工设计页面">
+            <div>
+              {[
+                ["plan", "平面设计", SquareDashed],
+                ["scene", "三维设计", Box],
+              ].map(([view, label, Icon]) => (
+                <button
+                  key={view}
+                  aria-label={label}
+                  title={label}
+                  aria-current={editorView === view ? "page" : undefined}
+                  disabled={busy}
+                  onClick={() => setEditorView(view)}
+                >
+                  <Icon size={14} />
+                  {view === "plan" ? "平面" : "三维"}
+                </button>
+              ))}
+            </div>
+          </nav>
           <div className="edit-tool-tabs" hidden={!!designMode}>
             {tools
               .filter(([id]) =>
@@ -1474,10 +1498,11 @@ export default function ManualEditor({
               type="button"
               className="secondary-button"
               aria-pressed={focusCanvas}
+              aria-label={focusCanvas ? "展开面板" : "专注画布"}
+              title={focusCanvas ? "展开面板" : "专注画布"}
               onClick={() => setFocusCanvas(!focusCanvas)}
             >
               <Focus size={14} />
-              {focusCanvas ? "展开面板" : "专注画布"}
             </button>
             <button
               title="撤销设计"
@@ -1533,8 +1558,13 @@ export default function ManualEditor({
                 </button>
               </div>
             </details>
-            <button className="secondary-button" onClick={onClose}>
-              {reviewing ? "返回结构核对" : "返回方案预览"}
+            <button
+              className="secondary-button editor-return"
+              onClick={onClose}
+              aria-label={reviewing ? "返回结构核对" : "返回方案预览"}
+            >
+              <ArrowLeft size={14} />
+              返回预览
             </button>
           </div>
         </div>
@@ -1870,9 +1900,7 @@ export default function ManualEditor({
                       </button>
                     </div>
                     <p className="field-note">
-                      {isScene
-                        ? "在三维画布切换「夜晚」查看灯光效果。最多 12"
-                        : "保存并生成三维后，在设计预览切换「夜晚」。最多 12"}
+                      保存并生成三维后，可在设计预览查看灯光效果。最多 12
                       盏灯，可单独开关。
                     </p>
                   </>
@@ -2909,69 +2937,76 @@ export default function ManualEditor({
               aria-label="对象属性"
             >
               <div className="inspector-heading">
-                <span>对象属性</span>
-                <strong>
-                  {openingKind
-                    ? `新增${openingNames[openingKind]}`
-                    : selectedName}
-                </strong>
-                <small>
-                  {isScene
-                    ? item
-                      ? "参数停输后自动更新 · Enter 立即应用"
-                      : "从对象库或三维模型选择对象"
-                    : item
-                      ? "修改即时反映在平面图"
-                      : "从对象库或平面图选择对象"}
-                </small>
+                <div className="inspector-heading-top">
+                  <span>
+                    {tool === "rooms"
+                      ? "地板设置"
+                      : `${tools.find(([id]) => id === tool)?.[2] || "对象"}设置`}
+                  </span>
+                  {item && (
+                    <button
+                      type="button"
+                      className="inspector-lock"
+                      disabled={busy || !!drawing}
+                      aria-pressed={locked.includes(
+                        `${selected.type}:${selected.index}`,
+                      )}
+                      aria-label={
+                        locked.includes(`${selected.type}:${selected.index}`)
+                          ? "解锁对象"
+                          : "锁定对象"
+                      }
+                      title={
+                        locked.includes(`${selected.type}:${selected.index}`)
+                          ? "解锁后可编辑"
+                          : "锁定，防止误操作"
+                      }
+                      onClick={toggleLock}
+                    >
+                      {locked.includes(`${selected.type}:${selected.index}`) ? (
+                        <LockKeyhole size={14} />
+                      ) : (
+                        <UnlockKeyhole size={14} />
+                      )}
+                    </button>
+                  )}
+                </div>
+                {tool === "rooms" ? (
+                  <>
+                    <FloorRoomTarget
+                      rooms={document.layout.rooms}
+                      value={selected?.type === "rooms" ? item?.id : ""}
+                      disabled={busy || !!drawing || !!placement}
+                      onChange={(id) => {
+                        const index = document.layout.rooms.findIndex(
+                          (room) => room.id === id,
+                        );
+                        if (index >= 0) select("rooms", index);
+                      }}
+                    />
+                    {selected?.type === "rooms" && item && (
+                      <small>
+                        {polygonArea(item.polygon).toFixed(1)} ㎡ ·
+                        仅应用于此房间
+                      </small>
+                    )}
+                  </>
+                ) : (
+                  <strong>
+                    {openingKind
+                      ? `新增${openingNames[openingKind]}`
+                      : selectedName}
+                  </strong>
+                )}
               </div>
-              {item && (
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    const key = `${selected.type}:${selected.index}`;
-                    toggleLock();
-                  }}
-                >
-                  {locked.includes(`${selected.type}:${selected.index}`)
-                    ? "解锁对象"
-                    : "锁定对象"}
-                </button>
-              )}
               <fieldset
+                className="inspector-fields"
                 disabled={
                   busy ||
                   !!drawing ||
                   locked.includes(`${selected?.type}:${selected?.index}`)
                 }
               >
-                {item && ["rooms", "walls"].includes(selected?.type) && (
-                  <LocalReview
-                    key={`${selected.type}:${item.id}`}
-                    job={job}
-                    document={draft.document}
-                    selected={selected}
-                    onApply={(next) => draft.commit(next, false)}
-                    onLocate={(type, id) => {
-                      const index = objects(document, type).findIndex(
-                        (x) => x.id === id,
-                      );
-                      if (index >= 0) {
-                        select(type, index);
-                        const object = objects(document, type)[index];
-                        navigation.focus(
-                          type === "rooms"
-                            ? center(object.polygon)
-                            : {
-                                x: (object.start.x + object.end.x) / 2,
-                                y: (object.start.y + object.end.y) / 2,
-                              },
-                          Math.max(1.5, navigation.zoom),
-                        );
-                      }
-                    }}
-                  />
-                )}
                 {openingKind && (
                   <OpeningComposer
                     key={`${openingKind}-${openingSequence}`}
@@ -2991,37 +3026,6 @@ export default function ManualEditor({
                   >
                     {selected.type === "lights" && (
                       <>
-                        <label className="edit-label">
-                          灯具名称
-                          <input
-                            aria-label="灯具名称"
-                            maxLength={60}
-                            value={item.name}
-                            onChange={(e) =>
-                              patch((_, target) => {
-                                target.name = e.target.value;
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="edit-label">
-                          灯具类型
-                          <select
-                            aria-label="灯具类型"
-                            value={item.kind}
-                            onChange={(e) =>
-                              patch((_, target) => {
-                                target.kind = e.target.value;
-                              })
-                            }
-                          >
-                            {Object.entries(lightNames).map(([id, name]) => (
-                              <option key={id} value={id}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
                         <div className="edit-number-grid">
                           {number("发光点高度", "elevation", 0.3, 4.5)}
                           {number("灯具亮度", "lumens", 0, 3000, "lm")}
@@ -3061,6 +3065,40 @@ export default function ManualEditor({
                         <p className="field-note">
                           白天关闭人工灯光；夜晚按已保存的开关、亮度和色温照明。
                         </p>
+                        <details className="inspector-group">
+                          <summary>灯具信息</summary>
+                          <label className="edit-label">
+                            灯具名称
+                            <input
+                              aria-label="灯具名称"
+                              maxLength={60}
+                              value={item.name}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.name = e.target.value;
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="edit-label">
+                            灯具类型
+                            <select
+                              aria-label="灯具类型"
+                              value={item.kind}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.kind = e.target.value;
+                                })
+                              }
+                            >
+                              {Object.entries(lightNames).map(([id, name]) => (
+                                <option key={id} value={id}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </details>
                         <LightGroupControls
                           document={document}
                           index={selected.index}
@@ -3070,6 +3108,15 @@ export default function ManualEditor({
                     )}
                     {selected.type === "furniture" && (
                       <>
+                        <FurnitureReplacement
+                          key={item.edit_id || selected.index}
+                          document={draft.document}
+                          index={selected.index}
+                          onCommit={(next) => {
+                            draft.commit(next, false);
+                            setError("");
+                          }}
+                        />
                         {showerKinds.includes(item.kind) && (
                           <label className="edit-label">
                             淋浴形式
@@ -3226,64 +3273,6 @@ export default function ManualEditor({
                     )}
                     {selected.type === "walls" && (
                       <>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={!!item.load_bearing}
-                            onChange={(e) =>
-                              patch((_, w) => {
-                                w.load_bearing = e.target.checked;
-                              })
-                            }
-                          />{" "}
-                          已核实为承重墙
-                        </label>
-                        {item.load_bearing && (
-                          <p className="workspace-note">
-                            已标记承重结构，改动前需专业人员核实。
-                          </p>
-                        )}
-                        <details className="edit-advanced">
-                          <summary>按此墙长度校准平面尺寸</summary>
-                          <p>
-                            当前长 {wallLength(item).toFixed(3)}{" "}
-                            m；校准会等比调整全屋平面，墙高与家具高度保持不变，可撤销。
-                          </p>
-                          <NumberField
-                            label="墙体实际长度"
-                            value={actualLength}
-                            min={0.1}
-                            max={60}
-                            onCommit={setActualLength}
-                          />
-                          <button
-                            onClick={() => {
-                              try {
-                                draft.commit(
-                                  calibrate(
-                                    draft.document,
-                                    wallLength(item),
-                                    actualLength,
-                                  ),
-                                  false,
-                                );
-                              } catch (e) {
-                                setError(e.message);
-                              }
-                            }}
-                          >
-                            应用尺寸校准
-                          </button>
-                        </details>
-                        <WallElevation
-                          wall={item}
-                          openings={document.layout.openings}
-                          onChange={(regions) =>
-                            patch((_, w) => {
-                              w.finish_regions = regions;
-                            })
-                          }
-                        />
                         <label className="edit-label">
                           装修哪一侧
                           <select
@@ -3325,71 +3314,142 @@ export default function ManualEditor({
                             })
                           }
                         />
-                        <p className="field-note">
-                          当前选择：墙体 {selected.index + 1} ·
-                          修改后同步三维预览，保存可生成独立版本。
-                        </p>
                         <SurfaceTransfer
                           document={document}
                           type="walls"
                           index={selected.index}
                           side={wallSide}
+                          clipboard={
+                            surfaceClipboard?.type === "walls"
+                              ? surfaceClipboard
+                              : null
+                          }
+                          onCopy={(value) =>
+                            setSurfaceClipboard({ ...value, type: "walls" })
+                          }
                           onCommit={draft.commit}
                         />
-                        <label className="edit-label">
-                          墙体类型
-                          <select
-                            aria-label="墙体类型"
-                            value={item.exterior ? "exterior" : "interior"}
-                            onChange={(e) =>
-                              patch((_, target) => {
-                                target.exterior = e.target.value === "exterior";
-                              })
-                            }
-                          >
-                            <option value="interior">隔墙</option>
-                            <option value="exterior">外墙</option>
-                          </select>
-                        </label>
-                        <div className="edit-number-grid">
-                          {number("墙体厚度", "thickness", 0.06, 0.6)}
-                          {number("墙体高度", "height", 1.8, 4.5)}
-                          {["start", "end"].flatMap((key) =>
-                            ["x", "y"].map((axis) => (
-                              <NumberField
-                                key={key + axis}
-                                label={`${key === "start" ? "起点" : "终点"} ${axis.toUpperCase()}`}
-                                value={item[key][axis]}
-                                onCommit={(value) =>
-                                  changeWallPoint(key, axis, value)
-                                }
-                              />
-                            )),
+                        <details className="inspector-group">
+                          <summary>墙体尺寸与位置</summary>
+                          <label className="edit-label">
+                            墙体类型
+                            <select
+                              aria-label="墙体类型"
+                              value={item.exterior ? "exterior" : "interior"}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.exterior =
+                                    e.target.value === "exterior";
+                                })
+                              }
+                            >
+                              <option value="interior">隔墙</option>
+                              <option value="exterior">外墙</option>
+                            </select>
+                          </label>
+                          <div className="edit-number-grid">
+                            {number("墙体厚度", "thickness", 0.06, 0.6)}
+                            {number("墙体高度", "height", 1.8, 4.5)}
+                            {["start", "end"].flatMap((key) =>
+                              ["x", "y"].map((axis) => (
+                                <NumberField
+                                  key={key + axis}
+                                  label={`${key === "start" ? "起点" : "终点"} ${axis.toUpperCase()}`}
+                                  value={item[key][axis]}
+                                  onCommit={(value) =>
+                                    changeWallPoint(key, axis, value)
+                                  }
+                                />
+                              )),
+                            )}
+                          </div>
+                          <p className="field-note">
+                            墙长 {wallLength(item).toFixed(2)} m ·
+                            拖动墙线会联动相连边界
+                          </p>
+                        </details>
+                        <details className="inspector-group">
+                          <summary>结构与校准</summary>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={!!item.load_bearing}
+                              onChange={(e) =>
+                                patch((_, w) => {
+                                  w.load_bearing = e.target.checked;
+                                })
+                              }
+                            />{" "}
+                            已核实为承重墙
+                          </label>
+                          {item.load_bearing && (
+                            <p className="workspace-note">
+                              已标记承重结构，改动前需专业人员核实。
+                            </p>
                           )}
-                        </div>
-                        <p className="field-note">
-                          墙长 {wallLength(item).toFixed(2)} m ·
-                          拖动墙线会联动相连边界
-                        </p>
-                        <label className="edit-label">
-                          基础墙面饰面
-                          <select
-                            value={item.finish || "default"}
-                            aria-label="基础墙面饰面"
-                            onChange={(e) =>
-                              patch((_, target) => {
-                                target.finish = e.target.value;
-                                target.wall_material = null;
-                              })
-                            }
-                          >
-                            {Object.entries(wallFinishes).map(([id, name]) => (
-                              <option key={id} value={id}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                          <details className="edit-advanced">
+                            <summary>按此墙长度校准平面尺寸</summary>
+                            <p>
+                              当前长 {wallLength(item).toFixed(3)}{" "}
+                              m；校准会等比调整全屋平面，墙高与家具高度保持不变，可撤销。
+                            </p>
+                            <NumberField
+                              label="墙体实际长度"
+                              value={actualLength}
+                              min={0.1}
+                              max={60}
+                              onCommit={setActualLength}
+                            />
+                            <button
+                              onClick={() => {
+                                try {
+                                  draft.commit(
+                                    calibrate(
+                                      draft.document,
+                                      wallLength(item),
+                                      actualLength,
+                                    ),
+                                    false,
+                                  );
+                                } catch (e) {
+                                  setError(e.message);
+                                }
+                              }}
+                            >
+                              应用尺寸校准
+                            </button>
+                          </details>
+                          <label className="edit-label">
+                            基础墙面饰面
+                            <select
+                              value={item.finish || "default"}
+                              aria-label="基础墙面饰面"
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.finish = e.target.value;
+                                  target.wall_material = null;
+                                })
+                              }
+                            >
+                              {Object.entries(wallFinishes).map(
+                                ([id, name]) => (
+                                  <option key={id} value={id}>
+                                    {name}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </label>
+                        </details>
+                        <WallElevation
+                          wall={item}
+                          openings={document.layout.openings}
+                          onChange={(regions) =>
+                            patch((_, w) => {
+                              w.finish_regions = regions;
+                            })
+                          }
+                        />
                         <p className="field-note">
                           附着对象：门窗在「门窗」页管理，开放通道在「通道」页管理。
                         </p>
@@ -3412,23 +3472,23 @@ export default function ManualEditor({
                     )}
                     {selected.type === "rooms" && (
                       <>
-                        <label className="edit-label">
-                          地板铺设
-                          <select
+                        <label className="inspector-switch">
+                          铺设地板
+                          <input
+                            type="checkbox"
+                            role="switch"
                             aria-label="地板铺设"
-                            value={item.floor_enabled === false ? "off" : "on"}
+                            checked={item.floor_enabled !== false}
                             onChange={(e) =>
                               patch((_, target) => {
-                                target.floor_enabled = e.target.value === "on";
+                                target.floor_enabled = e.target.checked;
                               })
                             }
-                          >
-                            <option value="on">铺设地板</option>
-                            <option value="off">移除地板，保留空间</option>
-                          </select>
+                          />
                         </label>
                         <SurfaceFinishPicker
                           category="floor"
+                          onBrowse={() => setLibraryOpen("materials")}
                           value={item.floor_material}
                           disabled={item.floor_enabled === false}
                           onChange={(id) =>
@@ -3437,185 +3497,171 @@ export default function ManualEditor({
                             })
                           }
                         />
+                        <details className="inspector-group">
+                          <summary>铺贴设置</summary>
+                          <div className="edit-number-grid">
+                            <NumberField
+                              label="铺贴方向"
+                              value={item.floor_rotation || 0}
+                              min={-180}
+                              max={180}
+                              unit="°"
+                              onCommit={(v) =>
+                                patch((_, r) => {
+                                  r.floor_rotation = v;
+                                })
+                              }
+                            />
+                            <NumberField
+                              label="纹理比例"
+                              value={item.floor_scale || 1}
+                              min={0.1}
+                              max={10}
+                              step={0.1}
+                              unit="倍"
+                              onCommit={(v) =>
+                                patch((_, r) => {
+                                  r.floor_scale = v;
+                                })
+                              }
+                            />
+                          </div>
+                          <FloorTiling
+                            room={item}
+                            onChange={(key, value) =>
+                              patch((_, r) => {
+                                r[key] = value;
+                              })
+                            }
+                          />
+                          <label className="edit-label">
+                            基础饰面
+                            <select
+                              aria-label="地板材质"
+                              value={
+                                item.floor_material
+                                  ? "selected"
+                                  : item.floor_finish || "default"
+                              }
+                              disabled={item.floor_enabled === false}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.floor_finish = e.target.value;
+                                  target.floor_material = null;
+                                })
+                              }
+                            >
+                              {item.floor_material && (
+                                <option value="selected" disabled>
+                                  使用已选材质
+                                </option>
+                              )}
+                              {Object.entries(floorFinishes).map(
+                                ([id, name]) => (
+                                  <option key={id} value={id}>
+                                    {name}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </label>
+                        </details>
                         <SurfaceTransfer
                           document={document}
                           type="rooms"
                           index={selected.index}
+                          clipboard={
+                            surfaceClipboard?.type === "rooms"
+                              ? surfaceClipboard
+                              : null
+                          }
+                          onCopy={(value) =>
+                            setSurfaceClipboard({ ...value, type: "rooms" })
+                          }
                           onCommit={draft.commit}
                         />
-                        <label className="edit-label">
-                          空间名称
-                          <input
-                            aria-label="空间名称"
-                            value={item.name}
-                            maxLength={60}
-                            onChange={(e) =>
-                              patch((_, target) => {
-                                target.name = e.target.value;
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="edit-label">
-                          空间用途
-                          <select
-                            value={item.kind}
-                            onChange={(e) =>
-                              patch((_, target) => {
-                                target.kind = e.target.value;
-                              })
-                            }
-                          >
-                            {Object.entries(roomNames).map(([id, name]) => (
-                              <option key={id} value={id}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="edit-label">
-                          基础地板材质
-                          <select
-                            aria-label="地板材质"
-                            value={
-                              item.floor_material
-                                ? `material:${item.floor_material}`
-                                : item.floor_finish || "default"
-                            }
-                            disabled={item.floor_enabled === false}
-                            onChange={(e) =>
-                              patch((_, target) => {
-                                if (e.target.value.startsWith("material:"))
-                                  target.floor_material =
-                                    e.target.value.slice(9);
-                                else {
-                                  target.floor_finish = e.target.value;
-                                  target.floor_material = null;
-                                }
-                              })
-                            }
-                          >
-                            {Object.entries(floorFinishes).map(([id, name]) => (
-                              <option key={id} value={id}>
-                                {name}
-                              </option>
-                            ))}
-                            <optgroup label="素材库 · 地板配色">
-                              {item.floor_material &&
-                                !materialCategories.floor.includes(
-                                  item.floor_material,
-                                ) &&
-                                resolveMaterial(item.floor_material) && (
-                                  <option
-                                    value={`material:${item.floor_material}`}
-                                  >
-                                    已保存 ·{" "}
-                                    {resolveMaterial(item.floor_material).name}
-                                  </option>
-                                )}
-                              {materialCategories.floor.map((id) => (
-                                <option key={id} value={`material:${id}`}>
-                                  {materials.find((m) => m.id === id).name}
+                        <details className="inspector-group">
+                          <summary>空间与边界</summary>
+                          <label className="edit-label">
+                            空间名称
+                            <input
+                              aria-label="空间名称"
+                              value={item.name}
+                              maxLength={60}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.name = e.target.value;
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="edit-label">
+                            空间用途
+                            <select
+                              value={item.kind}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.kind = e.target.value;
+                                })
+                              }
+                            >
+                              {Object.entries(roomNames).map(([id, name]) => (
+                                <option key={id} value={id}>
+                                  {name}
                                 </option>
                               ))}
-                            </optgroup>
-                          </select>
-                        </label>
-                        <button
-                          className="secondary-button"
-                          disabled={item.floor_enabled === false}
-                          onClick={() => setLibraryOpen("materials")}
-                        >
-                          从素材库选择地板
-                        </button>
-                        <div className="edit-number-grid">
-                          <NumberField
-                            label="铺贴方向"
-                            value={item.floor_rotation || 0}
-                            min={-180}
-                            max={180}
-                            unit="°"
-                            onCommit={(v) =>
-                              patch((_, r) => {
-                                r.floor_rotation = v;
-                              })
-                            }
-                          />
-                          <NumberField
-                            label="纹理比例"
-                            value={item.floor_scale || 1}
-                            min={0.1}
-                            max={10}
-                            step={0.1}
-                            unit="倍"
-                            onCommit={(v) =>
-                              patch((_, r) => {
-                                r.floor_scale = v;
-                              })
-                            }
-                          />
-                        </div>
-                        <p className="field-note">
-                          当前地板面积 {polygonArea(item.polygon).toFixed(2)}{" "}
-                          ㎡。拖动圆点调整范围；地板单独调整不会移动墙体。
-                        </p>
-                        <FloorTiling
-                          room={item}
-                          onChange={(key, value) =>
-                            patch((_, r) => {
-                              r[key] = value;
-                            })
-                          }
-                        />
-                        <PolygonFields
-                          points={item.polygon}
-                          onChange={(points) =>
-                            patch((_, target) => {
-                              target.polygon = points;
-                            })
-                          }
-                        />
-                        <details className="edit-vertices">
-                          <summary>拆分空间</summary>
-                          <p className="field-note">
-                            按坐标切成两个空间，家具自动归属。拆分不添加墙体。
-                          </p>
-                          <label className="edit-label">
-                            拆分方向
-                            <select
-                              aria-label="拆分方向"
-                              value={splitAxis}
-                              onChange={(e) => setSplitAxis(e.target.value)}
-                            >
-                              <option value="x">左右拆分（X 坐标）</option>
-                              <option value="y">上下拆分（Y 坐标）</option>
                             </select>
                           </label>
-                          <NumberField
-                            label="拆分坐标"
-                            value={splitAt}
-                            onCommit={setSplitAt}
+                          <PolygonFields
+                            points={item.polygon}
+                            onChange={(points) =>
+                              patch((_, target) => {
+                                target.polygon = points;
+                              })
+                            }
                           />
-                          <button
-                            className="secondary-button full-width"
-                            onClick={() => {
-                              try {
-                                const next = splitRoom(
-                                  draft.document,
-                                  selected.index,
-                                  splitAxis,
-                                  splitAt,
-                                  `room_${crypto.randomUUID().slice(0, 12)}`,
-                                );
-                                draft.commit(next);
-                                setError("");
-                              } catch (e) {
-                                setError(e.message);
-                              }
-                            }}
-                          >
-                            拆分为两个空间
-                          </button>
+                          <details className="edit-vertices">
+                            <summary>拆分空间</summary>
+                            <p className="field-note">
+                              按坐标切成两个空间，家具自动归属。拆分不添加墙体。
+                            </p>
+                            <label className="edit-label">
+                              拆分方向
+                              <select
+                                aria-label="拆分方向"
+                                value={splitAxis}
+                                onChange={(e) => setSplitAxis(e.target.value)}
+                              >
+                                <option value="x">左右拆分（X 坐标）</option>
+                                <option value="y">上下拆分（Y 坐标）</option>
+                              </select>
+                            </label>
+                            <NumberField
+                              label="拆分坐标"
+                              value={splitAt}
+                              onCommit={setSplitAt}
+                            />
+                            <button
+                              className="secondary-button full-width"
+                              onClick={() => {
+                                try {
+                                  const next = splitRoom(
+                                    draft.document,
+                                    selected.index,
+                                    splitAxis,
+                                    splitAt,
+                                    `room_${crypto.randomUUID().slice(0, 12)}`,
+                                  );
+                                  draft.commit(next);
+                                  setError("");
+                                } catch (e) {
+                                  setError(e.message);
+                                }
+                              }}
+                            >
+                              拆分为两个空间
+                            </button>
+                          </details>
                         </details>
                       </>
                     )}
@@ -3694,7 +3740,8 @@ export default function ManualEditor({
                             )}
                         </div>
                         {item.kind === "door" && (
-                          <>
+                          <details className="inspector-group">
+                            <summary>门扇与开启方式</summary>
                             <label className="edit-label">
                               门扇
                               <select
@@ -3756,7 +3803,7 @@ export default function ManualEditor({
                                 />
                               </>
                             )}
-                          </>
+                          </details>
                         )}
                         <p className="field-note">
                           {item.kind === "passage"
@@ -3845,6 +3892,33 @@ export default function ManualEditor({
                     )}
                   </div>
                 )}
+                {item && ["rooms", "walls"].includes(selected?.type) && (
+                  <LocalReview
+                    key={`${selected.type}:${item.id}`}
+                    job={job}
+                    document={draft.document}
+                    selected={selected}
+                    onApply={(next) => draft.commit(next, false)}
+                    onLocate={(type, id) => {
+                      const index = objects(document, type).findIndex(
+                        (x) => x.id === id,
+                      );
+                      if (index >= 0) {
+                        select(type, index);
+                        const object = objects(document, type)[index];
+                        navigation.focus(
+                          type === "rooms"
+                            ? center(object.polygon)
+                            : {
+                                x: (object.start.x + object.end.x) / 2,
+                                y: (object.start.y + object.end.y) / 2,
+                              },
+                          Math.max(1.5, navigation.zoom),
+                        );
+                      }
+                    }}
+                  />
+                )}
               </fieldset>
             </aside>
           </LiveParameterContext.Provider>
@@ -3891,18 +3965,22 @@ export default function ManualEditor({
               }
             >
               {validationOpen && hasFeedback
-                ? "布局检查详情"
+                ? issues.length
+                  ? "布局检查详情 · 请先修正问题"
+                  : "布局检查详情 · 建议不影响保存"
                 : error ||
                   draft.storageError ||
                   (issues.length
                     ? `${issues.length} 处布局问题，请调整后保存`
-                    : serverCheck.status === "checking"
-                      ? "基础检查通过 · 正在检查碰撞与通行"
-                      : serverCheck.status === "done"
-                        ? serverCheck.issues.length
-                          ? `${serverCheck.issues.length} 项设计建议`
-                          : "几何与通行检查通过"
-                        : "基础检查通过")}
+                    : adviceCount
+                      ? `${adviceCount} 项布局建议，可继续保存`
+                      : serverCheck.status === "checking"
+                        ? "基础检查通过 · 正在检查碰撞与通行"
+                        : serverCheck.status === "done"
+                          ? serverCheck.issues.length
+                            ? `${serverCheck.issues.length} 项设计建议`
+                            : "几何与通行检查通过"
+                          : "基础检查通过")}
             </p>
             <button
               type="button"
@@ -3957,9 +4035,6 @@ export default function ManualEditor({
                     <button onClick={draft.reload}>读取后端最新草稿</button>
                   </div>
                 )}
-                {feedbackSuggestions.map((issue, index) => (
-                  <p key={`server-${index}`}>建议：{issue.text}</p>
-                ))}
                 {issues.slice(0, 5).map((issue, index) => (
                   <button
                     key={index}
@@ -3971,6 +4046,25 @@ export default function ManualEditor({
                 {issues.length > 5 && (
                   <p>另有 {issues.length - 5} 处问题，调整后会继续提示。</p>
                 )}
+                {adviceCount > 0 && (
+                  <p>
+                    以下为布局建议，不影响保存和生成三维，可按需要继续调整。
+                  </p>
+                )}
+                {placementWarnings.slice(0, 5).map((issue, index) => (
+                  <button
+                    key={`advice-${index}`}
+                    onClick={() => select(issue.type, issue.index)}
+                  >
+                    建议：{issue.text} <span>定位 ↗</span>
+                  </button>
+                ))}
+                {placementWarnings.length > 5 && (
+                  <p>另有 {placementWarnings.length - 5} 项淋浴布局建议。</p>
+                )}
+                {feedbackSuggestions.map((issue, index) => (
+                  <p key={`server-${index}`}>建议：{issue.text}</p>
+                ))}
               </div>
             </div>
           )}
@@ -3989,6 +4083,7 @@ export default function ManualEditor({
             setName(value);
           }}
           issues={issues}
+          adviceCount={adviceCount}
           drawing={drawing}
           pendingDelete={pendingDelete}
           openingKind={openingKind}

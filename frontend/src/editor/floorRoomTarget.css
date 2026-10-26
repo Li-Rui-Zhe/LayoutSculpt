@@ -1,0 +1,35 @@
+.floor-room-target {
+  margin-top: 10px;
+  min-width: 0;
+}
+.floor-room-target label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.floor-room-target label > span {
+  color: #7a8980;
+  font-size: 11px;
+  flex: none;
+}
+.floor-room-target select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #dce5df;
+  border-radius: 7px;
+  background: white;
+  color: #294d37;
+  font: inherit;
+  font-size: 12px;
+}
+.floor-room-target select:focus-visible {
+  outline: 2px solid #5a8a70;
+  outline-offset: 2px;
+}
+.floor-room-target small {
+  display: block;
+  margin-top: 7px;
+  color: #89784f;
+  font-size: 11px;
+}

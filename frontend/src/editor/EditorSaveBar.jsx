@@ -12,6 +12,7 @@ export default function EditorSaveBar({
   name,
   onNameChange,
   issues,
+  adviceCount = 0,
   drawing,
   pendingDelete,
   openingKind,
@@ -34,9 +35,11 @@ export default function EditorSaveBar({
         <small>
           {reviewing
             ? "修改后请再次对照原图确认结构"
-            : isScene
-              ? "三维拖动或输入尺寸 → 热更新 → 保存为独立版本"
-              : "平面绘制或输入尺寸 → 检查布局 → 保存为独立版本"}
+            : adviceCount && !issues.length
+              ? `有 ${adviceCount} 项布局建议，仍可保存并生成三维`
+              : isScene
+                ? "三维拖动或输入尺寸 → 热更新 → 保存为独立版本"
+                : "平面绘制或输入尺寸 → 检查布局 → 保存为独立版本"}
         </small>
         {reviewing && (
           <a
