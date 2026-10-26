@@ -44,3 +44,7 @@ README 直接使用品牌横幅 `header.svg`、第三版原创空间演示 `show
 ## 提交配置
 
 `.gitignore` 排除本机数据、认证、依赖、构建输出和临时验收文件；`.gitattributes` 规定文本 LF、Windows 启动脚本 CRLF，GLB 和图片不做换行转换；`.editorconfig` 为编辑器提供一致格式。必要资产与依赖锁文件仍需跟踪。提交操作见 [贡献说明](../CONTRIBUTING.md)。
+
+## 仓库地址与上游
+
+当前发布仓库为 [L-rui-zhe/LayoutSculpt](https://github.com/L-rui-zhe/LayoutSculpt)，克隆与反馈链接均指向此处。本地 `origin` 用于向该仓库推送；此前拉取代码的 `Li-Rui-Zhe/LayoutSculpt` 保留为 `upstream`，用于对照或同步上游。普通克隆只会自动创建 `origin`，需要对照上游时再自行添加。提交前用 `git remote -v` 核对目标，不对上游强制推送。

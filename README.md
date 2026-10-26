@@ -108,7 +108,7 @@ Codex 可复用本机环境，也可由项目准备独立 CLI、配置与登录�
 以下命令在 Windows PowerShell 中运行，项目目录可放在 D 盘：
 
 ```powershell
-git clone git@github.com:Li-Rui-Zhe/LayoutSculpt.git D:\LayoutSculpt
+git clone git@github.com:L-rui-zhe/LayoutSculpt.git D:\LayoutSculpt
 cd D:\LayoutSculpt
 pnpm install --frozen-lockfile
 python -m venv .venv
@@ -309,7 +309,7 @@ AI 缓存每 6 小时检查，最多保留 30 天及 512 MB；清理不会删除
 
 ## 安全与隐私
 
-日常问题与建议欢迎通过 [Issues](https://github.com/Li-Rui-Zhe/LayoutSculpt/issues) 交流；需要私下沟通的安全问题，可使用 [Security Policy](SECURITY.md) 中的可选入口。分享截图或报告时请隐去密钥、登录信息及个人数据。AI 识别会调用所配置的服务，任务本地保存不表示推理完全离线。
+日常问题与建议欢迎通过 [Issues](https://github.com/L-rui-zhe/LayoutSculpt/issues) 交流；需要私下沟通的安全问题，可使用 [Security Policy](SECURITY.md) 中的可选入口。分享截图或报告时请隐去密钥、登录信息及个人数据。AI 识别会调用所配置的服务，任务本地保存不表示推理完全离线。
 
 ## 许可
 
