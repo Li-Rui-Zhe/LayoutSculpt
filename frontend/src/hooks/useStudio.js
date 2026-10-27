@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useDraftSync } from "./useDraftSync.js";
 import { showcase } from "../catalog.js";
+import { normalizeEnvironment } from "../viewer/environment.js";
 
 export const initialStudio = {
   category: "walls",
@@ -15,10 +16,7 @@ export const initialStudio = {
 function load(storageKey) {
   try {
     const s = JSON.parse(localStorage.getItem(storageKey));
-    if (
-      s?.selected &&
-      ["morning", "midday", "evening", "night"].includes(s.preset)
-    )
+    if (s?.selected)
       return {
         ...initialStudio,
         ...Object.fromEntries(
@@ -26,7 +24,7 @@ function load(storageKey) {
         ),
         category: s.category === "fabric" ? "walls" : s.category,
         selected: { ...s.selected, fabric: null },
-        preset: s.preset === "night" ? "night" : "midday",
+        preset: normalizeEnvironment(s.preset),
       };
   } catch {}
   return structuredClone(initialStudio);
@@ -66,7 +64,14 @@ export function useStudio(taskId = "sample") {
             value.document &&
             (!local?._savedAt || local._savedAt <= value.updated_at)
           )
-            setHistory({ past: [], present: value.document, future: [] });
+            setHistory({
+              past: [],
+              present: {
+                ...value.document,
+                preset: normalizeEnvironment(value.document.preset),
+              },
+              future: [],
+            });
           setServerRevision(value.revision);
         })
         .catch(() => {

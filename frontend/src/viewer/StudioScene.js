@@ -18,6 +18,11 @@ import { installCutaway, updateCutaway } from "./cutaway.js";
 import { repairLegacyWallMaterials } from "./materialCompatibility.js";
 import { installFixtureLights, updateFixtureLights } from "./fixtureLights.js";
 import { presets, showcase } from "../catalog.js";
+import {
+  environmentTarget,
+  blendEnvironment,
+  normalizeEnvironment,
+} from "./environment.js";
 import { resolveMaterial } from "../materials/custom.js";
 import { isolateSoftSurfaces, surfaceProfile } from "../materials/surfaces.js";
 import { frameBounds, visualCenter, perspectiveCenter } from "./viewFraming.js";
@@ -51,6 +56,8 @@ function disposeModel(root) {
   mats.forEach((m) => m.dispose());
   textures.forEach((t) => t.dispose());
 }
+
+const isShowcase = (url) => url?.split(/[?#]/)[0] === showcase.model_url;
 
 export class StudioScene {
   constructor(host, callbacks) {
@@ -221,6 +228,13 @@ export class StudioScene {
       }
       this.controls.update(Math.min((now - this.lastFrame) / 1000, 0.05));
       this.lastFrame = now;
+      if (this.environmentTransition) {
+        const { from, to, started } = this.environmentTransition;
+        const fraction = Math.min(1, (now - started) / 650);
+        this.writeEnvironment(blendEnvironment(from, to, fraction));
+        if (fraction === 1) this.environmentTransition = null;
+        this.dirty = true;
+      }
       if (this.dirty) {
         this.composer.render();
         this.dirty = false;
@@ -229,7 +243,8 @@ export class StudioScene {
         this.model &&
         this.thumbnailsDue &&
         now >= this.thumbnailsDue &&
-        !this.interacting
+        !this.interacting &&
+        !this.environmentTransition
       ) {
         this.thumbnailsDue = 0;
         this.refreshThumbnails();
@@ -386,7 +401,7 @@ export class StudioScene {
       installCutaway(this.model);
       prepareIsolationMaterials(this.model);
       installFixtureLights(this.model, {
-        sample: url === showcase.model_url,
+        sample: isShowcase(url),
       });
       const lightSurfaces = new Set(
         (this.model.userData.designLights || []).flatMap(
@@ -399,7 +414,7 @@ export class StudioScene {
         // Clear glazing transmits the sample's daylight; an opaque shadow here
         // would black out the rooms despite the visible transparent windows.
         if (
-          url === showcase.model_url &&
+          isShowcase(url) &&
           [obj.material].flat().some((m) => m.transparent && m.opacity < 0.6)
         )
           obj.castShadow = false;
@@ -530,32 +545,42 @@ export class StudioScene {
     }
   }
 
-  light(id) {
-    const p = presets.find((v) => v.id === id) || presets[0],
-      level = this.state?.daylight ?? 74;
-    this.sun.color.set(p.color);
-    this.sun.position.set(...p.position.map((v) => v * 1.8));
-    this.sun.intensity = p.intensity * (0.45 + (level / 100) * 0.75);
-    this.hemi.intensity = p.ambient * (0.5 + level / 100);
-    this.hemi.color.set(id === "night" ? "#b4c6de" : "#dce8ee");
-    this.hemi.groundColor.set(id === "night" ? "#b9a28e" : "#64503a");
-    this.renderer.toneMappingExposure = p.exposure;
-    this.fill.intensity = id === "night" ? 0.12 : 0.85;
-    this.scene.environmentIntensity = id === "night" ? 0.18 : 0.4;
-    this.scene.background.set(id === "night" ? "#45555e" : "#d8dcd7");
-    this.ground.material.color.set(id === "night" ? "#394852" : "#dce2dd");
-    if (this.modelUrl === showcase.model_url) {
-      this.scene.background.set(id === "night" ? "#283638" : "#ede8df");
-      this.ground.material.color.set(id === "night" ? "#283638" : "#ede8df");
-      this.sun.position.set(-6, 12, 8);
-      this.sun.intensity *= id === "night" ? 1 : 0.9;
-      this.hemi.intensity *= id === "night" ? 1.15 : 0.66;
-      this.fill.intensity = id === "night" ? 0.16 : 0.5;
-      this.scene.environmentIntensity = id === "night" ? 0.25 : 0.5;
+  writeEnvironment(value) {
+    this.currentEnvironment = value;
+    this.sun.color.copy(value.sunColor);
+    this.sun.position.copy(value.position);
+    this.sun.intensity = value.sun;
+    this.hemi.intensity = value.ambient;
+    this.hemi.color.copy(value.sky);
+    this.hemi.groundColor.copy(value.bounce);
+    this.fill.intensity = value.fill;
+    this.fill.color.copy(value.fillColor);
+    this.renderer.toneMappingExposure = value.exposure;
+    this.scene.environmentIntensity = value.environment;
+    this.scene.background.copy(value.background);
+    this.ground.material.color.copy(value.ground);
+    this.ao.blendIntensity = value.ao;
+    updateFixtureLights(this.model, value.fixtures > 0, value.fixtures);
+  }
+
+  light(id, animate = false) {
+    const target = environmentTarget(id, this.state?.daylight, isShowcase(this.modelUrl));
+    if (
+      animate &&
+      this.active &&
+      this.currentEnvironment &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      this.environmentTransition = {
+        from: this.currentEnvironment,
+        to: target,
+        started: performance.now(),
+      };
+    } else {
+      this.environmentTransition = null;
+      this.writeEnvironment(target);
     }
-    updateFixtureLights(this.model, id === "night");
-    this.renderer.domElement.dataset.lightingPreset =
-      id === "night" ? "night" : "midday";
+    this.renderer.domElement.dataset.lightingPreset = normalizeEnvironment(id);
     this.renderer.domElement.dataset.designLightCount = String(
       this.model?.userData.designLights?.length || 0,
     );
@@ -566,7 +591,21 @@ export class StudioScene {
 
   apply(state) {
     if (!state) return;
+    const daylightChanged = this.state?.daylight !== state.daylight;
+    const materialState = ({ preset, daylight, ...rest }) =>
+      JSON.stringify(rest);
+    const onlyEnvironment =
+      this.state &&
+      this.appliedModel === this.model &&
+      materialState(this.state) === materialState(state);
     this.state = state;
+    if (onlyEnvironment) {
+      this.light(state.preset, true);
+      if (daylightChanged) this.thumbnailsDue = performance.now() + 800;
+      this.dirty = true;
+      return;
+    }
+    this.appliedModel = this.model;
     this.restoreMaterials();
     for (const { material } of this.originals.values()) {
       const category =
@@ -738,7 +777,7 @@ export class StudioScene {
     const offset = new THREE.Vector3(
       ...(top
         ? [0, 1, 0.00001]
-        : this.modelUrl === showcase.model_url
+        : isShowcase(this.modelUrl)
           ? [1.35, 2.75, 2.65]
           : showZAcross
             ? [1.85, 3.1, 0.55]
@@ -828,6 +867,8 @@ export class StudioScene {
   }
   snapshot() {
     this.interactionQuality?.restore();
+    // 导出所选环境的完整效果，而不是切换途中的混合帧。
+    this.light(this.state?.preset);
     this.composer.render();
     return this.renderer.domElement.toDataURL("image/png");
   }

@@ -1,11 +1,11 @@
 {
   "id": "forest-home-v3",
-  "title": "林间暖居 · 典藏样板间",
-  "area": 87.0,
+  "title": "林间光庭 · 设计师私宅",
+  "area": 93.2,
   "room_count": 7,
   "source": "authored_sample",
   "model_url": "/models/forest-home-v3.glb",
-  "revision": "3a194053386b",
-  "description": "开放客餐厅 · 岛台厨房 · 独立书房 · 绿植露台",
+  "revision": "4feda717851c",
+  "description": "洞石与胡桃木 · 花园露台 · 艺廊客餐厅 · 温润光影",
   "geometry_verified": true
 }

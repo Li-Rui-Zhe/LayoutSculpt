@@ -34,6 +34,9 @@
   color: #6c7b73;
 }
 .result-first .new-task-page .creation-import {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   flex-shrink: 0;
 }
 .result-first .new-task-page .creation-import button {
@@ -235,26 +238,7 @@
 .result-first .new-task-page .creation-note svg {
   flex-shrink: 0;
 }
-.result-first .new-task-page .creation-recovery {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
-  margin: 0 0 18px;
-  border: 1px solid #dce6d7;
-  border-radius: 8px;
-  background: #edf3e9;
-  font-size: 13px;
-  color: #526b50;
-}
-.result-first .new-task-page .creation-recovery span {
-  margin-right: auto;
-}
-.result-first .new-task-page .creation-recovery button {
-  min-height: 30px;
-  color: #315c45;
-  font-weight: 500;
-}
+
 .result-first .new-task-page .generation-options {
   display: flex;
   flex-direction: column;
@@ -540,13 +524,7 @@
   .result-first .new-task-page :is(.upload-card, .generation-options) {
     padding: 20px 18px;
   }
-  .result-first .new-task-page .creation-recovery {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .result-first .new-task-page .creation-recovery span {
-    flex-basis: 100%;
-  }
+
   .result-first .new-task-page .style-options {
     gap: 7px;
   }

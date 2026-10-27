@@ -1,3 +1,6 @@
+import { InlineProgress } from "../components/LoadingProgress.jsx";
+import OperationStatus from "../components/OperationStatus.jsx";
+import { useBoundaryLoad } from "../components/ProgressBoundary.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
   Cloud,
@@ -7,7 +10,6 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  LoaderCircle,
   CheckCircle2,
   AlertCircle,
   KeyRound,
@@ -34,6 +36,11 @@ export default function AiConnections() {
   const request = useRef(null),
     sequence = useRef(0);
   const busy = phase !== "idle";
+  const managedLoad = useBoundaryLoad(
+    phase === "loading" && !settings,
+    "正在读取连接设置",
+    !settings ? error : "",
+  );
   const selected = catalog?.items.find(
     (item) => item.id === (model || catalog.default_model),
   );
@@ -178,6 +185,13 @@ export default function AiConnections() {
         </button>
       </header>
       <div className="ai-settings-body">
+        <OperationStatus
+          active={phase === "loading" && (!!settings || !managedLoad)}
+          failed={!!error}
+          background={!!settings}
+          label="正在读取连接设置"
+          successLabel="连接设置已读取"
+        />
         {settings && (
           <div className="ai-current-source">
             <span>新任务默认来源</span>
@@ -208,14 +222,7 @@ export default function AiConnections() {
         )}
         {!settings ? (
           <div className="ai-loading" role="status">
-            {busy ? (
-              <>
-                <LoaderCircle className="spin" size={18} />
-                正在读取连接设置…
-              </>
-            ) : (
-              "暂时无法读取设置，请重试。"
-            )}
+            {!busy && "暂时无法读取设置，请重试。"}
           </div>
         ) : (
           <>
@@ -394,11 +401,11 @@ export default function AiConnections() {
                     }
                     onClick={() => send()}
                   >
-                    {busy ? (
-                      <LoaderCircle size={16} className="spin" />
-                    ) : (
-                      <ArrowRight size={16} />
-                    )}{" "}
+                    <InlineProgress
+                      active={busy}
+                      failed={!!error}
+                      fallback={<ArrowRight size={16} />}
+                    />{" "}
                     {phase === "saving"
                       ? "正在连接并保存…"
                       : `连接并使用 ${names[provider]}`}

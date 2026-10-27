@@ -1,7 +1,8 @@
+import { InlineProgress } from "../components/LoadingProgress.jsx";
+import OperationStatus from "../components/OperationStatus.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
   Download,
-  LoaderCircle,
   RefreshCw,
   RotateCcw,
   CheckCircle2,
@@ -135,11 +136,12 @@ export default function CodexInstall({
           disabled={locked}
           onClick={() => act(state?.managed ? "install" : "isolated")}
         >
-          {running || sending ? (
-            <LoaderCircle size={14} className="spin" />
-          ) : (
-            <Download size={14} />
-          )}
+          <InlineProgress
+            active={running || sending}
+            failed={job?.status === "failed" || (!running && !!error)}
+            cancelled={job?.status === "cancelled"}
+            fallback={<Download size={14} />}
+          />
           {running
             ? "正在处理 CLI…"
             : update?.available === true
@@ -206,30 +208,48 @@ export default function CodexInstall({
           aria-live="polite"
         >
           <div>
-            {running ? (
-              <LoaderCircle size={15} className="spin" />
-            ) : job.status === "succeeded" ? (
+            {!running && job.status === "succeeded" ? (
               <CheckCircle2 size={15} />
-            ) : (
+            ) : !running ? (
               <AlertCircle size={15} />
-            )}
+            ) : null}
             <strong>{job.message}</strong>
           </div>
           {job.downloaded_bytes != null && (
             <>
-              <progress
-                max="100"
-                {...(progress != null ? { value: progress } : {})}
-                aria-label="CLI 下载进度"
-              />
               <small>
                 {megabytes(job.downloaded_bytes)}
                 {job.total_bytes
-                  ? ` / ${megabytes(job.total_bytes)} · ${progress}%`
+                  ? ` / ${megabytes(job.total_bytes)} · 下载 ${progress}%`
                   : " · 正在下载"}
               </small>
             </>
           )}
+          <OperationStatus
+            active={running}
+            failed={job.status === "failed"}
+            cancelled={job.status === "cancelled"}
+            operationKey={job.id}
+            label={job.message}
+            successLabel="CLI 已准备就绪"
+            estimated
+            estimateFrom={10}
+            estimateTo={70}
+            progress={
+              job.stage === "download"
+                ? progress == null
+                  ? undefined
+                  : 10 + progress * 0.6
+                : ({
+                    resolve: 5,
+                    extract: 75,
+                    verify: 85,
+                    activate: 93,
+                    reconnect: 97,
+                    restore: 90,
+                  }[job.stage] ?? 2)
+            }
+          />
           <ol aria-label="CLI 安装步骤">
             {(job.events || []).slice(-5).map((event, index) => (
               <li key={`${event.at}-${index}`}>{event.message}</li>

@@ -1,3 +1,4 @@
+import { InlineProgress } from "../components/LoadingProgress.jsx";
 import { useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
@@ -8,7 +9,6 @@ import {
   Undo2,
   Redo2,
   Save,
-  LoaderCircle,
   ArrowLeft,
   Armchair,
   Box,
@@ -41,6 +41,7 @@ import {
   promptExamples,
   materialPresets,
 } from "./design.js";
+import { draftRecoveryAction, sameDesign } from "./draftRecovery.js";
 import "./diy.css";
 
 const labels = {
@@ -91,6 +92,8 @@ export default function DiyStudio({
     future: [],
   });
   const [baseline, setBaseline] = useState(JSON.stringify(initialDesign));
+  const baselineRef = useRef(baseline);
+  baselineRef.current = baseline;
   const [partId, setPartId] = useState(() =>
     readContext("part", initialDesign?.parts[0]?.id || ""),
   );
@@ -111,6 +114,8 @@ export default function DiyStudio({
   const designRef = useRef(design);
   designRef.current = design;
   const [hasPendingInput, setHasPendingInput] = useState(false);
+  const pendingInputRef = useRef(false);
+  pendingInputRef.current = hasPendingInput;
   const syncInputState = () => {
     setHasPendingInput(
       [
@@ -133,6 +138,7 @@ export default function DiyStudio({
     setRecoverable(null);
     setDraftMeta(null);
     if (initialDesign || generating) return;
+    const sequence = token.current;
     let cached = null;
     try {
       cached = JSON.parse(localStorage.getItem(`diy-cache:${draftKey}`));
@@ -145,13 +151,29 @@ export default function DiyStudio({
         )
           value = { ...value, document: cached.document };
         if (!alive) return;
-        if (
-          value.document &&
-          !designIssues(value.document).length &&
-          JSON.stringify(value.document) !== JSON.stringify(designRef.current)
-        )
+        const valid = value.document && !designIssues(value.document).length;
+        const action = draftRecoveryAction(
+          designRef.current,
+          valid ? value.document : null,
+          sequence === token.current &&
+            !operation.current &&
+            !pendingInputRef.current,
+          cached?.baseDocument &&
+            sameDesign(cached.document, value.document) &&
+            sameDesign(cached.baseDocument, JSON.parse(baselineRef.current))
+            ? cached.baseDocument
+            : null,
+        );
+        if (action === "choose") {
           setRecoverable({ ...value, key: draftKey });
-        else setDraftMeta({ key: draftKey, revision: value.revision });
+        } else {
+          if (action === "restore") {
+            setHistory({ past: [], present: copy(value.document), future: [] });
+            setPartId(value.document.parts[0]?.id || "");
+            setRequestExpanded(false);
+          }
+          setDraftMeta({ key: draftKey, revision: value.revision });
+        }
       })
       .catch((e) => {
         if (alive) setError(e.message);
@@ -168,6 +190,7 @@ export default function DiyStudio({
         `diy-cache:${draftKey}`,
         JSON.stringify({
           document: design,
+          baseDocument: JSON.parse(baselineRef.current),
           updated_at: new Date().toISOString(),
         }),
       );
@@ -319,6 +342,32 @@ export default function DiyStudio({
     setError("");
     setNotice("");
     return true;
+  };
+  const resolveRecovery = (restore) => {
+    if (!recoverable || recoverable.key !== draftKey || busy || generating)
+      return;
+    if (!restore && !inputValid()) return;
+    const selected = restore ? recoverable.document : designRef.current;
+    if (!selected) return;
+    if (restore && !commit(selected)) return;
+    try {
+      localStorage.setItem(
+        `diy-cache:${draftKey}`,
+        JSON.stringify({
+          document: selected,
+          baseDocument: JSON.parse(baselineRef.current),
+          updated_at: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      setError(
+        "未能记住草稿选择，请释放浏览器存储空间后重试；两份内容仍保留。",
+      );
+      return;
+    }
+    if (restore) setPartId(selected.parts[0]?.id || "");
+    setDraftMeta({ key: draftKey, revision: recoverable.revision });
+    setRecoverable(null);
   };
   const undo = () =>
     setHistory((h) =>
@@ -671,11 +720,13 @@ export default function DiyStudio({
                     }
                     onClick={generate}
                   >
-                    {generating ? (
-                      <LoaderCircle size={15} className="spin" />
-                    ) : (
-                      <Sparkles size={15} />
-                    )}{" "}
+                    <InlineProgress
+                      active={generating}
+                      failed={asset?.status === "failed"}
+                      cancelled={asset?.status === "cancelled"}
+                      operationKey={asset?.id}
+                      fallback={<Sparkles size={15} />}
+                    />{" "}
                     {generating
                       ? labels[asset.status]
                       : design
@@ -834,36 +885,24 @@ export default function DiyStudio({
               </small>
             </div>
             {recoverable && (
-              <div className="workspace-note">
-                另有本机草稿尚未应用。
-                {design
-                  ? `当前显示的是${dirty ? "正在编辑的内容" : "已保存版本"}。`
-                  : "可恢复后继续创作。"}
+              <details className="diy-draft-choice">
+                <summary>有另一份未保存草稿 · 查看选择</summary>
+                <p>
+                  当前内容与草稿不同。选择后继续自动保存，未选择前保留原草稿。
+                </p>
                 <button
-                  onClick={() => {
-                    if (!commit(recoverable.document)) return;
-                    setPartId(recoverable.document.parts[0].id);
-                    setDraftMeta({
-                      key: draftKey,
-                      revision: recoverable.revision,
-                    });
-                    setRecoverable(null);
-                  }}
+                  disabled={busy || generating}
+                  onClick={() => resolveRecovery(true)}
                 >
                   恢复草稿继续编辑
                 </button>
                 <button
-                  onClick={() => {
-                    setDraftMeta({
-                      key: draftKey,
-                      revision: recoverable.revision,
-                    });
-                    setRecoverable(null);
-                  }}
+                  disabled={busy || generating || !design}
+                  onClick={() => resolveRecovery(false)}
                 >
                   保留当前内容
                 </button>
-              </div>
+              </details>
             )}
             {draftSync.error && <p role="alert">{draftSync.error}</p>}
             {design && (

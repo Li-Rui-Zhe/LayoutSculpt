@@ -750,3 +750,23 @@
     flex-wrap: wrap;
   }
 }
+
+/* 草稿差异保留为按需展开的入口，不占用预览区的告警横幅。 */
+.diy-draft-choice {
+  margin: 8px 16px;
+  padding: 10px 12px;
+  border: 1px solid #dce3dc;
+  border-radius: 8px;
+  background: #f7f9f6;
+  color: #53665b;
+  font-size: 12px;
+}
+.diy-draft-choice summary {
+  cursor: pointer;
+}
+.diy-draft-choice p {
+  line-height: 1.6;
+}
+.diy-draft-choice button {
+  margin: 4px 12px 0 0;
+}

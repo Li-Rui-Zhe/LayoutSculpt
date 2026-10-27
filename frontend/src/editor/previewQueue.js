@@ -1,10 +1,21 @@
 // 一次只构建一个草稿；旧请求即使不响应取消，也不能覆盖较新的结果。
-export function createPreviewQueue({ build, publish, report, delay = 300 }) {
-  let serial = 0,
+export function createPreviewQueue({
+  build,
+  publish,
+  report,
+  delay = 300,
+  initialRevision = 0,
+}) {
+  let serial = initialRevision,
     timer,
     controller,
     closed = false;
   return {
+    cancel() {
+      serial++;
+      clearTimeout(timer);
+      controller?.abort();
+    },
     submit(document) {
       const revision = ++serial;
       clearTimeout(timer);

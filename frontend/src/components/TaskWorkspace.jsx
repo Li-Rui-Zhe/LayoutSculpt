@@ -1,4 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { InlineProgress } from "./LoadingProgress.jsx";
+import OperationStatus from "./OperationStatus.jsx";
+import TaskProgress from "./TaskProgress.jsx";
+import InitialPreviewStatus from "./InitialPreviewStatus.jsx";
+import EnvironmentPicker from "./EnvironmentPicker.jsx";
+import ProgressBoundary from "./ProgressBoundary.jsx";
+import { lazy, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Box,
@@ -14,13 +20,10 @@ import {
   Plus,
   Minus,
   Maximize,
-  LoaderCircle,
   Check,
   ArrowUpRight,
   RotateCcw,
   Square,
-  Sun,
-  Moon,
   SlidersHorizontal,
   Upload,
   Info,
@@ -35,7 +38,7 @@ import Modal from "./Modal.jsx";
 import { MaterialDock } from "./Materials.jsx";
 import { useStudio, initialStudio } from "../hooks/useStudio.js";
 import { effortLabel } from "../hooks/useModels.js";
-import { presets, showcase } from "../catalog.js";
+import { showcase } from "../catalog.js";
 import { api, terminal } from "../api.js";
 import { StatusBadge } from "./TaskRail.jsx";
 const ManualEditor = lazy(() => import("../editor/ManualEditor.jsx"));
@@ -45,10 +48,6 @@ import { generationError } from "../hooks/modelSelection.js";
 import { useUrlContext, writeContext } from "../hooks/urlContext.js";
 import { materialSelection } from "../materials/assignments.js";
 
-const lightIcons = {
-  midday: Sun,
-  night: Moon,
-};
 const defaultSettings = {
   shadows: true,
   rotate: false,
@@ -140,9 +139,14 @@ function Pipeline({ job }) {
               )}
             </span>
             <b>{reviewIncomplete ? "AI 复核未完成，需人工核对" : name}</b>
-            {active && !reviewIncomplete && job.status === "running" && (
-              <LoaderCircle size={12} className="spin" />
-            )}
+            <InlineProgress
+              active={active && !reviewIncomplete && job.status === "running"}
+              cancelled={
+                reviewIncomplete ||
+                ["failed", "cancelled", "awaiting_review"].includes(job.status)
+              }
+              operationKey={job.id}
+            />
           </li>
         );
       })}
@@ -302,6 +306,7 @@ export default function TaskWorkspace({
     return () => document.removeEventListener("keydown", close);
   }, [inspectorOpen, active]);
   const [loading, setLoading] = useState(true);
+  const [spaceVisible, setSpaceVisible] = useState(false);
   const [modelError, setModelError] = useState("");
   useEffect(() => {
     if (!loading && roomView && rooms.some((r) => r.id === roomView))
@@ -486,7 +491,7 @@ export default function TaskWorkspace({
         </p>
       )}
       {tab === "edit" && job && (
-        <Suspense fallback={<p role="status">正在打开人工设计…</p>}>
+        <ProgressBoundary label="正在打开人工设计…">
           <ManualEditor
             key={job.id}
             job={job}
@@ -503,7 +508,7 @@ export default function TaskWorkspace({
               if (diyMode) onExitDiy?.();
             }}
           />
-        </Suspense>
+        </ProgressBoundary>
       )}
       {reviewing && tab !== "edit" && (
         <StructureReview
@@ -518,19 +523,18 @@ export default function TaskWorkspace({
       >
         <div className="design-column">
           {initialModel && tab === "design" && (
-            <div
-              className="delivery-notice initial-preview-status"
-              role="status"
-            >
-              <TriangleAlert size={17} />
-              <p>
-                <strong>三维初稿 · 尚未人工核对</strong> · {job.stage}（
-                {job.progress}%）。可以旋转、缩放；生成完成后可编辑。
-              </p>
-              <button className="text-button" onClick={() => setTab("source")}>
-                对照原图
-              </button>
-            </div>
+            <InitialPreviewStatus
+              job={job}
+              events={projects.events}
+              connectionError={projects.error}
+              busy={busy}
+              error={actionError}
+              onTimeline={() => setTab("activity")}
+              onSource={() => setTab("source")}
+              onContinue={() =>
+                action("continue", { revision: job.updated_at })
+              }
+            />
           )}
           {job?.status === "succeeded" && actionError && !improving && (
             <div className="form-error" role="alert">
@@ -661,6 +665,44 @@ export default function TaskWorkspace({
             className={`work-surface ${tab === "design" ? "canvas-surface" : ""}`}
           >
             <div className="design-panel" hidden={tab !== "design"}>
+              <OperationStatus
+                active={
+                  hasModel || initialModel ? loading : !terminal(job?.status)
+                }
+                failed={
+                  !!modelError ||
+                  (!hasModel && !initialModel && job?.status === "failed")
+                }
+                cancelled={
+                  !active ||
+                  tab !== "design" ||
+                  job?.status === "cancelled" ||
+                  (job?.status === "awaiting_review" &&
+                    !initialModel &&
+                    !hasModel)
+                }
+                operationKey={job?.id || url}
+                className="canvas-loading"
+                background={spaceVisible}
+                successLabel={initialModel ? "建筑初稿已就绪" : "空间已就绪"}
+                label={
+                  hasModel || initialModel
+                    ? "正在载入空间"
+                    : "你的空间正在构建中"
+                }
+                detail={
+                  hasModel || initialModel
+                    ? "加载精细模型与材质，为你还原空间细节。"
+                    : job?.stage
+                }
+                progress={
+                  job && !hasModel && !initialModel
+                    ? (job.progress || 0) * 0.85
+                    : undefined
+                }
+                estimateFrom={job && (hasModel || initialModel) ? 91 : 4}
+                estimated
+              />
               {hasModel ? (
                 <>
                   <Viewport
@@ -673,10 +715,14 @@ export default function TaskWorkspace({
                     settings={settings}
                     onLoading={(v) => {
                       setLoading(v);
+                      if (!v) setSpaceVisible(true);
                       if (v) setRoomIsolated(false);
                     }}
                     onView={setView}
-                    onError={setModelError}
+                    onError={(message) => {
+                      setModelError(message);
+                      if (message) setSpaceVisible(false);
+                    }}
                     onZoom={setZoom}
                     onThumbnails={setThumbs}
                     onRooms={setRooms}
@@ -693,25 +739,10 @@ export default function TaskWorkspace({
                     </small>
                   </div>
                   <div className="canvas-toolbar">
-                    <div className="quick-lighting" aria-label="预览光照">
-                      {presets.map((preset) => {
-                        const Icon = lightIcons[preset.id];
-                        return (
-                          <button
-                            key={preset.id}
-                            aria-label={preset.name}
-                            aria-pressed={state.preset === preset.id}
-                            className={
-                              state.preset === preset.id ? "active" : ""
-                            }
-                            onClick={() => update({ preset: preset.id })}
-                          >
-                            <Icon size={15} />
-                            <span>{preset.name}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <EnvironmentPicker
+                      value={state.preset}
+                      onChange={(preset) => update({ preset })}
+                    />
                     <span />
                     <IconButton
                       label="撤销"
@@ -895,13 +926,6 @@ export default function TaskWorkspace({
                     <span>拖动旋转 · 滚轮缩放</span>
                     <span>右键平移</span>
                   </div>
-                  {loading && (
-                    <div className="canvas-loading">
-                      <LoaderCircle size={26} className="spin" />
-                      <b>正在载入空间</b>
-                      <span>加载本任务的模型与材质</span>
-                    </div>
-                  )}
                   {modelError && (
                     <div className="canvas-error" role="alert">
                       <h3>模型暂时无法显示</h3>
@@ -929,14 +953,15 @@ export default function TaskWorkspace({
                     }
                     state={state}
                     settings={settings}
-                    onLoading={setLoading}
-                    onError={setModelError}
+                    onLoading={(v) => {
+                      setLoading(v);
+                      if (!v) setSpaceVisible(true);
+                    }}
+                    onError={(message) => {
+                      setModelError(message);
+                      if (message) setSpaceVisible(false);
+                    }}
                   />
-                  {loading && (
-                    <div className="canvas-loading" role="status">
-                      正在载入真实建筑初稿…
-                    </div>
-                  )}
                   {modelError && (
                     <div className="canvas-error" role="alert">
                       <p>{modelError}</p>
@@ -945,20 +970,19 @@ export default function TaskWorkspace({
                 </>
               ) : (
                 <div className="empty-state">
-                  <LoaderCircle
-                    size={38}
-                    className={!terminal(job.status) ? "spin" : ""}
-                  />
-                  <h2>
-                    {job.status === "failed"
-                      ? "本次生成未完成"
-                      : job.status === "cancelled"
-                        ? "任务已取消"
-                        : "你的空间正在构建中"}
-                  </h2>
-                  <p>
-                    {job.stage} · {job.progress}%
-                  </p>
+                  {terminal(job.status) ? (
+                    <>
+                      <TriangleAlert size={30} />
+                      <h2>
+                        {job.status === "failed"
+                          ? "本次生成未完成"
+                          : "任务已取消"}
+                      </h2>
+                      <p>{job.stage}</p>
+                    </>
+                  ) : (
+                    <p>{job.stage}</p>
+                  )}
                   <button
                     className="secondary-button"
                     onClick={() => setTab("activity")}
@@ -1082,8 +1106,8 @@ export default function TaskWorkspace({
                   </button>
                 ) : (
                   <div className="sample-overview">
-                    <span className="sample-eyebrow">原创样板间 / 03</span>
-                    <h3>林间暖居</h3>
+                    <span className="sample-eyebrow">原创样板间 / 光庭系列</span>
+                    <h3>{showcase.title.split(" · ")[0]}</h3>
                     <p>把自然光留给生活，把温柔留给夜晚。</p>
                     <div
                       className="sample-palette"
@@ -1292,45 +1316,18 @@ export default function TaskWorkspace({
                     <div className="inspector-section">
                       <div className="section-heading">
                         <h2>环境与照明</h2>
-                        <span>
-                          {presets.find((p) => p.id === state.preset)?.time}
-                        </span>
                       </div>
-                      <div className="light-presets">
-                        {presets.map((preset) => {
-                          const Icon = lightIcons[preset.id];
-                          return (
-                            <button
-                              type="button"
-                              key={preset.id}
-                              aria-label={`切换到${preset.name}`}
-                              aria-pressed={state.preset === preset.id}
-                              onClick={() => update({ preset: preset.id })}
-                              className={
-                                state.preset === preset.id ? "active" : ""
-                              }
-                            >
-                              {thumbs[preset.id] ? (
-                                <img src={thumbs[preset.id]} alt="" />
-                              ) : (
-                                <div
-                                  className={`light-placeholder ${preset.id}`}
-                                />
-                              )}
-                              <span>
-                                <Icon size={12} />
-                                {preset.name}
-                                <small>{preset.time}</small>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <EnvironmentPicker
+                        inline
+                        value={state.preset}
+                        thumbnails={thumbs}
+                        onChange={(preset) => update({ preset })}
+                      />
                       {state.preset === "night" && (
                         <p className="field-note">
                           {id === "sample"
                             ? "切换夜晚，查看空间的暖光照明效果。"
-                            : "夜晚由方案中的灯具照明。点击顶部「手动调整布局」可调整灯位、亮度和色温。旧任务可更新三维效果以补充照明。"}
+                            : "夜晚由方案中的灯具照明。进入人工设计可调整灯位、亮度和色温。旧任务可更新三维效果以补充照明。"}
                         </p>
                       )}
                       <div className="slider-heading">
@@ -1412,13 +1409,7 @@ export default function TaskWorkspace({
                         <h2>任务状态</h2>
                         <StatusBadge status={job.status} />
                       </div>
-                      <div className="task-progress-heading">
-                        <span>{job.stage}</span>
-                        <b>{job.progress}%</b>
-                      </div>
-                      <div className="progress-track">
-                        <i style={{ width: `${job.progress}%` }} />
-                      </div>
+                      <TaskProgress job={job} />
                       <Pipeline job={job} />
                     </div>
                     <div className="inspector-section">

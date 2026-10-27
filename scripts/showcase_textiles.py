@@ -64,7 +64,14 @@ def draped_throw(triangles, cx, cz):
             u = col / (len(zs) - 1)
             # Only a few broad, soft folds. Edges remain a continuous rectangle.
             fold = np.sin(u * np.pi * 3) * np.sin(u * np.pi)
-            vertices.append((x + .007 * hanging * fold, y + .002 * (1 - hanging) * fold, z))
+            # 软垫有轻微横向曲率，整行取最高点会让边缘悬空。
+            # 保留跨缝支撑，同时让座面逐列贴合真实网格；转折处平滑接回垂落轮廓。
+            local_y = y
+            if row < len(xs):
+                blend = min(1, (len(xs) - 1 - row) / 5)
+                fitted = max(samples[row, col] + .009, y - .007)
+                local_y = y + (fitted - y) * blend
+            vertices.append((x + .007 * hanging * fold, local_y + .002 * (1 - hanging) * fold, z))
             uv.append((u * width / .25, arc[row] / .25))
     faces = []
     columns = len(zs)

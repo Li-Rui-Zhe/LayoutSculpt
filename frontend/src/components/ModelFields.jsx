@@ -1,3 +1,4 @@
+import { InlineProgress } from "./LoadingProgress.jsx";
 import { RotateCcw, Monitor, Cloud, ArrowUpRight } from "lucide-react";
 import { effortLabel } from "../hooks/useModels.js";
 import { selectableModel } from "../hooks/modelSelection.js";
@@ -50,7 +51,12 @@ export default function ModelFields({
             onClick={() => models.refresh(true)}
             disabled={models.loading}
           >
-            <RotateCcw size={12} className={models.loading ? "spin" : ""} />
+            <InlineProgress
+              active={models.loading}
+              failed={!!models.error}
+              operationKey={models.provider}
+              fallback={<RotateCcw size={12} />}
+            />
             刷新模型
           </button>
         </div>

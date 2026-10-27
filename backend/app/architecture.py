@@ -43,6 +43,9 @@ def wall_sections(document, cut_height=1.2):
                      *(o["bottom"] + o["height"] for o in document["openings"])})
     sections = []
     for bottom, top in zip(levels, levels[1:]):
+        # 相同设计高度的浮点计算可能相差约 1e-16 米，不能挤出零厚度墙片。
+        if top - bottom <= 1e-8:
+            continue
         middle = (bottom + top) / 2
         voids = unary_union([
             opening_footprint(by_id[o["wall_id"]], o)

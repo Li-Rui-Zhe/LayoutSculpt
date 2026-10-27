@@ -1,8 +1,8 @@
+import { InlineProgress } from "./LoadingProgress.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
   UploadCloud,
   ArrowRight,
-  LoaderCircle,
   ShieldCheck,
   Check,
   SlidersHorizontal,
@@ -16,13 +16,20 @@ import { useCustomTextures } from "../materials/customTextures.js";
 import MaterialSample from "./MaterialSample.jsx";
 import ModelFields from "./ModelFields.jsx";
 import OperationStatus from "./OperationStatus.jsx";
+import { useProgressGate } from "./useProgressGate.js";
 import {
   readGenerationDraft,
   saveGenerationDraft,
   clearGenerationDraft,
 } from "../hooks/generationDraft.js";
 
+import {
+  generationDraftContent,
+  hasGenerationDraft,
+} from "../hooks/generationDraftContent.js";
+
 export default function GenerationForm({ projects, onCancel, onCreated }) {
+  const completion = useProgressGate();
   const textureStatus = useCustomTextures();
   const [finishes, setFinishes] = useState({ walls: "", floor: "" });
   const models = useModels();
@@ -64,14 +71,63 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
-  const [recovery, setRecovery] = useState(null);
+  const [clearing, setClearing] = useState(false);
+  const clearingRef = useRef(false);
+  const flushDraft = useRef(null);
+  const draftReadable = useRef(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [draftError, setDraftError] = useState("");
+  const applyDraft = (value = {}) => {
+    const d = generationDraftContent(value);
+    setFile(d.file);
+    setName(d.name);
+    setStyle(d.style);
+    setStyleDescription(d.styleDescription);
+    setNotes(d.notes);
+    setFinishes(d.finishes);
+    setCollaboration(d.collaboration);
+    setManualReview(d.manualReview);
+    setFurnitureMode(d.furnitureMode);
+  };
+  const currentDraft = {
+    file,
+    name,
+    style,
+    styleDescription,
+    notes,
+    finishes,
+    collaboration,
+    manualReview,
+    furnitureMode,
+  };
+  const hasDraft = hasGenerationDraft(currentDraft);
+  const clearDraft = async () => {
+    if (busy || !draftLoaded || clearingRef.current) return;
+    clearingRef.current = true;
+    setClearing(true);
+    flushDraft.current = null;
+    clearTimeout(draftTimer.current);
+    try {
+      await clearGenerationDraft();
+      applyDraft();
+      setPreparing(false);
+      setError("");
+      setDraftError("");
+      if (picker.current) picker.current.value = "";
+    } catch {
+      setDraftError("清空失败，填写内容已保留，请重试。");
+    } finally {
+      clearingRef.current = false;
+      setClearing(false);
+    }
+  };
   useEffect(() => {
     let live = true;
     readGenerationDraft()
       .then((value) => {
-        if (live && value?.version === 1) setRecovery(value);
+        draftReadable.current = true;
+        if (live && value?.version === 1 && hasGenerationDraft(value))
+          applyDraft(value);
       })
       .catch(() => {
         if (live) setDraftError("浏览器草稿存储不可用，请在离开前提交任务。");
@@ -84,16 +140,11 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
     };
   }, []);
   useEffect(() => {
-    if (
-      !draftLoaded ||
-      recovery ||
-      !(file || name || notes || styleDescription)
-    )
-      return;
+    if (!draftLoaded || clearing || !draftReadable.current) return;
     const persist = () => {
       clearTimeout(draftTimer.current);
-      if (submitted.current) return;
-      saveGenerationDraft({
+      if (submitted.current || clearingRef.current) return;
+      const value = generationDraftContent({
         version: 1,
         file,
         name,
@@ -104,10 +155,16 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
         collaboration,
         manualReview,
         furnitureMode,
-      })
+      });
+      return (
+        hasGenerationDraft(value)
+          ? saveGenerationDraft(value)
+          : clearGenerationDraft()
+      )
         .then(() => setDraftError(""))
         .catch(() => setDraftError("生成草稿未能保存到浏览器，请勿关闭页面。"));
     };
+    flushDraft.current = persist;
     const onHidden = () => {
       if (document.visibilityState === "hidden") persist();
     };
@@ -119,7 +176,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
     };
   }, [
     draftLoaded,
-    recovery,
+    clearing,
     file,
     name,
     style,
@@ -130,6 +187,12 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
     manualReview,
     furnitureMode,
   ]);
+  useEffect(
+    () => () => {
+      flushDraft.current?.();
+    },
+    [],
+  );
   const styleUnsupported =
     style === "custom" &&
     projects.health &&
@@ -171,6 +234,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
       return;
     }
     submitLock.current = true;
+    completion.reset();
     setBusy(true);
     setError("");
     try {
@@ -194,7 +258,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
       submitted.current = true;
       clearTimeout(draftTimer.current);
       await clearGenerationDraft().catch(() => {});
-      onCreated();
+      if (await completion.finish()) onCreated();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -218,38 +282,6 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               : "准备就绪，生成后可继续调整设计";
   return (
     <div className="new-task-page">
-      {recovery && (
-        <div className="creation-recovery" role="status">
-          <span>有一份未完成的设计草稿</span>
-          <button
-            type="button"
-            onClick={() => {
-              setFile(recovery.file || null);
-              setName(recovery.name || "");
-              setStyle(recovery.style || "natural");
-              setStyleDescription(recovery.styleDescription || "");
-              setNotes(recovery.notes || "");
-              setFinishes(recovery.finishes || { walls: "", floor: "" });
-              setManualReview(Boolean(recovery.manualReview));
-              setCollaboration(recovery.collaboration ?? true);
-              setFurnitureMode(recovery.furnitureMode || "library");
-              setRecovery(null);
-            }}
-          >
-            恢复草稿
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              clearGenerationDraft()
-                .then(() => setRecovery(null))
-                .catch(() => setDraftError("清理草稿失败，请重试"));
-            }}
-          >
-            放弃旧草稿
-          </button>
-        </div>
-      )}
       {draftError && <p role="alert">{draftError}</p>}
       <header className="page-heading">
         <div>
@@ -259,6 +291,14 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
           <p>上传户型图，AI 为你搭建三维空间，之后可以自由调整。</p>
         </div>
         <div className="creation-import">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy || clearing || !draftLoaded || !hasDraft}
+            onClick={clearDraft}
+          >
+            {clearing ? "正在清空…" : "清空重填"}
+          </button>
           <input
             type="file"
             accept=".zip"
@@ -270,6 +310,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               if (!f) return;
               if (submitLock.current) return;
               submitLock.current = true;
+              completion.reset();
               setImporting(true);
               setBusy(true);
               setError("");
@@ -277,7 +318,7 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 const form = new FormData();
                 form.append("file", f);
                 await projects.importProject(form);
-                onCreated();
+                if (await completion.finish()) onCreated();
               } catch (e) {
                 setError(e.message);
               } finally {
@@ -308,7 +349,10 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
         />
       )}
       <form onSubmit={submit}>
-        <fieldset disabled={busy} className="generation-fields">
+        <fieldset
+          disabled={busy || clearing || !draftLoaded}
+          className="generation-fields"
+        >
           <section className="upload-card">
             <div className="section-heading">
               <h2>
@@ -524,7 +568,10 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               <span className="creation-tag">已有默认方案</span>
             </div>
             <OperationStatus
-              active={busy}
+              active={busy && !completion.completed}
+              onIdle={completion.onIdle}
+              failed={!!error}
+              successLabel="任务已提交"
               label={importing ? "正在导入项目" : "正在上传户型并创建任务"}
               detail="提交成功后会进入任务页，请勿重复提交。"
             />
@@ -806,11 +853,11 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                   !projects.health?.furniture_library?.available)
               }
             >
-              {busy ? (
-                <LoaderCircle size={15} className="spin" />
-              ) : (
-                <ArrowRight size={15} />
-              )}
+              <InlineProgress
+                active={busy && !completion.completed}
+                failed={!!error}
+                fallback={<ArrowRight size={15} />}
+              />
               {busy
                 ? importing
                   ? "正在导入项目"

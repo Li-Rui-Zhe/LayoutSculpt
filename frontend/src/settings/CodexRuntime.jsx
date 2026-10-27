@@ -1,8 +1,8 @@
+import OperationStatus from "../components/OperationStatus.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
   Monitor,
   CheckCircle2,
-  LoaderCircle,
   ExternalLink,
   RefreshCw,
   AlertCircle,
@@ -219,9 +219,16 @@ export default function CodexRuntime({
           )}
         </div>
       )}
+      <OperationStatus
+        active={login.status === "waiting"}
+        failed={login.status === "failed"}
+        cancelled={login.status === "cancelled"}
+        label="等待完成官方登录"
+        successLabel="登录已完成"
+        background
+      />
       {login.status === "waiting" && (
         <div className="ai-login-wait" role="status">
-          <LoaderCircle size={16} className="spin" />
           <div>
             <strong>等待官方页面登录</strong>
             <p>完成后自动检测并连接。浏览器没有打开时，可点击下方入口。</p>

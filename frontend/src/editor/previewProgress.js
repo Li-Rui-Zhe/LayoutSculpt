@@ -1,20 +1,6 @@
-// 服务端暂未提供建模百分比；分阶段估算，只有模型就绪才返回 100。
-export function previewProgress(phase, elapsed = 0) {
-  const seconds = Math.max(0, elapsed) / 1000;
-  switch (phase) {
-    case "pending":
-      return 5;
-    case "building":
-      return 12 + 64 * (1 - Math.exp(-seconds / 5));
-    case "downloading":
-      return 80 + 8 * (1 - Math.exp(-seconds / 2));
-    case "loading":
-      return 91 + 7 * (1 - Math.exp(-seconds / 2));
-    case "ready":
-      return 100;
-    default:
-      return 0;
-  }
+// 建模服务暂不返回实际百分比，null 交由组件展示阶段估算；只有场景就绪才确认 100%。
+export function previewProgress(phase) {
+  return phase === "ready" ? 100 : null;
 }
 
 export const previewStages = {

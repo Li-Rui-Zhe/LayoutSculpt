@@ -1,3 +1,5 @@
+import { InlineProgress } from "./LoadingProgress.jsx";
+import TaskProgress from "./TaskProgress.jsx";
 import VersionCompare from "./VersionCompare.jsx";
 import Modal from "./Modal.jsx";
 import { useState } from "react";
@@ -6,7 +8,6 @@ import {
   LayoutGrid,
   Box,
   Check,
-  LoaderCircle,
   Clock3,
   AlertCircle,
   FolderOpen,
@@ -25,7 +26,7 @@ export function StatusBadge({ status }) {
   const Icon =
     {
       queued: Clock3,
-      running: LoaderCircle,
+      running: Box,
       awaiting_review: AlertCircle,
       succeeded: Check,
       failed: AlertCircle,
@@ -33,7 +34,11 @@ export function StatusBadge({ status }) {
     }[status] || Box;
   return (
     <span className={`status-badge ${status}`}>
-      <Icon size={11} className={status === "running" ? "spin" : ""} />
+      <InlineProgress
+        active={status === "running"}
+        cancelled={!["running", "succeeded"].includes(status)}
+        fallback={<Icon size={11} />}
+      />
       {statusNames[status] || "示例"}
     </span>
   );
@@ -213,14 +218,7 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
                   </time>
                 </div>
               </div>
-              {!terminal(job.status) && (
-                <div className="task-card-progress">
-                  <span>
-                    <i style={{ width: `${job.progress}%` }} />
-                  </span>
-                  <small>{job.progress}%</small>
-                </div>
-              )}
+              <TaskProgress job={job} compact />
             </button>
             <div className="project-version-actions">
               {job.status === "succeeded" && (

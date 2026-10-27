@@ -1,0 +1,77 @@
+.initial-preview-status {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border: 1px solid #dbe4d8;
+  border-radius: 12px;
+  background: #fbfdf9;
+  color: #375746;
+  font-size: 12px;
+}
+.initial-preview-status header,
+.initial-preview-status header strong,
+.initial-preview-status header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.initial-preview-status header {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.initial-preview-status header strong {
+  font-size: 12px;
+  color: #866237;
+  font-weight: 500;
+}
+.initial-preview-status .task-progress-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #375746;
+  font-size: 13px;
+}
+.initial-preview-status .task-progress-heading b {
+  color: #375746;
+  font-variant-numeric: tabular-nums;
+}
+.initial-preview-status .progress-track {
+  display: block;
+  height: 5px;
+  margin: 8px 0;
+  background: #e3ece2;
+}
+.initial-preview-status .progress-track i {
+  background: #7da48a;
+  position: relative;
+  overflow: hidden;
+}
+.initial-preview-status[data-active="true"] .progress-track i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, #ffffff90, transparent);
+  transform: translateX(-100%);
+  animation: initial-preview-glow 2s ease-in-out infinite;
+}
+.initial-preview-status p {
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+.initial-preview-status .initial-preview-help {
+  color: #718174;
+  font-size: 11px;
+}
+.initial-preview-status > button {
+  margin-top: 8px;
+}
+@keyframes initial-preview-glow {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .initial-preview-status[data-active="true"] .progress-track i::after {
+    animation: none;
+  }
+}

@@ -82,7 +82,7 @@ class Wall(EditableObject):
     start: Point
     end: Point
     thickness: float = Field(ge=0.06, le=0.6)
-    height: float = Field(ge=1.8, le=4.5)
+    height: float = Field(ge=0.3, le=4.5, description="墙体实际高度，支持阳台栏板和矮隔墙；非防护规范校验")
     exterior: bool
     load_bearing: bool = False
     finish: Literal["default", "white", "cream", "sage", "gray"] = "default"

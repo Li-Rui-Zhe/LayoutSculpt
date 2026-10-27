@@ -1,81 +1,102 @@
-import { useEffect, useState } from "react";
-import { Check, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import LoadingProgress from "../components/LoadingProgress.jsx";
 import { previewProgress, previewStages } from "./previewProgress.js";
 import "./sceneSyncStatus.css";
+import {
+  PROGRESS_HOLD_MS,
+  PROGRESS_FADE_MS,
+} from "../components/progressMotion.js";
 
-export default function SceneSyncStatus({ state, hidden, hasModel }) {
+export default function SceneSyncStatus({
+  state,
+  hidden,
+  hasContent,
+  fallback,
+}) {
   const { phase, revision } = state;
+  const complete = hasContent || phase === "ready";
+  // 保存版本的读取与后台重建是两条流程，不能用后台的生成百分比代表画布加载。
+  const displayPhase = fallback ? "loading" : phase;
   const [visible, setVisible] = useState(false);
-  const [display, setDisplay] = useState({ revision, value: 5 });
+  const [settled, setSettled] = useState(false);
+  const finish = useCallback(() => setSettled(true), []);
   useEffect(() => {
-    if (phase === "error") {
+    if (hidden || phase === "error") {
       setVisible(false);
+      setSettled(false);
       return;
     }
-    if (phase === "ready") {
-      setDisplay({ revision, value: 100 });
-      const timer = setTimeout(() => setVisible(false), 850);
+    if (complete) {
+      if (!visible || !settled) return;
+      const timer = setTimeout(
+        () => setVisible(false),
+        PROGRESS_HOLD_MS + PROGRESS_FADE_MS,
+      );
       return () => clearTimeout(timer);
     }
-    const start = performance.now();
-    const update = () =>
-      setDisplay((previous) => ({
-        revision,
-        value: Math.max(
-          previous.revision === revision ? previous.value : 0,
-          previewProgress(phase, performance.now() - start),
-        ),
-      }));
-    update();
-    const delay = setTimeout(() => setVisible(true), 350);
-    const timer = setInterval(update, 120);
-    return () => {
-      clearTimeout(delay);
-      clearInterval(timer);
-    };
-  }, [phase, revision]);
+    setSettled(false);
+    const timer = setTimeout(() => setVisible(true), 350);
+    return () => clearTimeout(timer);
+  }, [complete, hidden, phase === "error", visible, settled]);
   if (!visible || hidden || phase === "error") return null;
-  const complete = phase === "ready";
-  const value = complete
-    ? 100
-    : Math.min(
-        98,
-        Math.floor(
-          display.revision === revision
-            ? display.value
-            : previewProgress(phase),
-        ),
-      );
-  const Icon = complete ? Check : Sparkles;
   return (
-    <div className="scene-sync-status" data-complete={complete}>
-      <div
-        className="scene-sync-status-heading"
-        role="status"
-        aria-live="polite"
-      >
-        <Icon size={14} aria-hidden="true" />
-        <strong>{previewStages[phase] || "正在同步"}</strong>
-        <span>
-          {complete ? "已完成" : "预计进度"} <b>{value}%</b>
-        </span>
-      </div>
-      <div
-        className="scene-sync-track"
-        role="progressbar"
-        aria-label="三维同步进度"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={value}
-        aria-valuetext={`${previewStages[phase]}，${complete ? "完成" : "预计"} ${value}%`}
-      >
-        <div className="scene-sync-fill" style={{ width: `${value}%` }} />
-      </div>
-      {!complete && (
-        <small>
-          {hasModel ? "保留当前画面，可继续选择和编辑" : "正在准备你的三维空间"}
-        </small>
-      )}
+    <div
+      className="scene-sync-status"
+      data-completing={complete}
+      data-settled={settled}
+      style={{
+        "--finish-delay": `${PROGRESS_HOLD_MS}ms`,
+        "--fade-duration": `${PROGRESS_FADE_MS}ms`,
+      }}
+    >
+      <LoadingProgress
+        compact
+        label={
+          complete
+            ? fallback
+              ? "保存版本已载入"
+              : "三维模型已就绪"
+            : fallback
+              ? "正在载入保存版本"
+              : previewStages[displayPhase] || "正在同步"
+        }
+        progress={previewProgress(displayPhase)}
+        estimateKey={`${revision}:${displayPhase}`}
+        operationKey={revision}
+        estimateFrom={
+          { pending: 4, building: 12, downloading: 80, loading: 91 }[
+            displayPhase
+          ] ?? 4
+        }
+        estimateTo={
+          { pending: 10, building: 76, downloading: 88, loading: 98 }[
+            displayPhase
+          ] ?? 94
+        }
+        complete={complete}
+        onComplete={finish}
+        steps={
+          fallback
+            ? ["读取保存版本", "载入场景"]
+            : ["生成模型", "接收模型", "载入场景"]
+        }
+        step={
+          fallback
+            ? 1
+            : displayPhase === "loading" || displayPhase === "ready"
+              ? 2
+              : phase === "downloading"
+                ? 1
+                : 0
+        }
+        detail={
+          complete
+            ? fallback
+              ? "可查看空间，最新修改仍在后台同步。"
+              : "空间已显示，可以开始调整。"
+            : "正在准备你的精细三维空间"
+        }
+      />
     </div>
   );
 }

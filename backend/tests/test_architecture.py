@@ -32,6 +32,25 @@ def test_t_joint_and_different_finishes_have_no_double_volume():
     assert sum(shape.area for shape in floor) == pytest.approx(unary_union(floor).area)
 
 
+def test_window_top_float_roundoff_does_not_create_zero_height_wall():
+    import trimesh
+
+    data = Layout.model_validate(layout_data()).model_dump()
+    data['walls'][0]['height'] = 1.95
+    data['openings'][0].update(kind='window', bottom=.9, height=1.05)
+    assert .9 + 1.05 != 1.95  # 真实触发历史草稿裁切后的浮点边界。
+    sections = wall_sections(data)
+    assert sections
+    for bottom, top, _, shape in sections:
+        assert top - bottom > 1e-8
+        polygons = [shape] if shape.geom_type == 'Polygon' else shape.geoms
+        for polygon in polygons:
+            if polygon.geom_type == 'Polygon' and polygon.area > 1e-8:
+                mesh = trimesh.creation.extrude_polygon(
+                    polygon.simplify(1e-7, preserve_topology=True), top - bottom, engine='earcut')
+                assert mesh.volume > 0
+
+
 def test_parallel_duplicate_wall_triggers_review_but_open_living_dining_does_not():
     data = layout_data()
     data['walls'].append(dict(id='duplicate', start=dict(x=2,y=.17), end=dict(x=5,y=.17),

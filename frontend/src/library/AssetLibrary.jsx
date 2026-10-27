@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { api } from "../api.js";
 import DiyPreview from "../diy/DiyPreview.jsx";
+import OperationStatus from "../components/OperationStatus.jsx";
 import "./library.css";
 import "./libraryWorkspace.css";
 import { useLibraryPreferences } from "../hooks/useLibraryPreferences.js";
@@ -666,7 +667,13 @@ export default function AssetLibrary({
               <button onClick={() => setRevision((r) => r + 1)}>重试</button>
             </div>
           )}
-          {loading && <p role="status">正在读取本地素材…</p>}
+          <OperationStatus
+            active={loading}
+            failed={!!error}
+            successLabel="素材列表已更新"
+            background={items.length > 0}
+            label={items.length ? "正在刷新素材列表" : "正在读取本地素材"}
+          />
           <div className="library-content">
             <div className="library-browser">
               <div className="library-result-label">
@@ -922,6 +929,18 @@ export default function AssetLibrary({
                         >
                           {placing ? "正在准备家具…" : "去户型选择位置"}
                         </button>
+                        {placing && (
+                          <div
+                            className="asset-placement-feedback"
+                            role="status"
+                          >
+                            正在准备所选家具，完成后进入户型选择位置。
+                            <i
+                              className="object-loading-rail"
+                              aria-hidden="true"
+                            />
+                          </div>
+                        )}
                         {placeError && (
                           <p className="diy-error" role="alert">
                             {placeError}

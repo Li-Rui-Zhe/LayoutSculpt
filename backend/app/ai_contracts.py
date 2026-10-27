@@ -25,7 +25,7 @@ class WallWire(StrictModel):
     a: XY = Field(description="墙中心线 start，坐标 [x,y]，单位米")
     b: XY = Field(description="墙中心线 end，坐标 [x,y]，单位米")
     t: float = Field(ge=0.06, le=0.6, description="实际墙厚 thickness，米")
-    h: float = Field(ge=1.8, le=4.5, description="墙高 height，米")
+    h: float = Field(ge=0.3, le=4.5, description="实际墙高 height，米；阳台低栏板不可按普通层高墙处理")
     ext: bool = Field(description="是否外墙 exterior")
     finish: Literal["default", "white", "cream", "sage", "gray"] = "default"
 

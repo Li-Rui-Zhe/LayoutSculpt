@@ -1,4 +1,5 @@
-import { Check, Save, LoaderCircle } from "lucide-react";
+import { InlineProgress } from "../components/LoadingProgress.jsx";
+import { Check, Save } from "lucide-react";
 import OperationStatus from "../components/OperationStatus.jsx";
 
 export default function EditorSaveBar({
@@ -18,12 +19,17 @@ export default function EditorSaveBar({
   openingKind,
   placement,
   save,
+  error,
+  completion,
 }) {
   return (
     <div className="edit-save-bar">
       <div>
         <OperationStatus
-          active={busy}
+          active={busy && !completion.completed}
+          onIdle={completion.onIdle}
+          failed={!!error}
+          successLabel="设计版本已提交"
           label="正在提交设计版本"
           detail="提交后会在任务列表继续建模，当前草稿保留。"
         />
@@ -93,11 +99,11 @@ export default function EditorSaveBar({
         }
         onClick={save}
       >
-        {busy ? (
-          <LoaderCircle size={15} className="spin" />
-        ) : (
-          <Save size={15} />
-        )}
+        <InlineProgress
+          active={busy && !completion.completed}
+          failed={!!error}
+          fallback={<Save size={15} />}
+        />
         {placement
           ? "请先放置或取消家具"
           : reviewing

@@ -1,8 +1,13 @@
+import ProgressBoundary, {
+  useBoundaryLoad,
+} from "../components/ProgressBoundary.jsx";
+import OperationStatus from "../components/OperationStatus.jsx";
+import { useProgressGate } from "../components/useProgressGate.js";
 import EditorSaveBar from "./EditorSaveBar.jsx";
 import "./editorWorkspace.css";
 import "./editorPolish.css";
 import PlanReferenceTools from "./PlanReferenceTools.jsx";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   Armchair,
   Lightbulb,
@@ -24,7 +29,6 @@ import {
   MousePointer2,
   Check,
   AlertTriangle,
-  LoaderCircle,
   Copy,
   Hand,
   Sparkles,
@@ -35,6 +39,12 @@ import {
 import { wallSides, calibrate, snapFurniture } from "./designTools.js";
 import { batchFurniture } from "./batch.js";
 import LivePreview from "./LivePreview.jsx";
+import {
+  applyOpeningHeightFix,
+  preparePreviewDocument,
+} from "./previewDocument.js";
+import { objectFocusBounds } from "./objectFocus.js";
+import { planOrigin } from "./liveModel.js";
 import SceneStructureForm from "./SceneStructureForm.jsx";
 import { applySceneEdit } from "./sceneEdits.js";
 import { lockedChange } from "./objectIdentity.js";
@@ -151,7 +161,30 @@ function labelFor(item, type, index) {
           : `${openingNames[item.kind]} ${index + 1}`;
 }
 
-export default function ManualEditor({
+export default function ManualEditor(props) {
+  const [entry, setEntry] = useState({ loading: true, error: "" });
+  const managed = useBoundaryLoad(
+    entry.loading,
+    "正在准备人工设计页面",
+    entry.error,
+  );
+  return (
+    <>
+      <OperationStatus
+        active={entry.loading && !managed}
+        failed={!!entry.error}
+        label="正在准备人工设计页面"
+        successLabel="人工设计已就绪"
+        className="route-load-status"
+        delay={350}
+      />
+      <ManualEditorContent {...props} onEntry={setEntry} />
+    </>
+  );
+}
+
+function ManualEditorContent({
+  onEntry,
   job,
   active: isActive,
   projects,
@@ -163,8 +196,13 @@ export default function ManualEditor({
   designMode = null,
   onDesignModeChange,
 }) {
+  const completion = useProgressGate();
+  const activeNow = useRef(isActive);
+  activeNow.current = isActive;
   const [sidebarTab, setSidebarTab] = useState("objects");
   const [focusCanvas, setFocusCanvas] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(null);
+  const focusSerial = useRef(0);
   const [displayUnit, setDisplayUnit] = useState("m");
   const [multi, setMulti] = useState([]);
   const [hideFurniture, setHideFurniture] = useState(false);
@@ -406,6 +444,9 @@ export default function ManualEditor({
   );
   const { zoom, focusPoint } = navigation;
   const document = preview || draft.document;
+  useEffect(() => {
+    onEntry({ loading: !document && !draft.error, error: draft.error });
+  }, [!!document, draft.error, onEntry]);
   const selectedObject =
     document && selected
       ? objects(document, selected.type)[selected.index]
@@ -476,6 +517,7 @@ export default function ManualEditor({
     return () => window.removeEventListener("keydown", close);
   }, [isActive, validationOpen]);
   const select = (type, index, object) => {
+    setFocusRequest(null);
     setSidebarTab("objects");
     setPlacement(null);
     cancelOpening();
@@ -492,6 +534,70 @@ export default function ManualEditor({
     if (type === "openings" && value) setWallId(value.wall_id);
     setError("");
   };
+  const locate = (type, index) => {
+    const object = type === "outline" ? null : objects(document, type)?.[index];
+    if (type !== "outline" && !object) {
+      setError("该对象已不存在，请重新查看检查结果。");
+      return;
+    }
+    select(type, index);
+    setQuery("");
+    setFocusCanvas(false);
+    setValidationOpen(false);
+    setMulti([]);
+    const request = {
+      type,
+      index,
+      id: object?.edit_id || object?.id,
+      token: ++focusSerial.current,
+    };
+    setFocusRequest(request);
+    if (!isScene && object) {
+      const box = objectFocusBounds(document, request);
+      if (box) {
+        const origin = planOrigin(document),
+          plan = bounds(document.layout);
+        const spanX = box.max.x - box.min.x,
+          spanY = box.max.z - box.min.z;
+        navigation.focus(
+          {
+            x: (box.min.x + box.max.x) / 2 + origin.x,
+            y: (box.min.z + box.max.z) / 2 + origin.y,
+          },
+          Math.max(
+            1.2,
+            Math.min(4, plan.width / (spanX * 2), plan.height / (spanY * 2)),
+          ),
+        );
+      }
+    }
+  };
+  useEffect(() => {
+    if (!focusRequest || !isActive) return;
+    const frame = requestAnimationFrame(() => {
+      const panel = root.current?.querySelector(".edit-inspector");
+      if (panel) panel.scrollTop = 0;
+      const list = root.current?.querySelector(".edit-object-list");
+      const selectedRow = list?.querySelector('[aria-pressed="true"]');
+      if (selectedRow) {
+        const rowBox = selectedRow.getBoundingClientRect(),
+          listBox = list.getBoundingClientRect();
+        list.scrollTop +=
+          rowBox.top - listBox.top - (list.clientHeight - rowBox.height) / 2;
+      }
+      const dimension = panel?.querySelector(
+        'input[aria-label*="高度"], input[aria-label*="宽度"]',
+      );
+      const group = dimension?.closest("details");
+      if (group) group.open = true;
+      panel?.focus({ preventScroll: true });
+      const canvas = isScene
+        ? root.current?.querySelector(".scene-editor-canvas")
+        : svg.current;
+      canvas?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusRequest, isActive, isScene]);
   const chooseOpeningWall = (id, point) => {
     setWallId(id);
     setSelected(null);
@@ -1118,6 +1224,7 @@ export default function ManualEditor({
       return;
     }
     saveLock.current = true;
+    completion.reset();
     setBusy(true);
     setError("");
     try {
@@ -1127,12 +1234,19 @@ export default function ManualEditor({
           reviewed: true,
           revision: job.result.revision,
         });
-        onClose();
-      } else
-        await projects.edit(job.id, {
-          name: name.trim() || "人工设计方案",
-          ...draft.document,
-        });
+        if ((await completion.finish()) && activeNow.current) onClose();
+      } else {
+        const result = await projects.edit(
+          job.id,
+          {
+            name: name.trim() || "人工设计方案",
+            ...draft.document,
+          },
+          { selectResult: false },
+        );
+        if ((await completion.finish()) && activeNow.current)
+          projects.select(result);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1143,9 +1257,15 @@ export default function ManualEditor({
   if (!document)
     return (
       <div className="empty-state">
-        <LoaderCircle size={26} className={draft.error ? "" : "spin"} />
-        <h2>{draft.error ? "无法读取可编辑户型" : "正在准备人工设计页面"}</h2>
-        <p>{draft.error || "读取当前任务的墙体、地板、门窗和家具数据"}</p>
+        {draft.error ? (
+          <>
+            <AlertTriangle size={26} />
+            <h2>无法读取可编辑户型</h2>
+            <p>{draft.error}</p>
+          </>
+        ) : (
+          <p>正在读取墙体、地板、门窗和家具。</p>
+        )}
         {draft.error && (
           <button className="secondary-button" onClick={draft.reload}>
             重新读取
@@ -1252,7 +1372,7 @@ export default function ManualEditor({
     );
   if (diyOpen?.mode === "surface")
     return (
-      <Suspense fallback={<p role="status">正在打开地板材质创作…</p>}>
+      <ProgressBoundary label="正在打开地板材质创作…">
         <SurfaceStudio
           category="floor"
           onLibrary={() => {
@@ -1260,11 +1380,11 @@ export default function ManualEditor({
             setLibraryOpen("materials");
           }}
         />
-      </Suspense>
+      </ProgressBoundary>
     );
   if (diyOpen)
     return (
-      <Suspense fallback={<p role="status">正在打开家具设计器…</p>}>
+      <ProgressBoundary label="正在打开家具设计器…">
         <DiyStudio
           onClose={() => setDiyOpen(null)}
           onUse={useDiy}
@@ -1287,12 +1407,15 @@ export default function ManualEditor({
             diyOpen.mode === "edit" ? "应用到选中家具" : "去户型选择位置"
           }
         />
-      </Suspense>
+      </ProgressBoundary>
     );
   const sceneCanvas = (
     <LivePreview
       document={document}
       committedDocument={draft.document}
+      savedModelUrl={job.result?.model_url}
+      savedDocument={draft.base}
+      focusRequest={focusRequest}
       editError={error}
       onDismissEditError={() => setError("")}
       placement={placement ? { active: true, ...placementResult } : null}
@@ -1756,6 +1879,21 @@ export default function ManualEditor({
                 添加
               </button>
             </div>
+            {tool === "lights" && (
+              <div
+                className="light-visibility-note"
+                role="note"
+                aria-label="灯具显示说明"
+              >
+                <strong>辅助光源默认隐藏外形</strong>
+                <p>
+                  为避免灯泡和简化吊线遮挡户型、影响观感，默认隐藏辅助灯泡与简化吊灯的外形，夜间照明仍保留。
+                </p>
+                <small>
+                  从列表选中即可调整；保存后切到「夜晚」查看效果。落地灯、台灯等实体灯具正常显示。
+                </small>
+              </div>
+            )}
             <fieldset disabled={busy || (!!drawing && !isScene)}>
               <div
                 className="edit-section object-browser"
@@ -1821,20 +1959,10 @@ export default function ManualEditor({
                     没有匹配的对象，修改关键词或清空搜索。
                   </p>
                 )}
-                {item && !isScene && (
+                {item && (
                   <button
                     className="text-button"
-                    onClick={() => {
-                      const point = item.polygon
-                        ? center(item.polygon)
-                        : selected.type === "walls"
-                          ? center([item.start, item.end])
-                          : selected.type === "openings" && wall
-                            ? center(openingPoints(item, wall))
-                            : item;
-                      navigation.focus({ x: point.x, y: point.y }, 1.6);
-                      svg.current.focus();
-                    }}
+                    onClick={() => locate(selected.type, selected.index)}
                   >
                     定位选中对象
                   </button>
@@ -2935,6 +3063,7 @@ export default function ManualEditor({
               key={`${editorView}:${selected?.type}:${item?.edit_id || item?.id || selected?.index}`}
               className="edit-properties edit-inspector"
               aria-label="对象属性"
+              tabIndex={-1}
             >
               <div className="inspector-heading">
                 <div className="inspector-heading-top">
@@ -3349,7 +3478,8 @@ export default function ManualEditor({
                           </label>
                           <div className="edit-number-grid">
                             {number("墙体厚度", "thickness", 0.06, 0.6)}
-                            {number("墙体高度", "height", 1.8, 4.5)}
+                            {number("墙体高度", "height", 0.3, 4.5)}
+                            <small>可单独调整矮墙、阳台栏板高度；防护高度请按实际建筑核对。</small>
                             {["start", "end"].flatMap((key) =>
                               ["x", "y"].map((axis) => (
                                 <NumberField
@@ -3904,17 +4034,9 @@ export default function ManualEditor({
                         (x) => x.id === id,
                       );
                       if (index >= 0) {
-                        select(type, index);
-                        const object = objects(document, type)[index];
-                        navigation.focus(
-                          type === "rooms"
-                            ? center(object.polygon)
-                            : {
-                                x: (object.start.x + object.end.x) / 2,
-                                y: (object.start.y + object.end.y) / 2,
-                              },
-                          Math.max(1.5, navigation.zoom),
-                        );
+                        locate(type, index);
+                      } else {
+                        setError("该对象已不存在，请重新检查当前设计。");
                       }
                     }}
                   />
@@ -4038,10 +4160,40 @@ export default function ManualEditor({
                 {issues.slice(0, 5).map((issue, index) => (
                   <button
                     key={index}
-                    onClick={() => select(issue.type, issue.index)}
+                    onClick={() => locate(issue.type, issue.index)}
                   >
                     {issue.text} <span>定位 ↗</span>
                   </button>
+                ))}
+                {preparePreviewDocument(document).adjustments.map((change) => (
+                  <div
+                    className="opening-height-fix"
+                    key={`height-${change.index}`}
+                  >
+                    <small>
+                      {change.label} 的预览已按墙高显示，原始尺寸未修改。
+                    </small>
+                    <button
+                      type="button"
+                      disabled={busy || change.locked}
+                      title={
+                        change.locked
+                          ? "该对象已锁定，请先解锁"
+                          : "修正尺寸，可撤销"
+                      }
+                      onClick={() => {
+                        try {
+                          commitParameter(
+                            applyOpeningHeightFix(draft.document, change.index),
+                          );
+                        } catch (e) {
+                          setError(e.message);
+                        }
+                      }}
+                    >
+                      按墙高修正{change.label}
+                    </button>
+                  </div>
                 ))}
                 {issues.length > 5 && (
                   <p>另有 {issues.length - 5} 处问题，调整后会继续提示。</p>
@@ -4054,7 +4206,7 @@ export default function ManualEditor({
                 {placementWarnings.slice(0, 5).map((issue, index) => (
                   <button
                     key={`advice-${index}`}
-                    onClick={() => select(issue.type, issue.index)}
+                    onClick={() => locate(issue.type, issue.index)}
                   >
                     建议：{issue.text} <span>定位 ↗</span>
                   </button>
@@ -4070,6 +4222,8 @@ export default function ManualEditor({
           )}
         </div>
         <EditorSaveBar
+          error={error}
+          completion={completion}
           draft={draft}
           reviewing={reviewing}
           isScene={isScene}

@@ -158,6 +158,10 @@ export default function Deliverables({ job, projects, onEdit, onCapture }) {
       )}
       <OperationStatus
         active={busy || !!waiting}
+        failed={!!error || pending?.status === "failed"}
+        cancelled={pending?.status === "cancelled"}
+        successLabel="成果已准备，已交给浏览器下载"
+        progress={waiting ? pending?.progress : undefined}
         label={busy ? "正在核对最新设计" : pending?.stage || "正在更新导出模型"}
         detail="完成后下载成果包；离开此页也可在任务列表找到新版本。"
       />

@@ -66,10 +66,10 @@ test("落地灯只对自身灯罩使用柔光近似，保留其他光源与墙�
   }
 });
 
-test("白天和夜晚两种光照，灯具位置、强度、开关独立且安装幂等", () => {
+test("三种环境光照，灯具位置、强度、开关独立且安装幂等", () => {
   assert.deepEqual(
     presets.map((p) => p.name),
-    ["白天", "夜晚"],
+    ["晴天", "日落", "夜晚"],
   );
   const model = new THREE.Group();
   model.position.set(3, 0, 2);

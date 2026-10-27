@@ -179,7 +179,7 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
         image.save(workspace / "source.png")
         await store.create(
             identifier,
-            "林间暖居 · 我的设计副本",
+            f"{layout.title.split(' · ')[0]} · 我的设计副本",
             JobOptions(style="natural").model_dump(),
         )
         await store.update(

@@ -26,6 +26,16 @@ def test_exported_geometry_checks_room_outline_and_opening_sections(tmp_path):
     assert proof["structure_hash"] == structure_hash(data)
 
 
+def test_window_top_at_wall_height_survives_export_and_verification(tmp_path):
+    data = document()
+    data['walls'][0]['height'] = 1.95
+    data['openings'][0].update(kind='window', bottom=.9, height=1.05)
+    Builder(data, Settings().furniture_catalog).build(tmp_path)
+    proof = verify_export(data, tmp_path / 'model.glb')
+    assert proof['geometry_verified']
+    assert proof['outline_verified']
+
+
 @pytest.mark.parametrize("target", ["walls", "floor", "outline"])
 def test_shifted_geometry_is_rejected_even_when_volume_is_unchanged(tmp_path, target):
     data = document()

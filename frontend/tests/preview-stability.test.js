@@ -102,16 +102,9 @@ test("取消铺设仍立即隐藏该房间地板，不被当作纯饰面修改�
   );
 });
 
-test("预计进度随阶段单调推进，长时间等待也不能假报完成", () => {
-  let previous = 0;
-  for (const phase of ["pending", "building", "downloading", "loading"]) {
-    for (const elapsed of [0, 1000, 5000, 60000, 3600000]) {
-      const value = previewProgress(phase, elapsed);
-      assert.ok(value >= previous, `${phase}: ${value} < ${previous}`);
-      assert.ok(value < 100);
-      previous = value;
-    }
-  }
+test("没有真实百分比的阶段不伪造预计进度，只有模型就绪才显示完成", () => {
+  for (const phase of ["pending", "building", "downloading", "loading", "error"])
+    assert.equal(previewProgress(phase), null);
   assert.equal(previewProgress("ready"), 100);
 });
 

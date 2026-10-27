@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, X } from "lucide-react";
 import { api } from "../api.js";
 import DiyPreview from "../diy/DiyPreview.jsx";
+import OperationStatus from "../components/OperationStatus.jsx";
 import { useLibraryPreferences } from "../hooks/useLibraryPreferences.js";
 import {
   replacementCandidates,
@@ -45,7 +46,10 @@ function ReplacementDialog({ document, index, onCommit, onClose }) {
   useEffect(() => {
     setTemplate(null);
     setLoadedUrl(null);
-    if (!selected) return;
+    if (!selected) {
+      setPreparing(false);
+      return;
+    }
     const abort = new AbortController();
     setPreparing(true);
     setError("");
@@ -116,7 +120,13 @@ function ReplacementDialog({ document, index, onCommit, onClose }) {
               ))}
             </select>
           </label>
-          {loading && <p role="status">正在读取可替换款式…</p>}
+          <OperationStatus
+            active={loading}
+            failed={!!error}
+            successLabel="款式已读取"
+            background={items.length > 0}
+            label={items.length ? "正在刷新可替换款式" : "正在读取可替换款式"}
+          />
           {!loading && !candidates.length && (
             <p>没有匹配的款式，可切换风格或从素材库添加其他家具。</p>
           )}
@@ -150,7 +160,8 @@ function ReplacementDialog({ document, index, onCommit, onClose }) {
             <>
               <h3>{selected.name}</h3>
               <DiyPreview
-                key={`${selected.id}:${revision}`}
+                retainPrevious
+                loadRevision={revision}
                 modelUrl={selected.model_url}
                 frontDirection={selected.source === "builtin" ? 1 : -1}
                 onModelReady={setLoadedUrl}
@@ -161,7 +172,15 @@ function ReplacementDialog({ document, index, onCommit, onClose }) {
                   }
                 }}
               />
-              {preparing && <p role="status">正在检查尺寸与摆放位置…</p>}
+              <OperationStatus
+                active={preparing}
+                failed={!!error}
+                cancelled={!selected}
+                operationKey={selected?.id}
+                successLabel="尺寸检查完成"
+                background
+                label="正在检查尺寸与摆放位置"
+              />
               {template && (
                 <p
                   className={

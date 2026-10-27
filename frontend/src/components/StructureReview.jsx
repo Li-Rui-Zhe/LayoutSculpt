@@ -1,5 +1,6 @@
+import { InlineProgress } from "./LoadingProgress.jsx";
 import { useEffect, useState } from "react";
-import { Check, PencilRuler, LoaderCircle } from "lucide-react";
+import { Check, PencilRuler } from "lucide-react";
 import { api } from "../api.js";
 import { toDraft, openingPoints } from "../editor/geometry.js";
 
@@ -216,11 +217,12 @@ export default function StructureReview({ job, projects, onEdit }) {
               disabled={!data || busy}
               onClick={confirm}
             >
-              {busy ? (
-                <LoaderCircle size={16} className="spin" />
-              ) : (
-                <Check size={16} />
-              )}
+              <InlineProgress
+                active={busy}
+                failed={!!error}
+                cancelled={job.status === "cancelled"}
+                fallback={<Check size={16} />}
+              />
               已核对，继续生成
             </button>
           </div>

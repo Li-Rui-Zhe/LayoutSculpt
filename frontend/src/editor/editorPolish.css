@@ -437,3 +437,26 @@
     transition: none;
   }
 }
+.light-visibility-note {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #dce6dc;
+  border-radius: 9px;
+  background: #f4f8f2;
+  color: #536a5a;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.light-visibility-note strong {
+  display: block;
+  color: #365c45;
+  font-weight: 500;
+}
+.light-visibility-note p {
+  margin: 6px 0;
+}
+.light-visibility-note small {
+  display: block;
+  color: #748078;
+  font-size: 11px;
+}

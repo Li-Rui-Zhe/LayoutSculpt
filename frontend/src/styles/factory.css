@@ -1844,14 +1844,6 @@ dialog::backdrop {
   box-shadow: 0 5px 30px #0006;
   font-size: 11px;
 }
-.spin {
-  animation: spin 1.3s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 @media (min-width: 1600px) {
   .task-rail {

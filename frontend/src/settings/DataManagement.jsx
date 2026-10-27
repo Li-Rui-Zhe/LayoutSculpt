@@ -11,6 +11,7 @@ export default function DataManagement() {
     [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(""),
     [restore, setRestore] = useState("");
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     api("/maintenance", { signal: controller.signal })
@@ -21,11 +22,13 @@ export default function DataManagement() {
     return () => controller.abort();
   }, []);
   async function reload() {
+    setFailed(false);
     setBusy(true);
     setMessage("");
     try {
       setData(await api("/maintenance"));
     } catch (e) {
+      setFailed(true);
       setMessage(e.message);
     } finally {
       setBusy(false);
@@ -33,6 +36,7 @@ export default function DataManagement() {
   }
   async function schedule(action, id) {
     if (busy) return;
+    setFailed(false);
     setBusy(true);
     setMessage("");
     try {
@@ -45,6 +49,7 @@ export default function DataManagement() {
       setRestore("");
       setData(await api("/maintenance"));
     } catch (e) {
+      setFailed(true);
       setMessage(e.message);
     } finally {
       setBusy(false);
@@ -52,12 +57,14 @@ export default function DataManagement() {
   }
   async function cleanCache() {
     if (busy) return;
+    setFailed(false);
     setBusy(true);
     try {
       const result = await api("/maintenance/cache", { method: "POST" });
       setMessage(result.message);
       setData(await api("/maintenance"));
     } catch (e) {
+      setFailed(true);
       setMessage(e.message);
     } finally {
       setBusy(false);
@@ -112,7 +119,12 @@ export default function DataManagement() {
       <p>
         备份默认保存在本机。可下载到移动硬盘等其他位置；备份代表下方标注时间点的数据。
       </p>
-      <OperationStatus active={busy} label="正在处理本机数据操作" />
+      <OperationStatus
+        active={busy}
+        failed={failed}
+        label="正在处理本机数据操作"
+        successLabel="本机数据操作已完成"
+      />
       {message && (
         <p role="status">
           {message}

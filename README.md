@@ -27,12 +27,12 @@
 ## 从平面，到空间
 
 <p align="center">
-  <a href="docs/images/showcase.gif"><img src="docs/images/showcase.gif" alt="林间暖居第三版：真实三维旋转与白天、夜晚照明切换演示" width="100%"></a>
+  <a href="docs/images/showcase-garden.webp"><img src="docs/images/showcase-garden.webp" alt="林间光庭：花园露台、暖木洞石与真实三维昼夜光影" width="100%"></a>
 </p>
 
-<p align="center"><sub>01 / 空间预览 · 旋转看布局，昼夜看氛围<br>87㎡、七个空间的第三版原创样板间，使用项目实际 Three.js 渲染。</sub></p>
+<p align="center"><sub>01 / 林间光庭 · 走进你的第一个空间<br>93.2㎡、七个功能分区，花园茶席、洞石岛台与温暖夜景。画面来自项目实际 Three.js 渲染。</sub></p>
 
-> 演示为随项目提供的原创「林间暖居」，不是上传户型的一键识别结果。用户任务默认先展示通过几何检查的三维初稿，并标记尚未人工核对；高级设置可选择先人工核对。还原度仍取决于原图质量与人工校对。
+> 演示为随项目提供的原创「林间光庭」，不是上传户型的一键识别结果。用户任务默认先展示通过几何检查的三维初稿，并标记尚未人工核对；高级设置可选择先人工核对。还原度仍取决于原图质量与人工校对。
 
 | 看清空间 | 亲手调整 | 保留成果 |
 | :--- | :--- | :--- |
@@ -42,7 +42,7 @@
 <details>
 <summary><strong>查看完整工作台截图</strong></summary>
 
-![林间暖居第三版当前工作台](docs/images/workbench.webp)
+![林间光庭当前工作台](docs/images/workbench.webp)
 
 </details>
 
@@ -54,7 +54,7 @@
   <a href="docs/images/materials.gif"><img src="docs/images/materials.gif" alt="真实外观设置操作：更换墙面饰面、地板铺法并切换夜间照明" width="100%"></a>
 </p>
 
-<p align="center"><sub>02 / 材质搭配 · 漆面、木饰面、墙布与多种地板<br>直接点击材质样板查看结果；GIF 使用原创样板间的实际界面操作。</sub></p>
+<p align="center"><sub>02 / 材质搭配 · 漆面、木饰面、墙布与多种地板<br>直接点击材质样板查看结果；GIF 为此前「林间暖居」样板间的真实操作记录。</sub></p>
 
 - 墙面与地板都能调整；房间可单独铺设，人工设计支持逐墙独立饰面。
 - 预览可撤销、重做和还原；将墙地面保存为新的设计版本后，GLB 保留对应材质。

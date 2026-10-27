@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import ProgressBoundary from "./components/ProgressBoundary.jsx";
+import { lazy, useEffect, useRef, useState } from "react";
 import {
   Boxes,
   Plus,
@@ -281,9 +282,9 @@ export default function App() {
           className={`factory-workspace ${surface === "diy" || surface === "library" || surface === "ai" ? "creation-workspace" : ""}`}
         >
           {surface === "ai" && (
-            <Suspense fallback={<p role="status">正在打开 AI 接入…</p>}>
+            <ProgressBoundary label="正在打开 AI 接入…">
               <AiConnections />
-            </Suspense>
+            </ProgressBoundary>
           )}
           {surface === "diy" && (
             <div className="diy-hub-nav">
@@ -353,7 +354,7 @@ export default function App() {
             </div>
           )}
           {surfaceDiy && (
-            <Suspense fallback={<p role="status">正在打开材质设计…</p>}>
+            <ProgressBoundary label="正在打开材质设计…">
               <SurfaceStudio
                 key={diyMode}
                 category={diyMode}
@@ -365,14 +366,14 @@ export default function App() {
                   navigate("library");
                 }}
               />
-            </Suspense>
+            </ProgressBoundary>
           )}
           {diyVisited && (
             <div
               className="studio-page-host"
               hidden={surface !== "diy" || surfaceDiy}
             >
-              <Suspense fallback={<p role="status">正在打开家具设计…</p>}>
+              <ProgressBoundary label="正在打开家具设计…">
                 <DiyStudio
                   active={surface === "diy" && !surfaceDiy}
                   openAssetRequest={diyAssetId}
@@ -397,7 +398,7 @@ export default function App() {
                   }
                   onClose={() => navigate("workspace")}
                 />
-              </Suspense>
+              </ProgressBoundary>
             </div>
           )}
           {surface === "library" && (
@@ -407,7 +408,7 @@ export default function App() {
                   ? materialContext.rooms
                   : []
               }
-              materialTargetName={projects.job?.name || "林间暖居 · 示例空间"}
+              materialTargetName={projects.job?.name || "林间光庭 · 示例空间"}
               onApplyMaterial={
                 !projects.job || projects.job.status === "succeeded"
                   ? (request) => {

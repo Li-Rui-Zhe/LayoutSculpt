@@ -305,7 +305,8 @@ def finish_design(layout, plan, *, automatic=True):
             point = polygon.centroid
             if not polygon.buffer(-0.15).covers(point):
                 point = polygon.representative_point()
-            ceiling = min((w.height for w in layout.walls), default=2.7)
+            # 栏板、窗台矮墙不能当作室内层高，否则全屋吊灯会落到人腰部。
+            ceiling = min((w.height for w in layout.walls if w.height >= 2.0), default=2.7)
             used = {light.id for light in layout.lights}
             identifier = f"auto_{len(layout.lights) + 1}"
             while identifier in used:

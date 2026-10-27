@@ -34,6 +34,9 @@ import {
   updateRoomHighlight,
 } from "../editor/roomSelection.js";
 import { scenePose, sceneModes } from "../editor/sceneEdits.js";
+import { objectFocusBounds, focusCamera } from "../editor/objectFocus.js";
+import { createSceneObjectFeedback } from "../editor/sceneObjectFeedback.js";
+import "../editor/sceneObjectFeedback.css";
 import {
   updateLiveArchitecture,
   clearLiveArchitecture,
@@ -134,6 +137,7 @@ export default function DiyPreview({
   modelDocument,
   liveDocument,
   liveSelection,
+  focusRequest,
   liveEditable = false,
   onModelReady,
   onModelError,
@@ -141,6 +145,10 @@ export default function DiyPreview({
   placement,
   onPlacementMove,
   onPlacementConfirm,
+  sceneStatus = null,
+  pendingDocument = null,
+  retainPrevious = false,
+  loadRevision = 0,
 }) {
   const host = useRef(null),
     runtime = useRef(null),
@@ -165,6 +173,9 @@ export default function DiyPreview({
   };
   const [error, setError] = useState(""),
     [loading, setLoading] = useState(false);
+  const [hasContent, setHasContent] = useState(false);
+  const contentOwner = useRef(null),
+    pendingReady = useRef(null);
   const [transformMode, setTransformMode] = useState(
     modelDocument ? "direct" : null,
   );
@@ -216,7 +227,10 @@ export default function DiyPreview({
     selection.visible = false;
     scene.add(selection);
     const render = () => {
-      if (!disposed) renderer.render(scene, camera);
+      if (!disposed) {
+        runtime.current?.objectFeedback?.project();
+        renderer.render(scene, camera);
+      }
     };
     const quality = interactionQuality({
       ratio: window.devicePixelRatio,
@@ -245,6 +259,8 @@ export default function DiyPreview({
       ambient,
       needsFit: true,
     };
+    if (modelDocument)
+      rt.objectFeedback = createSceneObjectFeedback(container, rt);
     const gizmo = new TransformControls(camera, renderer.domElement);
     gizmo.setSize(0.7);
     scene.add(gizmo.getHelper());
@@ -460,6 +476,7 @@ export default function DiyPreview({
     renderer.domElement.addEventListener("pointerup", pointerUp);
     return () => {
       disposed = true;
+      rt.objectFeedback?.dispose();
       quality.close();
       window.removeEventListener("pointerup", quality.end);
       window.removeEventListener("pointercancel", quality.end);
@@ -489,7 +506,10 @@ export default function DiyPreview({
     rt.needsFit = true;
   }, [frontDirection]);
   useEffect(() => {
-    if ((cutaway || modelDocument) && runtime.current?.group.children.length)
+    if (
+      (cutaway || modelDocument || retainPrevious) &&
+      runtime.current?.group.children.length
+    )
       return;
     setSolo(false);
     setView("perspective");
@@ -603,10 +623,25 @@ export default function DiyPreview({
     setVersion((n) => n + 1);
   }, [design, modelUrl]);
   useEffect(() => {
-    if (!modelUrl || !runtime.current) return;
+    if (!modelUrl || !runtime.current) {
+      setLoading(false);
+      pendingReady.current = null;
+      return;
+    }
     const rt = runtime.current,
       abort = new AbortController();
+    const timeout = AbortSignal.timeout(180000);
     let alive = true;
+    const owner = modelDocument ? "editable-scene" : assetKey || modelUrl;
+    if (contentOwner.current !== owner && !modelDocument && !retainPrevious) {
+      // 换素材时不能把上一件家具显示在新名称下；同一场景更新则保留当前画面。
+      rt.gizmo.detach();
+      dispose(rt.group);
+      rt.group.clear();
+      setHasContent(false);
+      rt.render();
+    }
+    pendingReady.current = null;
     rt.selection.visible = false;
     setLoading(true);
     setError("");
@@ -616,7 +651,9 @@ export default function DiyPreview({
       throw Error("此 GLB 引用了外部资源，请使用内嵌纹理的 GLB。");
     });
     const load = async () => {
-      const response = await fetch(modelUrl, { signal: abort.signal });
+      const response = await fetch(modelUrl, {
+        signal: AbortSignal.any([abort.signal, timeout]),
+      });
       if (!response.ok) throw Error("模型无法读取，请刷新素材库后重试。");
       const buffer = await response.arrayBuffer();
       if (!alive) return;
@@ -683,21 +720,26 @@ export default function DiyPreview({
       dispose(rt.group);
       rt.group.clear();
       rt.group.add(gltf.scene);
-      rt.needsFit = firstLoad || (!cutaway && !modelDocument);
+      contentOwner.current = owner;
+      rt.needsFit =
+        firstLoad || (!cutaway && !modelDocument && !retainPrevious);
       callbacks.current.onInfo?.({
         dimensions: [size.x, size.z, size.y],
         meshes,
         triangles: Math.round(triangles),
         bytes: buffer.byteLength,
       });
+      pendingReady.current = modelUrl;
       setVersion((n) => n + 1);
-      callbacks.current.onModelReady?.(modelUrl);
     };
     load()
       .catch((e) => {
         if (alive) {
-          setError(e.message || "模型预览失败");
-          callbacks.current.onModelError?.(e.message || "模型预览失败");
+          const message = timeout.aborted
+            ? "模型加载等待超时，请重试。设计数据已保留。"
+            : e.message || "模型预览失败";
+          setError(message);
+          callbacks.current.onModelError?.(message, modelUrl);
         }
       })
       .finally(() => {
@@ -707,7 +749,7 @@ export default function DiyPreview({
       alive = false;
       abort.abort();
     };
-  }, [modelUrl]);
+  }, [modelUrl, loadRevision]);
   const placing = !!placement;
   useEffect(() => {
     const rt = runtime.current;
@@ -887,6 +929,81 @@ export default function DiyPreview({
     cutaway,
     night,
   ]);
+  useEffect(() => {
+    const rt = runtime.current;
+    const target = pendingDocument || liveDocument;
+    if (sceneStatus && rt?.modelDocument && target)
+      rt.objectFeedback?.update(
+        rt.modelDocument,
+        target,
+        sceneStatus.phase,
+        liveSelection,
+      );
+  }, [
+    liveDocument,
+    pendingDocument,
+    version,
+    sceneStatus?.phase,
+    liveSelection,
+  ]);
+  useEffect(() => {
+    const rt = runtime.current;
+    const url = pendingReady.current;
+    if (!rt || !url || url !== modelUrl) return;
+    // 以首次真实渲染为完成标记，避免解析完成却还没出现画面，或出现后仍读条。
+    rt.render();
+    pendingReady.current = null;
+    setHasContent(true);
+    setLoading(false);
+    callbacks.current.onModelReady?.(url);
+  }, [version, modelUrl]);
+  // 结构对象也有可见选框，完整墙体下仍可辨认定位目标。
+  useEffect(() => {
+    const rt = runtime.current;
+    if (
+      !rt ||
+      !modelDocument ||
+      !liveDocument ||
+      !liveSelection ||
+      !rt.group.children.length
+    )
+      return;
+    const box = objectFocusBounds(liveDocument, liveSelection, rt.liveOrigin);
+    if (!box) return;
+    const helper = new THREE.Box3Helper(box, 0x168a68);
+    helper.material.depthTest = false;
+    helper.material.transparent = true;
+    helper.material.opacity = 0.9;
+    helper.renderOrder = 1000;
+    helper.raycast = () => {};
+    rt.scene.add(helper);
+    rt.render();
+    return () => {
+      rt.scene.remove(helper);
+      helper.geometry.dispose();
+      helper.material.dispose();
+    };
+  }, [liveDocument, liveSelection, modelDocument, version]);
+  const lastFocus = useRef(null);
+  useEffect(() => {
+    const rt = runtime.current;
+    if (
+      !rt ||
+      !focusRequest ||
+      loading ||
+      !rt.group.children.length ||
+      lastFocus.current === focusRequest.token
+    )
+      return;
+    const box = objectFocusBounds(liveDocument, focusRequest, rt.liveOrigin);
+    if (!box) return;
+    lastFocus.current = focusRequest.token;
+    return focusCamera(
+      rt,
+      box,
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    );
+  }, [focusRequest, loading, version, liveDocument]);
   const liveObject =
     liveSelection &&
     liveDocument &&
@@ -896,6 +1013,7 @@ export default function DiyPreview({
   return (
     <div
       className="diy-preview-wrap"
+      aria-busy={loading}
       data-selected-room={
         liveSelection?.type === "rooms" ? liveObject?.id : undefined
       }
@@ -1089,13 +1207,24 @@ export default function DiyPreview({
             : "拖动旋转 · 滚轮缩放"}
         {!modelUrl && !modelDocument && " · 点选部件"}
       </span>
-      {loading && !modelDocument && (
-        <div className="diy-preview-message">
-          <OperationStatus
-            active={loading}
-            label="正在加载精细模型"
-            detail="完成后将在当前预览区显示。"
-          />
+      {!modelDocument && (
+        <OperationStatus
+          active={loading && !(retainPrevious && hasContent)}
+          failed={!!error}
+          cancelled={!modelUrl}
+          operationKey={modelUrl}
+          successLabel="模型已载入"
+          className="diy-preview-message"
+          label={hasContent ? "正在更新模型细节" : "正在加载精细模型"}
+          detail="完成后将在当前预览区显示。"
+          background={hasContent}
+        />
+      )}
+      {!modelDocument && retainPrevious && hasContent && loading && !error && (
+        <div className="model-transition-note" role="status">
+          正在载入新款…
+          <small>暂时显示上一款，载入后自动切换。</small>
+          <i className="object-loading-rail" aria-hidden="true" />
         </div>
       )}
       {error && (

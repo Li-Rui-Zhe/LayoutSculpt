@@ -24,7 +24,10 @@ export function createDraftSession(
         while (pending && !blocked) {
           const encoded = pending;
           pending = null;
-          if (encoded === saved) continue;
+          if (encoded === saved) {
+            report({ message: "草稿已同步本机", error: "" });
+            continue;
+          }
           try {
             const result = await write(key, {
               revision,
@@ -104,8 +107,13 @@ export function createDraftSession(
     },
     schedule(document) {
       const encoded = JSON.stringify(document);
-      if (blocked || encoded === pending || (encoded === saved && !running))
+      if (blocked || encoded === pending) return;
+      if (encoded === saved && !running) {
+        clearTimeout(timer);
+        pending = null;
+        report({ message: "草稿已同步本机", error: "" });
         return;
+      }
       pending = encoded;
       report({ message: "正在同步草稿…", error: "" });
       clearTimeout(timer);

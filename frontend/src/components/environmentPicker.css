@@ -1,0 +1,254 @@
+.environment-picker {
+  position: relative;
+  font-size: 12px;
+  color: #365548;
+}
+.environment-picker .environment-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dbe5dc;
+  border-radius: 8px;
+  background: #f4f8f2;
+  color: #3f6551;
+  padding: 7px 10px;
+  min-height: 32px;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.environment-picker .environment-trigger:hover,
+.environment-picker .environment-trigger[aria-expanded="true"] {
+  background: #e8f0e5;
+  border-color: #99b19f;
+}
+.environment-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: min(330px, calc(100vw - 40px));
+  padding: 16px;
+  z-index: 30;
+  background: #fffffff7;
+  border: 1px solid #dce5dd;
+  border-radius: 16px;
+  box-shadow: 0 16px 48px #233b3326;
+  backdrop-filter: blur(14px);
+  animation: environment-open 0.18s ease-out;
+}
+.environment-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.environment-panel header strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.environment-panel header > span {
+  font-size: 11px;
+  color: #8c968e;
+}
+.environment-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.environment-picker .environment-option {
+  display: block;
+  text-align: left;
+  padding: 5px 5px 9px;
+  border: 1px solid #e3e8e1;
+  border-radius: 11px;
+  background: #fafcf9;
+  color: #4a6355;
+  overflow: hidden;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.environment-picker .environment-option:hover {
+  border-color: #a7bcab;
+  background: #f2f6ef;
+}
+.environment-picker .environment-option[aria-pressed="true"] {
+  border-color: #649576;
+  background: #eef5eb;
+  box-shadow: 0 0 0 1px #64957622;
+}
+.environment-picker button:focus-visible {
+  outline: 2px solid #417d60;
+  outline-offset: 3px;
+}
+.environment-art {
+  height: 66px;
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 7px;
+  background: linear-gradient(160deg, #b9d5e5, #edf0d8);
+}
+.environment-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.environment-orb {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff5d5;
+  left: 24px;
+  top: 10px;
+  box-shadow: 0 0 24px 6px #ffedbf80;
+}
+.environment-horizon {
+  position: absolute;
+  width: 140%;
+  height: 40px;
+  border-radius: 50% 50% 0 0;
+  left: -15%;
+  bottom: -21px;
+  background: #b2c5ac;
+  transform: rotate(-9deg);
+}
+.environment-house {
+  position: absolute;
+  width: 38px;
+  height: 25px;
+  background: linear-gradient(90deg, #f8f6e8 65%, #d5dcca 65%);
+  right: 24px;
+  bottom: 7px;
+  box-shadow: 16px 12px 18px #65816d26;
+  transform: skewY(-7deg);
+}
+.environment-house::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  top: 6px;
+  left: 8px;
+  background: #88a59b;
+}
+.environment-sunset .environment-art {
+  background: linear-gradient(170deg, #adadc7, #edb492 65%, #f6d7a8);
+}
+.environment-sunset .environment-orb {
+  background: #ffdfaa;
+  top: 28px;
+  left: 22px;
+  box-shadow: 0 0 28px 9px #ffc68070;
+}
+.environment-sunset .environment-horizon {
+  background: #bc9789;
+}
+.environment-sunset .environment-house {
+  background: linear-gradient(90deg, #f8d8af 65%, #cda489 65%);
+  box-shadow: 27px 6px 3px #785b7140;
+}
+.environment-night .environment-art {
+  background: radial-gradient(ellipse at 75% 90%, #596170, #243a51);
+}
+.environment-night .environment-orb {
+  width: 18px;
+  height: 18px;
+  background: #e4e8e6;
+  box-shadow: 0 0 18px #d1e1ff30;
+}
+.environment-night .environment-horizon {
+  background: #3c5059;
+}
+.environment-night .environment-house {
+  background: linear-gradient(90deg, #8f9d9f 65%, #657c85 65%);
+}
+.environment-night .environment-house::after {
+  background: #ffe0a5;
+  box-shadow: 0 0 10px 3px #ffd99d55;
+}
+.environment-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #345f47;
+  color: white;
+}
+.environment-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px 5px 3px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.environment-option > small {
+  display: block;
+  margin: 0 5px;
+  color: #899385;
+  font-size: 10px;
+  white-space: normal;
+}
+.environment-caption {
+  font-size: 10px;
+  color: #8d968d;
+  margin: 12px 0 0;
+  line-height: 1.6;
+}
+.environment-picker.is-inline .environment-panel {
+  position: static;
+  padding: 0;
+  width: auto;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  animation: none;
+}
+@keyframes environment-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 650px) {
+  .environment-picker:not(.is-inline) .environment-panel {
+    position: fixed;
+    top: auto;
+    bottom: 16px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    z-index: 100;
+  }
+  .environment-picker .environment-trigger {
+    padding: 6px;
+    gap: 4px;
+  }
+  .environment-trigger > span {
+    max-width: 84px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .environment-panel {
+    animation: none;
+  }
+  .environment-picker .environment-option {
+    transition: none;
+  }
+}

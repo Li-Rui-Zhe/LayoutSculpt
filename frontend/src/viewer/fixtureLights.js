@@ -204,14 +204,14 @@ export function installFixtureLights(model, { sample = false } = {}) {
   hidePlaceholderVisuals(model, markers);
 }
 
-export function updateFixtureLights(model, night) {
+export function updateFixtureLights(model, night, strength = 1) {
   for (const fixture of model?.userData.designLights || []) {
     const enabled = night && fixture.enabled && fixture.lumens > 0;
     fixture.light.intensity = enabled
-      ? (fixture.lumens / (4 * Math.PI)) * previewIntensity
+      ? (fixture.lumens / (4 * Math.PI)) * previewIntensity * strength
       : 0;
     fixture.light.visible = enabled;
     for (const material of fixture.materials)
-      material.emissiveIntensity = enabled ? 2 : 0;
+      material.emissiveIntensity = enabled ? 2 * strength : 0;
   }
 }
