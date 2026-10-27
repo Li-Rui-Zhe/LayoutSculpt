@@ -1,4 +1,4 @@
-"""Local-only AI connection settings; secrets are write-only and never returned."""
+"""Local AI settings: credentials remain write-only; only a masked hint is returned."""
 
 import asyncio
 import shutil
@@ -62,9 +62,11 @@ def install_ai_routes(app, settings, client):
 
     def public():
         try:
-            has_key = bool(store.secret())
+            secret = store.secret()
+            has_key = bool(secret)
             warning = store.error
         except ValueError:
+            secret = None
             has_key, warning = False, "本机密钥无法读取，请重新填写并保存。"
         return {
             "revision": store.data["revision"],
@@ -83,6 +85,7 @@ def install_ai_routes(app, settings, client):
             },
             "deepseek": {
                 "configured": has_key,
+                "key_hint": ("•••• " + secret[-4:] if len(secret) > 8 else "••••••••") if secret else None,
                 "base_url": DEEPSEEK_BASE,
                 "default_model": store.data.get("deepseek_model"),
                 "key_storage": "本机加密存储",
@@ -115,7 +118,7 @@ def install_ai_routes(app, settings, client):
 
     @app.get("/api/ai/settings")
     async def get_settings():
-        return public()
+        return JSONResponse(public(), headers={"Cache-Control": "no-store"})
 
     @app.post("/api/ai/codex/check")
     async def check_codex():
@@ -204,5 +207,9 @@ def install_ai_routes(app, settings, client):
                     raise HTTPException(
                         503, "无法安全保存本机连接，请检查本地数据目录权限后重试。"
                     ) from None
+                # The directory was read before saving, so its old default may
+                # differ from the model the user just chose. Return the committed
+                # selection instead of silently resetting the settings form.
+                catalog = {**catalog, "default_model": model, "configured_default": True}
             client.remote.catalog = None
-            return {**public(), "catalog": catalog}
+            return JSONResponse({**public(), "catalog": catalog}, headers={"Cache-Control": "no-store"})

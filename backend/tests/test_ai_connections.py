@@ -120,6 +120,7 @@ def test_credentials_are_encrypted_and_preview_never_persists(tmp_path):
         settings = enable(client)
         assert settings["default_provider"] == "deepseek"
         assert settings["deepseek"]["configured"] is True
+        assert settings["deepseek"]["key_hint"] == "•••• " + KEY[-4:]
         assert KEY not in json.dumps(settings)
         assert "secret" not in settings
         assert KEY not in (tmp_path / "ai" / "connections.json").read_text()
@@ -127,6 +128,61 @@ def test_credentials_are_encrypted_and_preview_never_persists(tmp_path):
         assert client.get("/api/models").json()["provider"] == "deepseek"
         assert client.get("/api/models?provider=codex").json()["provider"] == "codex"
         assert calls
+
+
+def test_settings_reopen_shows_saved_model_and_masked_key_without_network(tmp_path):
+    app, _, calls = connection_app(tmp_path)
+    with TestClient(app) as client:
+        saved = enable(client, TEXT)
+        assert saved["deepseek"]["default_model"] == "text-only"
+        assert saved["catalog"]["default_model"] == TEXT
+        assert saved["catalog"]["configured_default"] is True
+        before = len(calls)
+        response = client.get("/api/ai/settings")
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json()["deepseek"]["key_hint"] == "•••• " + KEY[-4:]
+        assert response.json()["deepseek"]["default_model"] == "text-only"
+        assert len(calls) == before
+        assert KEY not in response.text and "api_key" not in response.json()["deepseek"]
+    restarted, _, _ = connection_app(tmp_path)
+    with TestClient(restarted) as client:
+        state = client.get("/api/ai/settings").json()
+        assert state["deepseek"]["default_model"] == "text-only"
+        assert state["deepseek"]["key_hint"] == "•••• " + KEY[-4:]
+
+
+def test_masked_key_tracks_replacement_and_removal(tmp_path):
+    app, _, _ = connection_app(tmp_path)
+    replacement = "unit-test-replacement-marker-NEW1"
+    with TestClient(app) as client:
+        enable(client)
+        app.state.ai_client.remote.transport = httpx.MockTransport(
+            lambda request: httpx.Response(200, json=models())
+        )
+        response = client.post("/api/ai/settings", json={
+            "provider": "deepseek", "revision": 1, "model": TEXT, "api_key": replacement,
+        })
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json()["deepseek"]["key_hint"] == "•••• NEW1"
+        assert replacement not in response.text and KEY not in response.text
+        removed = client.post("/api/ai/settings", json={
+            "provider": "codex", "revision": 2, "remove_key": True,
+        })
+        assert removed.status_code == 200
+        assert removed.json()["deepseek"]["key_hint"] is None
+        assert removed.json()["deepseek"]["configured"] is False
+
+
+def test_short_legacy_keys_are_fully_masked(tmp_path):
+    store = ConnectionStore(tmp_path)
+    store.save(provider="deepseek", model="vision", secret="shortkey")
+    app, _, _ = connection_app(tmp_path)
+    with TestClient(app) as client:
+        response = client.get("/api/ai/settings")
+        assert response.json()["deepseek"]["configured"] is True
+        assert response.json()["deepseek"]["key_hint"] == "••••••••"
+        assert "shortkey" not in response.text
 
 
 def test_failed_change_is_atomic_and_errors_are_redacted(tmp_path):
