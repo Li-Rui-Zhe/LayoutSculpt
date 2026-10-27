@@ -16,10 +16,26 @@ def travertine_texture():
 
 
 def cushion_mesh(radii):
-    """Soft squared cushions, with continuous normals instead of spherical blobs."""
-    mesh = trimesh.creation.uv_sphere(count=[24, 32])
-    points = mesh.vertices.copy()
-    mesh.vertices = np.sign(points) * np.abs(points) ** 0.65 * np.array(radii)
+    """Puffed rectangular upholstery with smooth, explicitly authored normals.
+
+    The thin axis has an elliptical profile; the face is a rounded rectangle.
+    Projecting an evenly sampled sphere avoids stretched UV-sphere pole bands.
+    """
+    radii = np.asarray(radii, dtype=float)
+    if radii.shape != (3,) or not np.isfinite(radii).all() or (radii <= 0).any():
+        raise ValueError("靠垫半径必须是三个有限的正数")
+    thin = int(np.argmin(radii))
+    plane = [axis for axis in range(3) if axis != thin]
+    mesh = trimesh.creation.icosphere(subdivisions=4)
+    directions = mesh.vertices.copy()
+    fourth = (directions[:, plane] ** 4).sum(axis=1)
+    squared = directions[:, thin] ** 2
+    distance = np.sqrt(2 / (squared + np.sqrt(squared**2 + 4 * fourth)))
+    normalized = directions * distance[:, None]
+    mesh.vertices = normalized * radii
+    normals = 4 * normalized**3 / radii
+    normals[:, thin] = 2 * normalized[:, thin] / radii[thin]
+    mesh.vertex_normals = normals / np.linalg.norm(normals, axis=1)[:, None]
     return mesh
 
 

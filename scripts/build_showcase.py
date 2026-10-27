@@ -25,7 +25,7 @@ from backend.app.glb_builder import Builder
 from backend.app.schemas import Layout
 from backend.app.schemas import Furnishing
 from backend.app.quality import validate_generated_furnishing
-from scripts.showcase_textiles import draped_throw, sofa_triangles
+from scripts.showcase_textiles import draped_throw, sofa_triangles, upper_surface
 from scripts.showcase_finishes import travertine_texture, cushion_mesh, vessel_mesh, olive_tree
 
 
@@ -220,6 +220,13 @@ class Showcase(Builder):
             ROOT / "public/materials/linen_normal.png"
         ).copy()
         self.cream.normalTexture = self.materials["fabric"].normalTexture
+        self.cushion_olive = material("软装_苔绿亚麻靠垫", [109, 128, 96], 0.96)
+        self.cushion_terracotta = material("软装_陶土亚麻靠垫", [174, 118, 87], 0.96)
+        weave = Image.open(ROOT / "public/materials/linen_color.png").convert("L")
+        weave = weave.point(lambda value: 192 + value * 63 // 255).convert("RGB")
+        for cushion in (self.cushion_olive, self.cushion_terracotta):
+            cushion.normalTexture = self.materials["fabric"].normalTexture
+            cushion.baseColorTexture = weave
         self.parquet = trimesh.visual.material.PBRMaterial(
             name="地板_人字拼橡木",
             baseColorFactor=[255, 255, 255, 255],
@@ -329,16 +336,46 @@ class Showcase(Builder):
         mesh.apply_scale(radii)
         self.smooth_detail(name, mesh, x, z, h, mat or self.materials[role])
 
-    def smooth_detail(self, name, mesh, x, z, height, mat, angle=0):
+    def smooth_detail(self, name, mesh, x, z, height, mat, angle=0, *, uv=None):
         mesh.visual = trimesh.visual.TextureVisuals(
-            uv=mesh.vertices[:, [0, 2]], material=mat)
+            uv=mesh.vertices[:, [0, 2]] if uv is None else uv, material=mat)
+        # Trimesh exports cached normals by default. glTF falls back to flat
+        # shading if NORMAL is absent, even for an indexed, closed soft mesh.
+        _ = mesh.vertex_normals
         transform = trimesh.transformations.rotation_matrix(angle, [0, 1, 0])
         transform[:3, 3] = self.pos(x, height, z)
         self.scene.add_geometry(mesh, node_name=name, geom_name=name, transform=transform,
                                 metadata={"decoration_kind": "showcase_detail"})
 
-    def cushion(self, name, x, z, height, radii, mat, angle=0):
-        self.smooth_detail(name, cushion_mesh(radii), x, z, height, mat, angle)
+    def cushion(self, name, x, z, height, radii, mat, angle=0, *, lean=0, support=None):
+        mesh = cushion_mesh(radii)
+        plane = [axis for axis in range(3) if axis != int(np.argmin(radii))]
+        # Fabric follows the broad face, including height on upright cushions.
+        uv = mesh.vertices[:, plane] / 0.25
+        if lean:
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(lean, [0, 0, 1]))
+        if support is not None:
+            posed = mesh.vertices @ trimesh.transformations.rotation_matrix(angle, [0, 1, 0])[:3, :3].T
+            underside = posed[posed[:, 1] < posed[:, 1].min() + 0.04]
+            normals = mesh.vertex_normals @ trimesh.transformations.rotation_matrix(angle, [0, 1, 0])[:3, :3].T
+            back = posed[(normals[:, 0] < -0.55) & (posed[:, 1] > posed[:, 1].min() + 0.09)]
+            # Fit both contacts: an upright cushion also needs a backrest, not
+            # just one low point touching the seat while standing in mid-air.
+            for iteration in range(3):
+                points = underside[:, [0, 2]] + [x - self.cx, z - self.cz]
+                heights = upper_surface(support, points)
+                if not np.isfinite(heights).all():
+                    raise ValueError(f"{name} 未完整落在沙发支撑面内")
+                height = float(np.max(heights - underside[:, 1]) + 0.002)
+                if iteration == 2 or not lean:
+                    break
+                world_back = back + [x - self.cx, height, z - self.cz]
+                backrest = upper_surface(support[:, :, [1, 0, 2]], world_back[:, [1, 2]])
+                valid = np.isfinite(backrest)
+                if not valid.any():
+                    raise ValueError(f"{name} 未找到沙发靠背支撑")
+                x += float(np.max(backrest[valid] + 0.003 - world_back[valid, 0]))
+        self.smooth_detail(name, mesh, x, z, height, mat, angle, uv=uv)
 
     def disc(self, name, x, z, radius, h, level, role="stone", metadata=None):
         self.cylinder(
@@ -375,17 +412,21 @@ class Showcase(Builder):
             self.block("地毯细织镶边", 2.9, z, 3.82, 0.025, 0.003, 0.07, "fabric", self.cream, 0.008)
         # Preserve shared vertices and continuous UVs: architectural add() splits
         # every face and would turn soft cloth into a faceted sheet.
-        cloth, uv = draped_throw(sofa_triangles(self.scene), self.cx, self.cz)
+        sofa_support = sofa_triangles(self.scene)
+        cloth, uv = draped_throw(sofa_support, self.cx, self.cz)
         throw = material("软装_鼠尾草针织毯", [139, 153, 132], 1)
         throw.normalTexture = self.rug.normalTexture
         cloth.visual = trimesh.visual.TextureVisuals(uv=uv, material=throw)
+        _ = cloth.vertex_normals
         self.scene.add_geometry(cloth, node_name="沙发垂落针织毯", geom_name="沙发垂落针织毯",
                                 metadata={"decoration_kind": "sofa_throw"})
         self.block(
             "沙发贵妃躺位", 1.95, 5.6, 1.35, 0.89, 0.21, 0.28, "fabric", self.cream, 0.2
         )
-        self.cushion("苔绿织物靠枕", 1.32, 3.42, 0.73, [0.12, 0.23, 0.23], self.olive, 0.12)
-        self.cushion("陶土织物靠枕", 1.32, 5.55, 0.73, [0.12, 0.23, 0.24], self.terracotta, -0.12)
+        self.cushion("苔绿织物靠枕", 1.28, 3.65, 0.73, [0.075, 0.23, 0.23], self.cushion_olive,
+                     0.08, lean=0.18, support=sofa_support)
+        self.cushion("陶土织物靠枕", 1.28, 5.55, 0.73, [0.075, 0.23, 0.24], self.cushion_terracotta,
+                     -0.10, lean=0.15, support=sofa_support)
         self.disc("洞石茶几桌脚", 3.08, 4.68, 0.32, 0.32, 0.06)
         self.block(
             "洞石椭圆茶几", 3.08, 4.68, 1.35, 0.95, 0.10, 0.38, "stone", radius=0.43
@@ -615,8 +656,8 @@ class Showcase(Builder):
         # A low lounge bench with squared linen pads, layered planting and garden lamps.
         for x in [1.62, 2.68, 3.74]:
             self.cushion(f"露台亚麻坐垫_{x}", x, 9.02, 0.56, [0.49, 0.055, 0.24], self.cream)
-        self.cushion("露台橄榄靠垫", 1.62, 9.2, 0.76, [0.23, 0.21, 0.09], self.olive)
-        self.cushion("露台陶土靠垫", 3.74, 9.2, 0.76, [0.23, 0.21, 0.09], self.terracotta)
+        self.cushion("露台橄榄靠垫", 1.62, 9.2, 0.76, [0.23, 0.21, 0.09], self.cushion_olive)
+        self.cushion("露台陶土靠垫", 3.74, 9.2, 0.76, [0.23, 0.21, 0.09], self.cushion_terracotta)
         rng = np.random.default_rng(29)
         greens = [material(f"庭院叶色_{i}", rgb) for i, rgb in enumerate(
             ([65, 88, 54], [88, 110, 65], [117, 131, 81]))]
