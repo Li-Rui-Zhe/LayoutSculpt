@@ -9,6 +9,7 @@ import MaterialSample from "../components/MaterialSample.jsx";
 import SurfacePainter from "./SurfacePainter.jsx";
 import SurfaceAiCreator from "./SurfaceAiCreator.jsx";
 import SurfacePreview from "./SurfacePreview.jsx";
+import Modal from "../components/Modal.jsx";
 import { readArtwork } from "./paintTools.js";
 import {
   SURFACE_MODES,
@@ -71,6 +72,11 @@ export default function SurfaceStudio({ category, onLibrary }) {
     [error, setError] = useState("");
   const [saved, setSaved] = useState(null),
     [pendingSeed, setPendingSeed] = useState(null);
+  const [preparingPaint, setPreparingPaint] = useState(false),
+    [continueError, setContinueError] = useState("");
+  const paintTransfer = useRef(false),
+    paintPanel = useRef(null),
+    paintIntent = useRef(0);
   const [storageError, setStorageError] = useState("");
   const importPicker = useRef(null),
     appliedAiJob = useRef(readJson(`surface-ai-applied:${category}`)),
@@ -97,6 +103,7 @@ export default function SurfaceStudio({ category, onLibrary }) {
     busy: busy || uploading,
   });
   const selectMode = (next) => {
+    paintIntent.current++;
     setMode(next);
     setError("");
     if (next === "draw") setPaintVisited(true);
@@ -329,20 +336,38 @@ export default function SurfaceStudio({ category, onLibrary }) {
     setPaintSeed({ url: seed.url, nonce: crypto.randomUUID() });
     setPendingSeed(null);
     selectMode("draw");
+    requestAnimationFrame(() => {
+      paintPanel.current?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+      paintPanel.current?.focus({ preventScroll: true });
+    });
   };
   const continuePainting = async () => {
-    if (!preview || previewBusy) return;
+    if (!preview || previewBusy || paintTransfer.current) return;
+    paintTransfer.current = true;
+    const intent = ++paintIntent.current;
+    setPreparingPaint(true);
+    setContinueError("");
+    const snapshot = { ...draft };
     try {
       const seed = {
         url: await dataUrl(await (await fetch(preview)).blob()),
-        recipe: { ...draft },
+        recipe: snapshot,
       };
-      const previous = await readArtwork(category).catch(() => null);
-      if (!mounted.current) return;
+      const previous = await readArtwork(category);
+      if (!mounted.current || intent !== paintIntent.current) return;
       if (previous?.image || paintImage) setPendingSeed(seed);
       else startPainting(seed);
     } catch (e) {
-      setError(e.message);
+      if (mounted.current)
+        setContinueError(
+          `无法打开手绘：${e.message}。当前材质已保留，可重试。`,
+        );
+    } finally {
+      paintTransfer.current = false;
+      if (mounted.current) setPreparingPaint(false);
     }
   };
   const currentSaved =
@@ -407,16 +432,29 @@ export default function SurfaceStudio({ category, onLibrary }) {
         }}
       />
       {pendingSeed && (
-        <div
-          className="surface-replace-prompt"
-          role="alertdialog"
-          aria-label="更换手绘底图"
+        <Modal
+          title="用当前材质开始绘画？"
+          className="surface-replace-dialog"
+          onClose={() => setPendingSeed(null)}
         >
-          <strong>用当前材质开始绘画？</strong>
           <p>这会替换此用途的手绘草稿。已保存到素材库的材质不受影响。</p>
-          <button onClick={() => startPainting(pendingSeed)}>使用新底图</button>
-          <button onClick={() => setPendingSeed(null)}>保留原画布</button>
-        </div>
+          <div className="surface-replace-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setPendingSeed(null)}
+            >
+              保留原画布
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => startPainting(pendingSeed)}
+            >
+              使用新底图
+            </button>
+          </div>
+        </Modal>
       )}
       <div className={`surface-studio-layout creation-${mode}`}>
         {mode === "preset" && (
@@ -450,7 +488,12 @@ export default function SurfaceStudio({ category, onLibrary }) {
           </aside>
         )}
         {paintVisited && (
-          <div className="surface-creation-panel" hidden={mode !== "draw"}>
+          <div
+            className="surface-creation-panel"
+            ref={paintPanel}
+            tabIndex={-1}
+            hidden={mode !== "draw"}
+          >
             <h2>绘制你的纹理</h2>
             <p className="field-note">
               画布自动同步，可直接调整右侧属性和保存。
@@ -565,11 +608,31 @@ export default function SurfaceStudio({ category, onLibrary }) {
               {mode !== "draw" && (
                 <button
                   className="surface-continue-paint"
-                  disabled={!preview || previewBusy || !!previewError || busy}
+                  type="button"
+                  aria-busy={preparingPaint}
+                  title={
+                    previewBusy
+                      ? "正在更新材质预览，请稍候"
+                      : !preview
+                        ? "请先生成材质预览"
+                        : "使用当前预览作为手绘底图"
+                  }
+                  disabled={
+                    !preview ||
+                    previewBusy ||
+                    !!previewError ||
+                    busy ||
+                    preparingPaint
+                  }
                   onClick={continuePainting}
                 >
-                  在此基础上手绘
+                  {preparingPaint ? "正在准备手绘画布…" : "在此基础上手绘"}
                 </button>
+              )}
+              {continueError && (
+                <p role="alert" className="surface-continue-error">
+                  {continueError}
+                </p>
               )}
             </>
           ) : (
@@ -766,7 +829,11 @@ export default function SurfaceStudio({ category, onLibrary }) {
           <p className="surface-save-hint">
             {saveReason || "保存后可用于户型生成和人工设计。"}
           </p>
-          <button className="primary-button" disabled={!!saveReason}>
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={!!saveReason}
+          >
             {busy ? "正在保存…" : "保存当前材质"}
           </button>
         </form>

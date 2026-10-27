@@ -825,13 +825,26 @@ export default function TaskWorkspace({
                       disabled={loading}
                       onClick={() => {
                         const value = viewer.current?.cameraState();
+                        if (!value) {
+                          setNotice(
+                            "三维场景尚未就绪，请加载完成后再保存镜头。",
+                          );
+                          return;
+                        }
                         setSavedCamera(value);
                         try {
                           localStorage.setItem(
                             `camera:${id}`,
                             JSON.stringify(value),
                           );
-                        } catch {}
+                          setNotice(
+                            "镜头已保存，可点击“恢复镜头”返回当前视角。",
+                          );
+                        } catch {
+                          setNotice(
+                            "镜头已保留在当前页面；浏览器存储不可用，关闭页面后不会保留。",
+                          );
+                        }
                       }}
                     >
                       保存镜头

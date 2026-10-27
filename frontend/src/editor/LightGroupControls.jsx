@@ -53,7 +53,7 @@ export default function LightGroupControls({ document, index, onCommit }) {
         </select>
       </label>
       <p className="field-note">
-        将修改 {count} 盏灯，已锁定灯具跳过。保存或打开实时三维，切换夜晚查看。
+        将修改 {count} 盏灯，已锁定灯具跳过。保存三维方案后，可在设计预览查看灯光效果。
       </p>
       <div className="batch-toolbar">
         <button disabled={!count} onClick={() => apply({ enabled: true })}>

@@ -28,6 +28,11 @@ import {
 import { installFurniturePlacement } from "../editor/scenePlacement.js";
 import { furnitureCorners } from "../editor/geometry.js";
 import { installDirectDrag } from "../editor/directSceneDrag.js";
+import {
+  isRoomFloorHit,
+  clearRoomHighlight,
+  updateRoomHighlight,
+} from "../editor/roomSelection.js";
 import { scenePose, sceneModes } from "../editor/sceneEdits.js";
 import {
   updateLiveArchitecture,
@@ -122,6 +127,7 @@ export default function DiyPreview({
   onInfo,
   emptyContent,
   onObjectSelect,
+  selectionType = null,
   cutaway = false,
   night = false,
   frontDirection = -1,
@@ -143,6 +149,7 @@ export default function DiyPreview({
     onSelect,
     onInfo,
     onObjectSelect,
+    selectionType,
     onTransform,
     onModelReady,
     onModelError,
@@ -378,6 +385,11 @@ export default function DiyPreview({
             o = o.parent;
           }
           const data = pickData(h.object);
+          if (
+            callbacks.current.selectionType === "rooms" &&
+            !isRoomFloorHit(data)
+          )
+            return false;
           // 剖切隐藏掉的门窗上半部不能留下透明点击墙，遮住后面的家具。
           if (
             data.editor_proxy &&
@@ -458,6 +470,7 @@ export default function DiyPreview({
       removeDirectDrag();
       window.removeEventListener("keydown", cancelGesture);
       clearLiveArchitecture(rt);
+      clearRoomHighlight(rt);
       gizmo.dispose();
       controls.dispose();
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
@@ -765,6 +778,8 @@ export default function DiyPreview({
     if (rt.liveGroups && liveDocument && rt.gizmo.object === rt.editHandle)
       syncLiveFurniture(rt.liveGroups, liveDocument);
     if (liveDocument) updateLiveArchitecture(rt, liveDocument, cutaway, night);
+    if (modelDocument) updateRoomHighlight(rt, liveDocument, liveSelection);
+    else clearRoomHighlight(rt);
     for (const mesh of rt.group.children) {
       mesh.visible = !solo || !selected || mesh.userData.partId === selected;
       if (mesh.userData.partId === selected && selected) picked = mesh;
@@ -879,7 +894,12 @@ export default function DiyPreview({
       ? liveDocument.furniture.items
       : liveDocument.layout[liveSelection.type])?.[liveSelection.index];
   return (
-    <div className="diy-preview-wrap">
+    <div
+      className="diy-preview-wrap"
+      data-selected-room={
+        liveSelection?.type === "rooms" ? liveObject?.id : undefined
+      }
+    >
       <ContextRecovery
         target={() => runtime.current?.renderer.domElement}
         onLost={() => {

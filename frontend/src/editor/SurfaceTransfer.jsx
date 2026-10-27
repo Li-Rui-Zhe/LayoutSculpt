@@ -6,9 +6,10 @@ export default function SurfaceTransfer({
   index,
   side = "both",
   onCommit,
+  clipboard,
+  onCopy,
 }) {
-  const [clipboard, setClipboard] = useState(null),
-    [scope, setScope] = useState("selected");
+  const [scope, setScope] = useState("selected");
   const source = document.layout[type][index];
   const read = (item) =>
     type === "rooms"
@@ -43,10 +44,11 @@ export default function SurfaceTransfer({
       </p>
       <button
         type="button"
-        onClick={() => setClipboard({ value: read(source) || null })}
+        onClick={() => onCopy({ value: read(source) || null })}
       >
         取样当前饰面
       </button>
+      {clipboard && <small role="status">已取样，可切换目标后粘贴</small>}
       <label className="edit-label">
         应用范围
         <select

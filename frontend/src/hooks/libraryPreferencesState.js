@@ -2,6 +2,7 @@ export const emptyPreferences = () => ({
   favorites: [],
   archived: [],
   recent: [],
+  aiEnabled: [],
 });
 
 export function applyPreference(value, { key, id, enabled = true }) {

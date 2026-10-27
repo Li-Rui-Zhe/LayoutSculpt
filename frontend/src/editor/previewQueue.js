@@ -16,7 +16,10 @@ export function createPreviewQueue({ build, publish, report, delay = 300 }) {
         if (closed || revision !== serial) return;
         report({ phase: "building", revision });
         try {
-          const result = await build(document, signal);
+          const result = await build(document, signal, (status) => {
+            if (!closed && revision === serial && !signal.aborted)
+              report({ ...status, revision });
+          });
           if (!closed && revision === serial)
             publish({ result, document, revision });
         } catch (error) {

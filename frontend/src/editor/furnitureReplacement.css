@@ -1,0 +1,119 @@
+.furniture-replacement {
+  width: min(1000px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid #d5dfd3;
+  border-radius: 16px;
+  color: #294b39;
+  background: #fafbf7;
+  box-shadow: 0 24px 80px #132c2833;
+}
+.furniture-replacement::backdrop {
+  background: #142a2466;
+}
+.furniture-replacement > header,
+.furniture-replacement > footer {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+  position: sticky;
+  z-index: 2;
+}
+.furniture-replacement > header {
+  top: 0;
+  border-bottom: 1px solid #e0e7dc;
+}
+.furniture-replacement > footer {
+  bottom: 0;
+  border-top: 1px solid #e0e7dc;
+  justify-content: flex-end;
+}
+.furniture-replacement h2,
+.furniture-replacement h3 {
+  margin: 0 0 8px;
+}
+.furniture-replacement p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 8px 0;
+}
+.replacement-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 20px;
+}
+.replacement-options > label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  white-space: nowrap;
+}
+.replacement-options > label select {
+  flex: 1;
+  min-width: 0;
+}
+.replacement-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.replacement-cards > button {
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #dde5d8;
+  border-radius: 10px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.replacement-cards > button[aria-pressed="true"] {
+  border-color: #749158;
+  background: #f0f5e8;
+}
+.replacement-cards img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: #f3f2ed;
+  border-radius: 6px;
+}
+.replacement-cards strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.replacement-cards small {
+  font-size: 11px;
+  color: #74816a;
+}
+.replacement-preview {
+  min-width: 0;
+}
+.replacement-preview .diy-preview {
+  min-height: 300px;
+}
+.replacement-valid {
+  color: #326345;
+}
+.replacement-warning {
+  color: #98651e;
+}
+@media (max-width: 650px) {
+  .replacement-body {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+  .furniture-replacement > header,
+  .furniture-replacement > footer {
+    padding: 12px;
+  }
+  .replacement-preview .diy-preview {
+    min-height: 220px;
+  }
+}

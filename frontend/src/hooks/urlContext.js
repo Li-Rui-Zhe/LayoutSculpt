@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function readContext(key, fallback = "") {
   if (typeof location === "undefined") return fallback;
@@ -10,7 +10,7 @@ export function readContext(key, fallback = "") {
     assetType: ["models", "materials"],
     materialCategory: ["walls", "floor"],
     librarySource: ["all", "builtin", "imported", "diy", "generated", "sample"],
-    librarySort: ["source", "name", "size"],
+    librarySort: ["source", "name", "recent"],
   };
   if (
     value == null ||
@@ -40,19 +40,36 @@ export function useUrlContext(key, fallback, active = true) {
   const [value, setValue] = useState(() =>
     readContext(key, typeof fallback === "function" ? fallback() : fallback),
   );
+  const current = useRef(value);
+  const fallbackRef = useRef(fallback);
+  fallbackRef.current = fallback;
   useEffect(() => {
-    const restore = () =>
-      setValue(
-        readContext(
-          key,
-          typeof fallback === "function" ? fallback() : fallback,
-        ),
+    const restore = () => {
+      const fallbackValue = fallbackRef.current;
+      const restored = readContext(
+        key,
+        typeof fallbackValue === "function" ? fallbackValue() : fallbackValue,
       );
+      current.current = restored;
+      setValue(restored);
+    };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
   }, [key]);
   useEffect(() => {
-    if (active) writeContext({ [key]: value });
+    if (active && Object.is(current.current, value))
+      writeContext({ [key]: value });
   }, [key, value, active]);
-  return [value, setValue];
+  // Store an explicit UI choice before a hash navigation can restore older URL state.
+  const change = useCallback(
+    (next) => {
+      const resolved =
+        typeof next === "function" ? next(current.current) : next;
+      current.current = resolved;
+      writeContext({ [key]: resolved });
+      setValue(resolved);
+    },
+    [key],
+  );
+  return [value, change];
 }

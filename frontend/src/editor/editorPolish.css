@@ -1,0 +1,439 @@
+/* One toolbar; one selected-object header; advanced controls stay below essentials. */
+.manual-editor .edit-toolbar {
+  gap: 12px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid #dce5df;
+  border-radius: 12px;
+  background: #fff;
+}
+.manual-editor .edit-toolbar .editor-page-nav {
+  padding: 0;
+  flex: none;
+}
+.manual-editor .editor-page-nav > div {
+  padding: 3px;
+  gap: 2px;
+  border-radius: 8px;
+  background: #f0f3ef;
+}
+.manual-editor .editor-page-nav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #708278;
+  font-size: 12px;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.manual-editor .editor-page-nav button[aria-current="page"] {
+  background: #fff;
+  color: #28523f;
+  box-shadow: 0 1px 4px #29453715;
+}
+.manual-editor .edit-tool-tabs {
+  border-left: 1px solid #e6ece7;
+  padding-left: 10px;
+  gap: 3px;
+}
+.manual-editor .edit-tool-tabs button {
+  padding: 8px 10px;
+  gap: 6px;
+  color: #7b8c83;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.manual-editor .edit-tool-tabs button.active {
+  background: #eaf2eb;
+  color: #2e6149;
+}
+.manual-editor .edit-tool-tabs button:hover:not(:disabled) {
+  background: #f0f5ef;
+  color: #345f48;
+}
+.manual-editor .edit-history {
+  gap: 4px;
+}
+.manual-editor .edit-history > button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #70867a;
+}
+.manual-editor .edit-history > button:hover:not(:disabled) {
+  background: #f0f4ef;
+}
+.manual-editor .edit-history .editor-return {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  margin-left: 7px;
+  padding: 7px 10px;
+  border: 1px solid #dce5df;
+  color: #446652;
+  font-size: 11px;
+}
+.manual-editor .editor-more > summary {
+  padding: 7px 8px;
+  border: 0;
+  font-size: 11px;
+  color: #75887a;
+}
+.manual-editor .edit-inspector {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd7cd transparent;
+  background: #fff;
+  border-radius: 12px;
+}
+.manual-editor .edit-inspector .inspector-heading {
+  padding: 12px 14px;
+  background: #fafcf9;
+  border-bottom: 1px solid #e5ebe5;
+  z-index: 3;
+}
+.manual-editor .inspector-heading-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+.manual-editor .inspector-heading-top > span {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6d8274;
+}
+.manual-editor .inspector-heading .inspector-lock {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a297;
+}
+.manual-editor .inspector-lock:hover {
+  background: #edf3eb;
+  color: #416650;
+}
+.manual-editor .inspector-heading .inspector-lock[aria-pressed="true"] {
+  color: #906c30;
+  background: #faf3e6;
+  border-color: #ecdfbf;
+}
+.manual-editor .inspector-heading > strong {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+.manual-editor .inspector-heading > small {
+  display: block;
+  margin: 8px 0 0;
+  color: #8c9a8d;
+  font-size: 10px;
+}
+.manual-editor .edit-inspector > .inspector-fields {
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.manual-editor .edit-inspector .edit-section {
+  padding: 12px 14px;
+}
+.manual-editor .edit-inspector .edit-label {
+  font-size: 11px;
+  color: #6b7c71;
+  margin: 0 0 12px;
+}
+.manual-editor .edit-inspector .edit-label > :is(input, select) {
+  margin-top: 6px;
+  padding: 8px 9px;
+  font-size: 12px;
+  border-color: #dce5dc;
+  border-radius: 6px;
+  background: #fafbf8;
+}
+.manual-editor
+  .edit-inspector
+  :is(input, select, button, summary):focus-visible {
+  outline: 2px solid #5b8a6d;
+  outline-offset: 2px;
+}
+.manual-editor .edit-inspector .inspector-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #546c5a;
+  font-size: 12px;
+  margin-bottom: 15px;
+}
+.manual-editor .edit-inspector .inspector-switch input {
+  appearance: none;
+  width: 30px;
+  height: 18px;
+  min-width: 30px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #cad7ca;
+  border-radius: 20px;
+  background: #d8e1d6;
+  cursor: pointer;
+  position: relative;
+  transition: background 150ms;
+}
+.manual-editor .inspector-switch input::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  left: 2px;
+  top: 2px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px #0002;
+  transition: transform 150ms;
+}
+.manual-editor .inspector-switch input:checked {
+  background: #5c8767;
+  border-color: #5c8767;
+}
+.manual-editor .inspector-switch input:checked::after {
+  transform: translateX(12px);
+}
+.manual-editor .edit-inspector .surface-finish-picker {
+  position: relative;
+  margin: 0 0 14px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.manual-editor .surface-finish-picker > legend {
+  display: block;
+  padding: 0 0 10px;
+  color: #556f5c;
+  font-size: 12px;
+  font-weight: 500;
+}
+.manual-editor .surface-finish-picker > p {
+  color: #8c998c;
+  margin: 0 0 10px;
+  font-size: 10px;
+}
+.manual-editor .surface-finish-picker .surface-library-link {
+  position: absolute;
+  top: -25px;
+  right: 0;
+  border: 0;
+  background: transparent;
+  color: #738d75;
+  font-size: 10px;
+  padding: 2px 0;
+}
+.manual-editor .surface-finish-grid {
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.manual-editor .surface-finish-grid button {
+  position: relative;
+  padding: 5px;
+  gap: 6px;
+  border: 1px solid #e1e7dd;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+}
+.manual-editor .surface-finish-grid button[aria-pressed="true"] {
+  background: #f2f7ee;
+  border-color: #7fa486;
+  box-shadow: 0 0 0 1px #7fa486;
+}
+.manual-editor .surface-finish-grid .surface-sample {
+  height: 43px;
+  border-radius: 4px;
+}
+.manual-editor .surface-finish-grid strong {
+  margin: 0;
+  padding: 0 2px 3px;
+  font-size: 10px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+.manual-editor .surface-selected-mark {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 14px;
+  height: 14px;
+  color: white;
+  background: #5e8765;
+  border-radius: 50%;
+}
+.manual-editor .surface-picker-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.manual-editor .surface-picker-actions > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #7a8f7b;
+  padding: 5px 0;
+  background: transparent;
+  border: 0;
+}
+.manual-editor .surface-picker-actions > button:disabled {
+  opacity: 0.35;
+}
+.manual-editor
+  .edit-inspector
+  :is(
+    .inspector-group,
+    .surface-transfer,
+    .edit-advanced,
+    .edit-vertices,
+    .local-review
+  ) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid #edf0e9;
+  border-radius: 0;
+  background: transparent;
+}
+.manual-editor
+  .edit-inspector
+  :is(
+    .inspector-group,
+    .surface-transfer,
+    .edit-advanced,
+    .edit-vertices,
+    .local-review
+  )
+  > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  padding: 12px 0;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: #6c8070;
+  cursor: pointer;
+}
+.manual-editor .edit-inspector summary::-webkit-details-marker {
+  display: none;
+}
+.manual-editor
+  .edit-inspector
+  :is(
+    .inspector-group,
+    .surface-transfer,
+    .edit-advanced,
+    .edit-vertices,
+    .local-review
+  )
+  > summary::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid #91a18f;
+  border-bottom: 1px solid #91a18f;
+  transform: rotate(-45deg);
+  margin: 0 3px 0 10px;
+  flex: none;
+}
+.manual-editor .edit-inspector details[open] > summary::after {
+  transform: rotate(45deg);
+}
+.manual-editor .edit-inspector details[open] {
+  padding-bottom: 10px;
+}
+.manual-editor .edit-inspector .edit-number-grid {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.manual-editor .edit-inspector .edit-number {
+  font-size: 10px;
+}
+.manual-editor .edit-inspector .edit-delete-row {
+  border-top: 1px solid #edf0e9;
+  padding-top: 10px;
+  margin-top: 3px;
+}
+.manual-editor .edit-inspector .edit-delete-row button {
+  color: #a18d7f;
+  font-size: 10px;
+}
+.manual-editor .edit-inspector .local-review {
+  margin: 0 14px 12px;
+}
+@media (min-width: 981px) {
+  .manual-editor .edit-columns {
+    grid-template-columns: 200px minmax(0, 1fr) 280px;
+  }
+}
+@media (min-width: 981px) and (max-width: 1250px) {
+  .manual-editor .edit-toolbar {
+    gap: 6px;
+  }
+  .manual-editor .edit-tool-tabs {
+    padding-left: 6px;
+  }
+  .manual-editor .edit-tool-tabs button {
+    padding: 8px;
+    gap: 4px;
+    font-size: 11px;
+  }
+  .manual-editor .edit-columns {
+    grid-template-columns: 180px minmax(0, 1fr) 260px;
+    gap: 10px;
+  }
+}
+@media (max-width: 980px) {
+  .manual-editor .edit-tool-tabs {
+    order: 3;
+    flex-basis: 100%;
+    border-left: 0;
+    padding: 6px 0 0;
+    border-top: 1px solid #edf0e9;
+  }
+}
+@media (max-width: 600px) {
+  .manual-editor .edit-tool-tabs {
+    flex-wrap: nowrap;
+    overflow: auto;
+  }
+  .manual-editor .edit-tool-tabs button {
+    flex: none;
+    padding: 8px;
+    font-size: 11px;
+  }
+  .manual-editor .edit-history .editor-return {
+    margin-left: 0;
+    padding: 7px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .manual-editor .inspector-switch input,
+  .manual-editor .inspector-switch input::after {
+    transition: none;
+  }
+}

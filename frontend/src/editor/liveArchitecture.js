@@ -3,12 +3,26 @@ import { planOrigin, liveKey } from "./liveModel.js";
 import { updateCutaway } from "../viewer/cutaway.js";
 import { updateFixtureLights } from "../viewer/fixtureLights.js";
 
+// 地板饰面等待精细模型原子替换；不为换色临时重建整屋建筑。
+function geometrySignature(layout) {
+  return JSON.stringify({
+    ...layout,
+    rooms: layout.rooms.map((room) =>
+      Object.fromEntries(
+        Object.entries(room).filter(
+          ([key]) => !key.startsWith("floor_") || key === "floor_enabled",
+        ),
+      ),
+    ),
+  });
+}
+
 // 拖动结构时用同一份草稿直接更新可见几何；停手后由正式建模器替换精细材质与连接面。
 export function updateLiveArchitecture(rt, document, cutaway, night) {
   const model = rt.group.children[0];
   if (!model || !rt.modelDocument) return;
-  const signature = JSON.stringify(document.layout);
-  const base = JSON.stringify(rt.modelDocument.layout);
+  const signature = geometrySignature(document.layout);
+  const base = geometrySignature(rt.modelDocument.layout);
   const key = signature === base ? null : signature + cutaway + night;
   if (rt.architectureKey === key) return;
   rt.architectureKey = key;
@@ -30,9 +44,16 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
   const origin = planOrigin(rt.modelDocument),
     overlay = new THREE.Group(),
     hidden = [],
-    palette = {};
+    palette = {},
+    roomMaterials = new Map();
   model.traverse((node) => {
     const data = node.userData;
+    if (node.isMesh && !data.editor_proxy) {
+      const roomId =
+        data.floor_room_id || (data.structure_kind === "room" && data.room_id);
+      if (roomId) roomMaterials.set(roomId, node.material);
+      if (data.structure_kind === "outline") palette.outline ||= node.material;
+    }
     if (node.isMesh && !data.editor_proxy && data.surface_category)
       palette[data.surface_category] ||= node.material;
     if (
@@ -83,12 +104,12 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
     geometry.rotateX(-Math.PI / 2);
     add(geometry, material, new THREE.Vector3(0, y, 0), 0, data);
   };
-  slab(document.layout.outline, -0.02, palette.floor, {
+  slab(document.layout.outline, -0.02, palette.outline || palette.floor, {
     structure_kind: "outline",
   });
   document.layout.rooms.forEach((room) => {
     if (room.floor_enabled !== false && !room.edit_hidden)
-      slab(room.polygon, 0.028, palette.floor, {
+      slab(room.polygon, 0.028, roomMaterials.get(room.id), {
         room_id: room.id,
         live_selection: {
           type: "rooms",

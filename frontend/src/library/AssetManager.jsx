@@ -143,7 +143,7 @@ export default function AssetManager({ onChange }) {
                             maxLength={60}
                             onChange={(e) => setName(e.target.value)}
                           />
-                          <button disabled={busy || !name.trim()}>
+                          <button type="submit" disabled={busy || !name.trim()}>
                             保存名称
                           </button>
                           <button

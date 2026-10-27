@@ -17,6 +17,7 @@ export default function MaterialLibrary({
   floorOnly = false,
   initialRoomId = "all",
   initialCategory = "walls",
+  onCategoryChange,
 }) {
   const textureStatus = useCustomTextures();
   const texturePicker = useRef(null);
@@ -108,7 +109,10 @@ export default function MaterialLibrary({
               <button
                 key={id}
                 aria-pressed={id === category}
-                onClick={() => setCategory(id)}
+                onClick={() => {
+                  setCategory(id);
+                  onCategoryChange?.(id);
+                }}
               >
                 {label}
               </button>

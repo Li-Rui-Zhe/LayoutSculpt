@@ -58,21 +58,42 @@ export function paintMark(
 function database() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("surface-artwork", 1);
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
+    const timer = setTimeout(
+      () => fail(Error("读取手绘草稿超时，请关闭其他工作台页面后重试")),
+      5000,
+    );
     request.onupgradeneeded = () => request.result.createObjectStore("drafts");
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      if (settled) {
+        request.result.close();
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
+    request.onblocked = () =>
+      fail(Error("手绘草稿正被其他页面占用，请关闭旧页面后重试"));
+    request.onerror = () => fail(request.error || Error("无法读取手绘草稿"));
   });
 }
 export async function readArtwork(category) {
   const db = await database();
   try {
     return await new Promise((resolve, reject) => {
-      const request = db
-        .transaction("drafts")
-        .objectStore("drafts")
-        .get(category);
+      const tx = db.transaction("drafts");
+      const request = tx.objectStore("drafts").get(category);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
+      tx.onabort = () => reject(tx.error || Error("手绘草稿读取被中断"));
     });
   } finally {
     db.close();
@@ -86,6 +107,7 @@ export async function writeArtwork(category, value) {
       tx.objectStore("drafts").put(value, category);
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || Error("手绘草稿保存被中断"));
     });
   } finally {
     db.close();

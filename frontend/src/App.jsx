@@ -25,6 +25,7 @@ import BuildNotice from "./components/BuildNotice.jsx";
 import { useCustomTextures } from "./materials/customTextures.js";
 import { placedDesign } from "./diy/design.js";
 import AssetLibrary from "./library/AssetLibrary.jsx";
+import { api } from "./api.js";
 import {
   readContext,
   writeContext,
@@ -440,12 +441,16 @@ export default function App() {
                 setDiyMode("furniture");
                 navigate("diy");
               }}
-              onOpenJob={(id) => {
-                const job = projects.jobs.find((j) => j.id === id);
-                if (job) select(job);
+              onOpenJob={async (id) => {
+                const job =
+                  projects.jobs.find((j) => j.id === id) ||
+                  (await api(`/jobs/${id}`));
+                select(job);
               }}
-              onCreate={() => {
-                setDiyMode("furniture");
+              onCreate={(mode) => {
+                setDiyMode(
+                  ["walls", "floor"].includes(mode) ? mode : "furniture",
+                );
                 navigate("diy");
               }}
             />
