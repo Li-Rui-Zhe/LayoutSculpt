@@ -3,11 +3,11 @@ import {
   UploadCloud,
   ArrowRight,
   LoaderCircle,
-  ScanLine,
   ShieldCheck,
-  Armchair,
-  Box,
-  ImagePlus,
+  Check,
+  SlidersHorizontal,
+  FolderOpen,
+  X,
 } from "lucide-react";
 import { useModels } from "../hooks/useModels.js";
 import ImagePreparation from "./ImagePreparation.jsx";
@@ -61,6 +61,8 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
   const [manualReview, setManualReview] = useState(false);
   const [furnitureMode, setFurnitureMode] = useState("library");
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   const [recovery, setRecovery] = useState(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -133,7 +135,10 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
     projects.health &&
     !projects.health.capabilities?.includes("custom_style");
   useEffect(() => {
-    if (!file) return;
+    if (!file) {
+      setImage("");
+      return;
+    }
     const url = URL.createObjectURL(file);
     setImage(url);
     return () => URL.revokeObjectURL(url);
@@ -197,11 +202,25 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
       setBusy(false);
     }
   };
+  const blockedReason = !file
+    ? "先上传一张户型图，也可以使用示例体验"
+    : models.loading
+      ? "正在检查 AI 接入，请稍候"
+      : !models.ready
+        ? "请在高级设置中选择可用的识图模型"
+        : styleUnsupported
+          ? "当前服务暂不支持自定义风格，请更新服务"
+          : style === "custom" && !styleDescription.trim()
+            ? "描述一下你想要的空间风格"
+            : furnitureMode === "library" &&
+                !projects.health?.furniture_library?.available
+              ? "精细家具库尚未就绪，请检查服务或在高级设置中更换方案"
+              : "准备就绪，生成后可继续调整设计";
   return (
     <div className="new-task-page">
       {recovery && (
-        <div className="creation-note" role="status">
-          <span>发现上次未提交的户型生成草稿。</span>
+        <div className="creation-recovery" role="status">
+          <span>有一份未完成的设计草稿</span>
           <button
             type="button"
             onClick={() => {
@@ -234,9 +253,12 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
       {draftError && <p role="alert">{draftError}</p>}
       <header className="page-heading">
         <div>
-          <span className="eyebrow">开启一个新的空间</span>
-          <h1>把户型图，变成你的设计。</h1>
-          <p>上传户型图，查看三维空间，再按你的想法调整设计。</p>
+          <h1>
+            新建设计<span>让家的想法，变成看得见的空间</span>
+          </h1>
+          <p>上传户型图，AI 为你搭建三维空间，之后可以自由调整。</p>
+        </div>
+        <div className="creation-import">
           <input
             type="file"
             accept=".zip"
@@ -246,6 +268,9 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
+              if (submitLock.current) return;
+              submitLock.current = true;
+              setImporting(true);
               setBusy(true);
               setError("");
               try {
@@ -256,22 +281,21 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               } catch (e) {
                 setError(e.message);
               } finally {
+                submitLock.current = false;
+                setImporting(false);
                 setBusy(false);
               }
             }}
           />
           <button
             type="button"
-            className="text-button"
+            className="secondary-button"
             disabled={busy}
             onClick={() => backupPicker.current.click()}
           >
-            从成果 ZIP 恢复为新项目
+            <FolderOpen size={16} /> 导入项目 ZIP
           </button>
         </div>
-        <span className="heading-icon">
-          <ImagePlus size={30} strokeWidth={1.3} />
-        </span>
       </header>
       {preparing && file && (
         <ImagePreparation
@@ -290,15 +314,24 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               <h2>
                 <span>01</span>上传户型图
               </h2>
-              <span>原始素材</span>
+              {file && (
+                <span className="creation-tag">
+                  <Check size={14} /> 已选择
+                </span>
+              )}
             </div>
             <button
               type="button"
-              className={`upload-drop ${file ? "has-image" : ""}`}
+              className={`upload-drop ${file ? "has-image" : ""} ${dragging ? "is-dragging" : ""}`}
               onClick={() => picker.current.click()}
-              onDragOver={(e) => e.preventDefault()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!busy) setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
               onDrop={(e) => {
                 e.preventDefault();
+                setDragging(false);
                 if (!busy) choose(e.dataTransfer.files[0]);
               }}
             >
@@ -309,11 +342,92 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 </>
               ) : (
                 <>
-                  <span className="upload-symbol">
-                    <UploadCloud size={34} strokeWidth={1.3} />
+                  <svg
+                    className="upload-plan-art"
+                    viewBox="0 0 240 140"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="37"
+                      y="9"
+                      width="166"
+                      height="122"
+                      rx="5"
+                      fill="white"
+                      stroke="#d9e2db"
+                    />
+                    <path
+                      d="M57 28H183V112H57V28Z"
+                      fill="#f2f5ef"
+                      stroke="#5e786a"
+                      strokeWidth="3"
+                    />
+                    <path
+                      d="M132 28V66M132 86V112M132 72H183M57 79H84M106 79H132"
+                      stroke="#5e786a"
+                      strokeWidth="3"
+                    />
+                    <path
+                      d="M132 86Q112 86 112 66H132M84 79V101Q106 101 106 79"
+                      stroke="#97ad9c"
+                    />
+                    <rect
+                      x="143"
+                      y="38"
+                      width="29"
+                      height="24"
+                      rx="2"
+                      fill="#e2d8c3"
+                      stroke="#c5b998"
+                    />
+                    <rect
+                      x="146"
+                      y="41"
+                      width="10"
+                      height="6"
+                      rx="1"
+                      fill="white"
+                    />
+                    <rect
+                      x="159"
+                      y="41"
+                      width="10"
+                      height="6"
+                      rx="1"
+                      fill="white"
+                    />
+                    <rect
+                      x="68"
+                      y="39"
+                      width="37"
+                      height="13"
+                      rx="3"
+                      fill="#c9d6c5"
+                    />
+                    <rect
+                      x="78"
+                      y="59"
+                      width="20"
+                      height="9"
+                      rx="4"
+                      fill="#dfd2b9"
+                    />
+                    <path
+                      d="M67 28H100M148 112H172"
+                      stroke="#a9c9d0"
+                      strokeWidth="3"
+                    />
+                    <path
+                      d="M57 17H183M57 14V20M183 14V20M215 28V112M212 28H218M212 112H218"
+                      stroke="#b6c7b9"
+                    />
+                  </svg>
+                  <b>把户型图放在这里</b>
+                  <span>拖入图片，或点击下方上传</span>
+                  <span className="upload-select">
+                    <UploadCloud size={17} /> 选择户型图
                   </span>
-                  <b>将户型图拖入这里</b>
-                  <span>或点击选择本地文件</span>
                   <small>PNG、JPG、WebP · 最大 20 MB</small>
                 </>
               )}
@@ -332,7 +446,10 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               accept="image/png,image/jpeg,image/webp"
               aria-label="选择户型图"
               hidden
-              onChange={(e) => choose(e.target.files[0])}
+              onChange={(e) => {
+                choose(e.target.files[0]);
+                e.target.value = "";
+              }}
             />
             <div className="file-caption">
               <span>
@@ -360,17 +477,29 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               </button>
             </div>
             {file && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setPreparing(true)}
-              >
-                裁剪、旋转与纠偏
-              </button>
+              <div className="upload-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setPreparing(true)}
+                >
+                  裁剪、旋转与纠偏
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    setFile(null);
+                    setError("");
+                  }}
+                >
+                  <X size={14} /> 移除图片
+                </button>
+              </div>
             )}
             <div className="field">
               <label htmlFor="task-name">
-                任务名称 <small>便于区分每次设计</small>
+                任务名称 <small>可稍后修改</small>
               </label>
               <input
                 id="task-name"
@@ -383,50 +512,26 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
             <div className="creation-note">
               <ShieldCheck size={18} />
               <div>
-                <b>每次生成，一个独立工作区</b>
-                <p>
-                  原图、参数、进度与成果分别保存。可以同时提交多个任务，完成后随时切换查看。
-                </p>
+                <p>每份设计独立保存，随时回来继续。</p>
               </div>
             </div>
           </section>
           <section className="generation-options">
             <div className="section-heading">
               <h2>
-                <span>02</span>定义你的方案
+                <span>02</span>设计偏好
               </h2>
-              <span>生成设置</span>
-            </div>
-            <div
-              className="model-capability"
-              data-ready={models.ready}
-              role="status"
-            >
-              <span>
-                {models.loading
-                  ? "正在检测识图模型…"
-                  : models.ready
-                    ? `${models.selected?.name} · ${models.selected?.supports_image === true ? "支持识图" : "识图能力待确认"}`
-                    : "当前接入无法识别户型图，请选择可用的识图模型"}
-              </span>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => {
-                  modelOptions.current.open = true;
-                  modelOptions.current.querySelector("select")?.focus();
-                }}
-              >
-                选择模型
-              </button>
+              <span className="creation-tag">已有默认方案</span>
             </div>
             <OperationStatus
               active={busy}
-              label="正在上传户型并创建任务"
+              label={importing ? "正在导入项目" : "正在上传户型并创建任务"}
               detail="提交成功后会进入任务页，请勿重复提交。"
             />
             <div className="field">
-              <label>空间风格</label>
+              <label>
+                空间风格 <small>材质搭配参考</small>
+              </label>
               <div className="style-options">
                 {[
                   ["natural", "自然原木", "温润 · 松弛"],
@@ -441,10 +546,34 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                     className={`style-choice ${id} ${style === id ? "selected" : ""}`}
                     onClick={() => setStyle(id)}
                   >
-                    <span className="style-palette">
-                      <i />
-                      <i />
-                      <i />
+                    {id !== "custom" && (
+                      <span className="style-board" aria-hidden="true">
+                        <img
+                          className="board-wood"
+                          src={`/materials/${id}_wood_color.png`}
+                          alt=""
+                        />
+                        <img
+                          className="board-fabric"
+                          src={`/materials/${id}_fabric_color.png`}
+                          alt=""
+                        />
+                        <img
+                          className="board-stone"
+                          src={`/materials/${id}_stone_color.png`}
+                          alt=""
+                        />
+                      </span>
+                    )}
+                    {id === "custom" && (
+                      <SlidersHorizontal
+                        className="style-custom-icon"
+                        size={22}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span className="style-selected" aria-hidden="true">
+                      {style === id && <Check size={12} />}
                     </span>
                     <b>{title}</b>
                     <small>{desc}</small>
@@ -495,52 +624,6 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               )}
             </div>
             <div className="field">
-              <h3>墙面与地板选材</h3>
-              {textureStatus.error && (
-                <p role="alert">
-                  自定义材质暂未同步，请在素材库重试。已有选择已保留。
-                </p>
-              )}
-              <p className="field-note">
-                可选择内置样板或在 DIY
-                页面保存的材质。生成后可按房间、单面墙继续修改。
-              </p>
-              {[
-                ["walls", "墙面"],
-                ["floor", "地板"],
-              ].map(([category, label]) => (
-                <label key={category}>
-                  {label}
-                  <select
-                    aria-label={`生成${label}材质`}
-                    value={finishes[category]}
-                    onChange={(e) =>
-                      setFinishes((v) => ({ ...v, [category]: e.target.value }))
-                    }
-                  >
-                    <option value="">按空间风格自动搭配</option>
-                    {materialCategories[category]
-                      .map((id) => materials.find((m) => m.id === id))
-                      .filter(Boolean)
-                      .map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.recipe ? "DIY · " : ""}
-                          {m.name}
-                        </option>
-                      ))}
-                  </select>
-                  {finishes[category] && (
-                    <MaterialSample
-                      material={materials.find(
-                        (m) => m.id === finishes[category],
-                      )}
-                      className="chip"
-                    />
-                  )}
-                </label>
-              ))}
-            </div>
-            <div className="field">
               <label htmlFor="project-notes">
                 设计要求 <small>选填</small>
               </label>
@@ -553,6 +636,64 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               />
             </div>
 
+            <details className="creation-materials">
+              <summary>
+                <span>墙面与地板</span>
+                <small>
+                  {finishes.walls || finishes.floor
+                    ? "已自选材质"
+                    : "按风格自动搭配"}
+                </small>
+              </summary>
+              <div className="field">
+                {textureStatus.error && (
+                  <p role="alert">
+                    自定义材质暂未同步，请在素材库重试。已有选择已保留。
+                  </p>
+                )}
+                <p className="field-note">
+                  可选择内置样板或在 DIY
+                  页面保存的材质。生成后可按房间、单面墙继续修改。
+                </p>
+                {[
+                  ["walls", "墙面"],
+                  ["floor", "地板"],
+                ].map(([category, label]) => (
+                  <label key={category}>
+                    {label}
+                    <select
+                      aria-label={`生成${label}材质`}
+                      value={finishes[category]}
+                      onChange={(e) =>
+                        setFinishes((v) => ({
+                          ...v,
+                          [category]: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">按空间风格自动搭配</option>
+                      {materialCategories[category]
+                        .map((id) => materials.find((m) => m.id === id))
+                        .filter(Boolean)
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.recipe ? "DIY · " : ""}
+                            {m.name}
+                          </option>
+                        ))}
+                    </select>
+                    {finishes[category] && (
+                      <MaterialSample
+                        material={materials.find(
+                          (m) => m.id === finishes[category],
+                        )}
+                        className="chip"
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </details>
             <details className="model-advanced" ref={modelOptions}>
               <summary>高级设置 · 默认已配置</summary>
               <ModelFields models={models} />
@@ -593,6 +734,31 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 </span>
               </label>
             </details>
+            <div
+              className="model-capability"
+              data-ready={models.ready}
+              role="status"
+            >
+              <span>
+                {models.loading
+                  ? "正在检测识图模型…"
+                  : models.ready
+                    ? models.selected?.supports_image === true
+                      ? "AI 已就绪 · 自动识别户型"
+                      : "AI 已连接 · 识图能力待确认"
+                    : "当前接入无法识别户型图，请选择可用的识图模型"}
+              </span>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  modelOptions.current.open = true;
+                  modelOptions.current.querySelector("select")?.focus();
+                }}
+              >
+                {models.ready ? "更改" : "设置接入"}
+              </button>
+            </div>
           </section>
         </fieldset>
         {error && (
@@ -608,20 +774,15 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
             </div>
           )}
         <div className="generation-footer">
-          <div className="pipeline-preview">
-            {[
-              [ScanLine, "识别结构"],
-              [ShieldCheck, "核对结构"],
-              [Armchair, "家具规划"],
-              [Box, "三维建模"],
-            ]
-              .filter(([, label]) => collaboration || label !== "核对结构")
-              .map(([Icon, label]) => (
-                <span key={label}>
-                  <Icon size={15} />
-                  {label}
-                </span>
-              ))}
+          <div className="creation-readiness" role="status">
+            <span className="readiness-dot" />
+            <span>
+              {busy
+                ? importing
+                  ? "正在导入，请稍候…"
+                  : "正在创建，请稍候…"
+                : blockedReason}
+            </span>
           </div>
           <div>
             <button
@@ -649,7 +810,11 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
               ) : (
                 <ArrowRight size={15} />
               )}
-              {busy ? "正在创建任务" : "创建并开始生成"}
+              {busy
+                ? importing
+                  ? "正在导入项目"
+                  : "正在创建任务"
+                : "创建并开始生成"}
             </button>
           </div>
         </div>

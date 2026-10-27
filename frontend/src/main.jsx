@@ -9,6 +9,7 @@ import "./styles/result.css";
 import "./styles/usability.css";
 import "./styles/creative-workspace.css";
 import "./settings/ai-source.css";
+import "./styles/generation.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
