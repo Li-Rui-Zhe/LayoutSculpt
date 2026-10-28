@@ -51,8 +51,8 @@ def test_shipped_showcase_uses_real_assets_and_tv_elevation():
         bottom, top = bounds[:, 0, 1].min(), bounds[:, 1, 1].max()
         assert bottom == pytest.approx(0.035 + item["elevation"], abs=1e-4)
         assert top - bottom == pytest.approx(item["height"], abs=1e-4)
-    assert len(fixtures) == 12
-    assert sum(f.get("fixture_visual_placeholder") is False for f in fixtures) == 7
+    assert len(fixtures) == 13
+    assert sum(f.get("fixture_visual_placeholder") is False for f in fixtures) == 8
 
 
 def test_showcase_garden_keeps_real_room_count_area_and_low_boundaries():

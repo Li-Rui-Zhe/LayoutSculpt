@@ -88,6 +88,7 @@ export default function App() {
     return () => window.removeEventListener("hashchange", change);
   }, []);
   const [creating, setCreating] = useState(false);
+  const [replacementJob, setReplacementJob] = useState(null);
   const [draft, setDraft] = useState(0);
   const [railOpen, setRailOpen] = useState(false);
   const [headingHost, setHeadingHost] = useState(null);
@@ -406,6 +407,10 @@ export default function App() {
           {surface === "library" && (
             <AssetLibrary
               architectureJob={projects.job}
+              onSelectArchitectureProject={(id) => {
+                const job = projects.jobs.find((j) => j.id === id);
+                if (job) projects.select(job);
+              }}
               architectureDocument={
                 architectureContext &&
                 architectureContext.jobId === projects.job?.id
@@ -506,9 +511,11 @@ export default function App() {
           <div ref={creationHost} hidden={!creating} className="creation-shell">
             <GenerationForm
               key={draft}
+              replacementJob={replacementJob}
               projects={projects}
               onCancel={() => setCreating(false)}
               onCreated={() => {
+                setReplacementJob(null);
                 setCreating(false);
                 setDraft((value) => value + 1);
               }}
@@ -545,7 +552,13 @@ export default function App() {
               }
               onMaterialConsumed={() => setMaterialRequest(null)}
               onMaterialContext={setMaterialContext}
-              onCreate={() => setCreating(true)}
+              onCreate={(source) => {
+                if (source?.result?.failure?.code === "input_image_rejected") {
+                  setReplacementJob(source);
+                  setDraft((value) => value + 1);
+                }
+                setCreating(true);
+              }}
             />
           ) : (
             <div

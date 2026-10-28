@@ -20,8 +20,8 @@ def upload(client, **options):
     return response.json()["id"]
 
 
-def wait_for(client, job_id, predicate):
-    deadline = time.monotonic() + 15
+def wait_for(client, job_id, predicate, *, timeout=15):
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         job = client.get(f"/api/jobs/{job_id}").json()
         if predicate(job):
@@ -85,7 +85,9 @@ def test_real_preview_is_readable_before_furniture_finishes(tmp_path):
     settings = replace(Settings(), data_dir=tmp_path)
     with TestClient(create_app(settings, client=codex, model_builder=build_model)) as client:
         job_id = upload(client)
-        job = wait_for(client, job_id, lambda j: bool((j.get("result") or {}).get("preview")))
+        # 真建模会冷启动独立 Python 进程；这里只检验初稿先于家具可读，
+        # 不将开发机负载下的冷启动时间作为 15 秒性能门槛。
+        job = wait_for(client, job_id, lambda j: bool((j.get("result") or {}).get("preview")), timeout=120)
         assert job["status"] == "running"
         preview = job["result"]["preview"]
         assert client.get(preview["model_url"]).content[:4] == b"glTF"
@@ -94,7 +96,7 @@ def test_real_preview_is_readable_before_furniture_finishes(tmp_path):
         assert document["furniture"] == []
         assert preview["consistency"]["geometry_verified"] is True
         codex.released = True
-        final = wait_for(client, job_id, lambda j: j["status"] in {"succeeded", "failed"})
+        final = wait_for(client, job_id, lambda j: j["status"] in {"succeeded", "failed"}, timeout=120)
         assert final["status"] == "succeeded", final
 
 

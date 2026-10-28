@@ -1,11 +1,60 @@
 import * as THREE from "three";
 
+export function architecturePointOnRay(ray, origin, walls, cutaway = false) {
+  let nearest = null;
+  for (const wall of walls || []) {
+    if (wall.edit_hidden) continue;
+    const a = new THREE.Vector3(
+      wall.start.x - origin.x,
+      0,
+      wall.start.y - origin.y,
+    );
+    const direction = new THREE.Vector3(
+      wall.end.x - wall.start.x,
+      0,
+      wall.end.y - wall.start.y,
+    );
+    const length = direction.length();
+    if (length < 0.05) continue;
+    direction.normalize();
+    const normal = new THREE.Vector3(-direction.z, 0, direction.x);
+    const hit = ray.intersectPlane(
+      new THREE.Plane().setFromNormalAndCoplanarPoint(normal, a),
+      new THREE.Vector3(),
+    );
+    const height = cutaway ? Math.min(1.2, wall.height) : wall.height;
+    if (!hit || hit.y < 0 || hit.y > height + 0.05) continue;
+    const along = hit.clone().sub(a).dot(direction);
+    if (along < -0.06 || along > length + 0.06) continue;
+    const distance = ray.origin.distanceToSquared(hit);
+    if (!nearest || distance < nearest.distance)
+      nearest = {
+        distance,
+        x: hit.x + origin.x,
+        y: hit.z + origin.y,
+        wallId: wall.id,
+      };
+  }
+  return nearest;
+}
+
 // 放置是独立手势，不能穿透到选取、直接拖拽或 OrbitControls。
 export function installFurniturePlacement({ element, rt, callbacks, rayAt }) {
   let down = null;
   const point = (event) => {
     if (!rt.liveOrigin) return null;
-    const hit = rayAt(event).intersectPlane(
+    const ray = rayAt(event);
+    const placement = callbacks.current.placement;
+    if (placement?.kind === "architecture" && placement.walls) {
+      const hit = architecturePointOnRay(
+        ray,
+        rt.liveOrigin,
+        placement.walls,
+        callbacks.current.cutaway,
+      );
+      if (hit) return hit;
+    }
+    const hit = ray.intersectPlane(
       new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
       new THREE.Vector3(),
     );

@@ -1,4 +1,3 @@
-import { InlineProgress } from "./LoadingProgress.jsx";
 import OperationStatus from "./OperationStatus.jsx";
 import TaskProgress from "./TaskProgress.jsx";
 import InitialPreviewStatus from "./InitialPreviewStatus.jsx";
@@ -129,7 +128,7 @@ function Pipeline({ job }) {
                     : ""
             }
           >
-            <span>
+            <span className="pipeline-step-marker">
               {reviewIncomplete ? (
                 <TriangleAlert size={13} />
               ) : done ? (
@@ -139,14 +138,6 @@ function Pipeline({ job }) {
               )}
             </span>
             <b>{reviewIncomplete ? "AI 复核未完成，需人工核对" : name}</b>
-            <InlineProgress
-              active={active && !reviewIncomplete && job.status === "running"}
-              cancelled={
-                reviewIncomplete ||
-                ["failed", "cancelled", "awaiting_review"].includes(job.status)
-              }
-              operationKey={job.id}
-            />
           </li>
         );
       })}
@@ -160,12 +151,10 @@ function Activity({ job, events }) {
         <h2>生成记录</h2>
         <StatusBadge status={job.status} />
       </div>
+      <TaskProgress job={job} />
       <Pipeline job={job} />
       <div className="activity-intro">
         <p>任务 #{job.id.slice(0, 8).toUpperCase()}</p>
-        <span>
-          {job.stage} · {job.progress}%
-        </span>
       </div>
       <div className="activity-list" aria-live="polite">
         {events.length ? (
@@ -1025,7 +1014,16 @@ export default function TaskWorkspace({
               </div>
             )}
             {tab === "activity" && job && (
-              <Activity job={job} events={projects.events} />
+              job.result?.failure?.code === "input_image_rejected" ? (
+                <section className="input-rejected" aria-label="请更换户型图">
+                  <img src={job.source_url} alt="本次上传的原图" />
+                  <h2>换一张更合适的户型图</h2>
+                  <p>{job.error}</p>
+                  <p>{job.result.input_check?.evidence}</p>
+                  <button className="primary-button" onClick={() => onCreate(job)}>更换图片</button>
+                  <small>风格与设计要求会保留，无需重新填写。</small>
+                </section>
+              ) : <Activity job={job} events={projects.events} />
             )}
             {tab === "assets" && (
               <Deliverables
@@ -1419,14 +1417,21 @@ export default function TaskWorkspace({
               <>
                 {job ? (
                   <>
-                    <div className="inspector-section">
-                      <div className="section-heading">
-                        <h2>任务状态</h2>
-                        <StatusBadge status={job.status} />
+                    {tab !== "activity" && (
+                      <div className="inspector-section">
+                        <div className="section-heading">
+                          <h2>任务状态</h2>
+                          <StatusBadge status={job.status} />
+                        </div>
+                        {!(
+                          tab === "design" &&
+                          !hasModel &&
+                          !initialModel &&
+                          !terminal(job.status)
+                        ) && <TaskProgress job={job} />}
+                        <Pipeline job={job} />
                       </div>
-                      <TaskProgress job={job} />
-                      <Pipeline job={job} />
-                    </div>
+                    )}
                     <div className="inspector-section">
                       <div className="section-heading">
                         <h2>生成参数</h2>
@@ -1556,7 +1561,9 @@ export default function TaskWorkspace({
                   {actionError}
                 </p>
               )}
-              {!terminal(job.status) ? (
+              {job.result?.failure?.code === "input_image_rejected" ? (
+                <p className="field-note">原图已保留。请在左侧更换图片后继续，当前图片不会继续建模。</p>
+              ) : !terminal(job.status) ? (
                 <button
                   className="secondary-button full-width"
                   disabled={busy}

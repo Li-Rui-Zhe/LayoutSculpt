@@ -550,6 +550,8 @@ def create_app(settings=None, *, client=None, model_builder=None):
         async with confirmation_lock:
             job = await require_job(job_id.hex)
             runner = request.app.state.runner
+            if ((job.get("result") or {}).get("failure") or {}).get("code") == "input_image_rejected":
+                raise HTTPException(409, "原图无法可靠识别，请更换户型图；设计偏好和原任务已保留")
             if job["status"] in {"queued", "running"}:
                 return public(job)
             if job["status"] not in {"failed", "cancelled"}:

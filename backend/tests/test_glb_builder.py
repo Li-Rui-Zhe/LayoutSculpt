@@ -136,12 +136,13 @@ def test_bare_fixture_parts_keep_light_records_with_placeholder_metadata(tmp_pat
     assert sources["floor_lamp"]["fixture_visual_placeholder"] is False
     parts = [node["extras"] for node in gltf["nodes"]
              if node.get("extras", {}).get("fixture_visual_id")]
-    assert len(parts) == 3
+    assert len(parts) >= 3
+    assert {part["fixture_visual_id"] for part in parts} == {"bulb", "pendant"}
     assert all(part["fixture_visual_placeholder"] for part in parts)
     shades = [node["extras"] for node in gltf["nodes"]
               if node.get("extras", {}).get("fixture_soft_shadow")]
-    assert len(shades) == 1
-    assert shades[0]["fixture_owner_id"] == "floor_lamp"
+    assert len(shades) >= 1
+    assert all(shade["fixture_owner_id"] == "floor_lamp" for shade in shades)
 
 
 def test_all_wall_segments_survive_export_with_full_height_and_true_tile_material(

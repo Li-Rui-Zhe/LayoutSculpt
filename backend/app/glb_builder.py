@@ -485,79 +485,8 @@ class Builder:
         )
 
     def light_fixture(self, fixture):
-        x, y, z = fixture["x"] - self.cx, fixture["elevation"], fixture["y"] - self.cz
-        colors = {
-            2700: (1, 0.65, 0.32),
-            3000: (1, 0.76, 0.48),
-            4000: (1, 0.89, 0.73),
-            6500: (0.88, 0.94, 1),
-        }
-        color = colors[fixture["temperature"]]
-        material = trimesh.visual.material.PBRMaterial(
-            name=f"灯泡_{fixture['id']}",
-            baseColorFactor=[*(round(v * 255) for v in color), 255],
-            emissiveFactor=[min(v * 2, 1) for v in color],
-        )
-        self.sphere(
-            f"灯泡_{fixture['id']}",
-            [x, y, z],
-            [0.13, 0.04 if fixture["kind"] in {"ceiling", "downlight"} else 0.12, 0.13],
-            "white",
-            {
-                "fixture_id": fixture["id"],
-                "fixture_lumens": fixture["lumens"],
-                "fixture_kind": fixture["kind"],
-                "fixture_temperature": fixture["temperature"],
-                "fixture_enabled": fixture["enabled"],
-                "fixture_visual_placeholder": fixture["kind"] in {"bulb", "pendant"},
-            },
-            material,
-        )
-        if fixture["kind"] == "ceiling":
-            self.cylinder("吸顶灯底盘", [x, y + 0.04, z], 0.28, 0.04, "metal")
-            self.cylinder("吸顶灯柔光罩", [x, y, z], 0.26, 0.05, "white")
-        elif fixture["kind"] == "downlight":
-            self.cylinder("筒灯装饰圈", [x, y + 0.04, z], 0.085, 0.035, "metal")
-        elif fixture["kind"] == "table_lamp":
-            base = max(0.02, y - 0.35)
-            self.cylinder("台灯底座", [x, base, z], 0.13, 0.035, "metal")
-            self.cylinder("台灯灯杆", [x, base + 0.16, z], 0.012, 0.30, "metal")
-            self.cylinder(
-                "台灯顶罩", [x, y + 0.1, z], 0.17, 0.04, "wood",
-                metadata={"fixture_owner_id": fixture["id"], "fixture_soft_shadow": True},
-            )
-        elif fixture["kind"] == "floor_lamp":
-            self.cylinder("落地灯底座", [x, 0.05, z], 0.22, 0.08, "metal")
-            self.cylinder(
-                "落地灯灯杆", [x, y / 2, z], 0.018, max(0.1, y - 0.12), "metal"
-            )
-            self.cylinder(
-                "落地灯顶罩", [x, y + 0.16, z], 0.24, 0.055, "wood",
-                metadata={"fixture_owner_id": fixture["id"], "fixture_soft_shadow": True},
-            )
-        elif fixture["kind"] == "pendant":
-            visual = {
-                "fixture_visual_placeholder": True,
-                "fixture_visual_id": fixture["id"],
-            }
-            self.cylinder(
-                "吊灯灯座", [x, y + 0.13, z], 0.055, 0.035, "metal", metadata=visual
-            )
-            self.cylinder(
-                "吊灯吊线", [x, y + 0.28, z], 0.004, 0.25, "metal", metadata=visual
-            )
-        else:
-            self.cylinder(
-                "灯泡底座",
-                [x, y + 0.13, z],
-                0.06,
-                0.08,
-                "metal",
-                metadata={
-                    "fixture_visual_placeholder": True,
-                    "fixture_visual_id": fixture["id"],
-                },
-            )
+        from .fixture_models import add_fixture
+        add_fixture(self, fixture)
 
     def wall_network(self):
         """Union the wall footprint before extrusion, including L/T corners."""

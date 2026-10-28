@@ -3,6 +3,39 @@ import numpy as np
 import trimesh
 
 
+def curtain_panel(width=.62, height=2.57, *, mirror=False):
+    """一整幅有厚度的垂帘：顶部收褶、下摆展开，避免用独立棱柱冒充布料。"""
+    columns, rows = 49, 13
+    vertices, uv, faces = [], [], []
+    for row, t in enumerate(np.linspace(0, 1, rows)):
+        for col, u in enumerate(np.linspace(0, 1, columns)):
+            # t=0 is the gathered header; broad folds loosen toward the floor.
+            spread = .83 + .17 * t
+            phase = u * np.pi * 10 + .20 * np.sin(t * np.pi) * np.sin(u * np.pi)
+            x = (u - .5) * width * spread + .015 * np.sin(t * np.pi)
+            y = height * (1 - t) + .008 * t ** 8 * (1 - np.cos(phase))
+            z = (.035 + .015 * t) * np.cos(phase) + .008 * np.sin(t * np.pi * 1.5)
+            vertices.append(((-x if mirror else x), y, z))
+            uv.append((u * width / .25, (1 - t) * height / .25))
+    for row in range(rows - 1):
+        for col in range(columns - 1):
+            a = row * columns + col
+            faces.extend([(a, a + 1, a + columns), (a + 1, a + columns + 1, a + columns)])
+    front = np.array(vertices)
+    count = len(front)
+    back = front + [0, 0, -.003]
+    closed = [*faces, *[(c + count, b + count, a + count) for a, b, c in faces]]
+    perimeter = [*range(columns), *[r * columns + columns - 1 for r in range(1, rows)],
+                 *range(count - 2, count - columns - 1, -1),
+                 *[r * columns for r in range(rows - 2, 0, -1)]]
+    for i, a in enumerate(perimeter):
+        b = perimeter[(i + 1) % len(perimeter)]
+        closed.extend([(a, a + count, b), (b, a + count, b + count)])
+    mesh = trimesh.Trimesh(vertices=np.vstack([front, back]), faces=closed, process=False)
+    mesh.fix_normals()
+    return mesh, np.vstack([uv, uv])
+
+
 def upper_surface(triangles, points):
     """Vertical surface samples without an optional ray-tracing dependency."""
     a, b, c = triangles[:, 0], triangles[:, 1], triangles[:, 2]

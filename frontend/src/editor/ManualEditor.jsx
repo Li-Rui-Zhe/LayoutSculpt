@@ -75,8 +75,16 @@ import AssetLibrary from "../library/AssetLibrary.jsx";
 import {
   applyArchitecture,
   architectureSelection,
+  openingReference,
 } from "../library/architectureCatalog.js";
+import ArchitecturePicker from "./ArchitecturePicker.jsx";
 import FurnitureReplacement from "./FurnitureReplacement.jsx";
+import ArchitecturePlacementBar from "./ArchitecturePlacementBar.jsx";
+import {
+  architecturePlacementAt,
+  commitArchitecturePlacement,
+} from "./architecturePlacement.js";
+import { placementPreset } from "./architecturePlacement.js";
 import {
   placeLibraryFurniture,
   validateFurnitureTemplate,
@@ -260,6 +268,10 @@ function ManualEditorContent({
   const [libraryOpen, setLibraryOpen] = useState(false);
   const consumedPlacement = useRef(null);
   const [placement, setPlacement] = useState(null);
+  const [architecturePlacement, setArchitecturePlacement] = useState(null);
+  useEffect(() => {
+    if (!isActive) setArchitecturePlacement(null);
+  }, [isActive]);
   const placementCommitted = useRef(false);
   const placementPointer = useRef(null);
   const rotationDrag = useRef(null);
@@ -487,18 +499,20 @@ function ManualEditorContent({
     selectedObject && toolFor(selected.type, selectedObject) === tool
       ? selectedObject
       : null;
+  // 拖动中的候选位置由画布显示；全屋检查复用已提交快照，松手仍先校验再提交。
+  const checkDocument = draft.document;
   const outlineIssue = useMemo(() => {
     if (
-      !document ||
+      !checkDocument ||
       !draft.base ||
-      sameArchitecture(document.layout, draft.base.layout)
+      sameArchitecture(checkDocument.layout, draft.base.layout)
     )
       return null;
-    return deriveOutline(document.layout).issue;
-  }, [document, draft.base]);
-  const { errors: issues, warnings: placementWarnings } = manualDesignChecks(
-    document,
-    outlineIssue,
+    return deriveOutline(checkDocument.layout).issue;
+  }, [checkDocument, draft.base]);
+  const { errors: issues, warnings: placementWarnings } = useMemo(
+    () => manualDesignChecks(checkDocument, outlineIssue),
+    [checkDocument, outlineIssue],
   );
   const serverCheck = useDesignCheck(
     draft.document,
@@ -549,6 +563,7 @@ function ManualEditorContent({
     return () => window.removeEventListener("keydown", close);
   }, [isActive, validationOpen]);
   const select = (type, index, object) => {
+    setArchitecturePlacement(null);
     setFocusRequest(null);
     setSidebarTab("objects");
     setPlacement(null);
@@ -676,6 +691,106 @@ function ManualEditorContent({
     return commitParameter(next);
   };
   const consumedBoundary = useRef(null);
+  const replaceArchitecture = (presetId) => {
+    if (!selected || !["walls", "openings"].includes(selected.type)) return;
+    try {
+      const previous = objects(document, selected.type)[selected.index];
+      const wallId = selected.type === "walls" ? previous.id : previous.wall_id;
+      const configuration = {
+        preset_id: presetId,
+        ...(selected.type === "openings" ? { opening_ref: openingReference(previous), offset: previous.offset, width: previous.width, height: previous.height, bottom: previous.bottom } : {}),
+      };
+      const next = applyArchitecture(document, wallId, configuration);
+      const outcome = commitParameter(next);
+      if (outcome !== true) throw Error(typeof outcome === "string" ? outcome : "请先完成当前编辑。");
+      setSelected(architectureSelection(document, next, wallId, configuration));
+      setError("");
+    } catch (e) { setError(e.message); }
+  };
+  const beginArchitecturePlacement = (request) => {
+    if (request.lightPreset)
+      request = {
+        ...request,
+        configuration: { light_kind: request.lightPreset },
+      };
+    const preset = placementPreset(request.configuration);
+    if (!preset) throw Error("请选择有效的建筑构件。");
+    cancelOpening();
+    setDrawing(null);
+    setPlacement(null);
+    setPendingDelete(null);
+    setPreview(null);
+    setSelected(null);
+    setMulti([]);
+    setError("");
+    setMeasureMode(false);
+    setBoxMode(false);
+    navigation.setPanMode(false);
+    setTool(
+      preset.light
+        ? "lights"
+        : preset.opening
+          ? preset.opening.kind === "passage"
+            ? "passages"
+            : "openings"
+          : "walls",
+    );
+    setArchitecturePlacement({
+      configuration: clone(request.configuration),
+      point: null,
+      rotation: 0,
+    });
+    setSidebarTab("objects");
+    if (request.view) setEditorView(request.view);
+  };
+  const architectureResult =
+    architecturePlacement && draft.document
+      ? architecturePlacementAt(
+          draft.document,
+          architecturePlacement.configuration,
+          architecturePlacement.point,
+          architecturePlacement.rotation,
+        )
+      : null;
+  const moveArchitecturePlacement = (point) =>
+    setArchitecturePlacement((current) =>
+      current ? { ...current, point } : null,
+    );
+  const confirmArchitecturePlacement = (
+    point = architecturePlacement?.point,
+  ) => {
+    if (!architecturePlacement || busy) return;
+    try {
+      const result = architecturePlacementAt(
+        draft.document,
+        architecturePlacement.configuration,
+        point,
+        architecturePlacement.rotation,
+      );
+      const placed = commitArchitecturePlacement(result);
+      const committed = commitParameter(placed.document);
+      if (committed !== true)
+        throw Error(
+          typeof committed === "string" ? committed : "请先完成当前编辑。",
+        );
+      setArchitecturePlacement(null);
+      select(
+        placed.selection.type,
+        placed.selection.index,
+        placed.document.layout[placed.selection.type][placed.selection.index],
+      );
+      setSidebarTab("objects");
+      const object =
+        placed.document.layout[placed.selection.type][placed.selection.index];
+      setFocusRequest({
+        ...placed.selection,
+        id: object.edit_id || object.id,
+        token: ++focusSerial.current,
+      });
+    } catch (e) {
+      setError(e.message);
+    }
+  };
   useEffect(() => {
     if (
       !boundaryRequest ||
@@ -685,6 +800,11 @@ function ManualEditorContent({
       return;
     consumedBoundary.current = boundaryRequest.id;
     try {
+      if (boundaryRequest.placement || boundaryRequest.lightPreset) {
+        beginArchitecturePlacement(boundaryRequest);
+        onBoundaryConsumed?.();
+        return;
+      }
       const next = applyArchitecture(
         draft.document,
         boundaryRequest.wallId,
@@ -711,7 +831,7 @@ function ManualEditorContent({
           : "walls",
       );
       setSelected(selection);
-      setEditorView("scene");
+      if (boundaryRequest.view) setEditorView(boundaryRequest.view);
     } catch (e) {
       setError(e.message);
     }
@@ -822,7 +942,30 @@ function ManualEditorContent({
           return;
         }
       }
+      if (architecturePlacement) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setArchitecturePlacement(null);
+          setError("");
+          return;
+        }
+        if (
+          event.key.toLowerCase() === "r" &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !placementPreset(architecturePlacement.configuration)?.light &&
+          !placementPreset(architecturePlacement.configuration)?.opening
+        ) {
+          event.preventDefault();
+          setArchitecturePlacement((p) => ({
+            ...p,
+            rotation: (p.rotation + 90) % 360,
+          }));
+          return;
+        }
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        setArchitecturePlacement(null);
         setPlacement(null);
         event.preventDefault();
         drag.current = null;
@@ -838,7 +981,7 @@ function ManualEditorContent({
     };
     window.addEventListener("keydown", keyboard);
     return () => window.removeEventListener("keydown", keyboard);
-  }, [isActive, busy, draft, diyOpen, placement]);
+  }, [isActive, busy, draft, diyOpen, placement, architecturePlacement]);
   const pointAt = (event) => {
     const matrix = svg.current.getScreenCTM();
     if (!matrix) return { x: 0, y: 0 };
@@ -886,6 +1029,10 @@ function ManualEditorContent({
     };
   };
   const pointerMove = (event) => {
+    if (architecturePlacement && !event.buttons) {
+      moveArchitecturePlacement(pointAt(event));
+      return;
+    }
     if (placement && !event.buttons) {
       movePlacement(pointAt(event));
       return;
@@ -973,6 +1120,7 @@ function ManualEditorContent({
     setPreview(null);
   };
   const startPlacement = (template) => {
+    setArchitecturePlacement(null);
     validateFurnitureTemplate(draft.document, template);
     if (!draft.document.layout.rooms.length)
       throw Error("请先创建空间，再放置家具。");
@@ -1139,6 +1287,7 @@ function ManualEditorContent({
     }
   };
   const addOpening = (kind, targetId = targetWallId) => {
+    setArchitecturePlacement(null);
     const next = clone(draft.document),
       wall = next.layout.walls.find((wall) => wall.id === targetId);
     if (!wall) {
@@ -1196,6 +1345,7 @@ function ManualEditorContent({
     }
   };
   const startDrawing = (type) => {
+    setArchitecturePlacement(null);
     cancelOpening();
     setDrawing({ type, points: [] });
     setPendingDelete(null);
@@ -1286,6 +1436,7 @@ function ManualEditorContent({
       drawing ||
       pendingDelete ||
       openingKind ||
+      architecturePlacement ||
       (reviewing && !acknowledged)
     )
       return;
@@ -1412,7 +1563,13 @@ function ManualEditorContent({
               ? document.layout.openings[selected.index]?.wall_id
               : ""
         }
-        onApplyBoundary={({ wallId, configuration }) => {
+        onApplyBoundary={(request) => {
+          if (request.placement || request.lightPreset) {
+            beginArchitecturePlacement(request);
+            setLibraryOpen(false);
+            return;
+          }
+          const { wallId, configuration } = request;
           const next = applyArchitecture(document, wallId, configuration);
           const result = commitParameter(next);
           if (result !== true)
@@ -1433,7 +1590,6 @@ function ManualEditorContent({
               : "walls",
           );
           setSelected(selection);
-          setEditorView("scene");
           setLibraryOpen(false);
         }}
         materialRooms={document.layout.rooms.filter(
@@ -1446,11 +1602,13 @@ function ManualEditorContent({
         }
         floorOnly
         initialAssetType={
-          libraryOpen === "architecture"
-            ? "architecture"
-            : libraryOpen === "materials"
-              ? "materials"
-              : "models"
+          libraryOpen === "lighting"
+            ? "lighting"
+            : libraryOpen === "architecture"
+              ? "architecture"
+              : libraryOpen === "materials"
+                ? "materials"
+                : "models"
         }
         onApplyMaterial={({ materialId, roomId }) => {
           draft.commit((next) => {
@@ -1531,9 +1689,27 @@ function ManualEditorContent({
       focusRequest={focusRequest}
       editError={error}
       onDismissEditError={() => setError("")}
-      placement={placement ? { active: true, ...placementResult } : null}
-      onPlacementMove={movePlacement}
-      onPlacementConfirm={confirmPlacement}
+      placement={
+        architecturePlacement
+          ? {
+              active: true,
+              kind: placementPreset(architecturePlacement.configuration)?.light ? "light" : "architecture",
+              walls: placementPreset(architecturePlacement.configuration)
+                ?.opening
+                ? document.layout.walls
+                : null,
+              ...architectureResult,
+            }
+          : placement
+            ? { active: true, ...placementResult }
+            : null
+      }
+      onPlacementMove={
+        architecturePlacement ? moveArchitecturePlacement : movePlacement
+      }
+      onPlacementConfirm={
+        architecturePlacement ? confirmArchitecturePlacement : confirmPlacement
+      }
       active={isActive}
       busy={busy || !!drawing || pickingWall}
       selected={selected}
@@ -1544,7 +1720,7 @@ function ManualEditorContent({
       onRotationCancel={cancelRotation}
       jobId={job.id}
       onSelect={({ type, index }) => {
-        if (drawing || placement) return;
+        if (drawing || placement || architecturePlacement) return;
         if (pickingWall) {
           if (type === "walls")
             chooseOpeningWall(document.layout.walls[index].id);
@@ -1555,7 +1731,14 @@ function ManualEditorContent({
       onGesture={(phase, transform, hitSelection) => {
         if (phase === "start") {
           const target = hitSelection || selected;
-          if (busy || placement || drawing || pickingWall || !target)
+          if (
+            busy ||
+            placement ||
+            architecturePlacement ||
+            drawing ||
+            pickingWall ||
+            !target
+          )
             return false;
           sceneDrag.current = {
             document: draft.document,
@@ -1606,6 +1789,21 @@ function ManualEditorContent({
         className={`manual-editor editor-view-${editorView}${focusCanvas ? " canvas-focused" : ""}`}
         ref={root}
       >
+        {architecturePlacement && (
+          <ArchitecturePlacementBar
+            placement={architecturePlacement}
+            result={architectureResult}
+            busy={busy}
+            onChange={(change) =>
+              setArchitecturePlacement((p) => ({ ...p, ...change }))
+            }
+            onConfirm={() => confirmArchitecturePlacement()}
+            onCancel={() => {
+              setArchitecturePlacement(null);
+              setError("");
+            }}
+          />
+        )}
         {placement && (
           <section
             className="furniture-placement-bar"
@@ -1700,6 +1898,7 @@ function ManualEditorContent({
                   aria-pressed={tool === id}
                   disabled={busy}
                   onClick={() => {
+                    setArchitecturePlacement(null);
                     setTool(id);
                     if (designMode)
                       onDesignModeChange?.(id === "walls" ? "walls" : "floor");
@@ -1750,6 +1949,7 @@ function ManualEditorContent({
                 setMulti([]);
                 setSelected(null);
                 setPlacement(null);
+                setArchitecturePlacement(null);
                 draft.undo();
               }}
               disabled={busy || !draft.canUndo}
@@ -1766,6 +1966,7 @@ function ManualEditorContent({
                 setMulti([]);
                 setSelected(null);
                 setPlacement(null);
+                setArchitecturePlacement(null);
                 draft.redo();
               }}
               disabled={busy || !draft.canRedo}
@@ -1784,6 +1985,7 @@ function ManualEditorContent({
                     setSelected(null);
                     setMulti([]);
                     setPlacement(null);
+                    setArchitecturePlacement(null);
                     draft.reset();
                     setError("");
                   }}
@@ -2000,7 +2202,7 @@ function ManualEditorContent({
               >
                 <strong>辅助光源默认隐藏外形</strong>
                 <p>
-                  为避免灯泡和简化吊线遮挡户型、影响观感，默认隐藏辅助灯泡与简化吊灯的外形，夜间照明仍保留。
+                  为避免悬挂灯具遮挡户型、影响观感，设计预览默认隐藏灯泡和吊灯的外形，夜间照明仍保留。可在灯具素材库查看完整造型。
                 </p>
                 <small>
                   从列表选中即可调整；保存后切到「夜晚」查看效果。落地灯、台灯等实体灯具正常显示。
@@ -2092,8 +2294,17 @@ function ManualEditorContent({
                   <h2>添加对象</h2>
                   <Plus size={14} />
                 </div>
+                {["walls", "openings", "passages"].includes(tool) && (
+                  <ArchitecturePicker tool={tool} onChoose={(presetId) => beginArchitecturePlacement({ configuration: { preset_id: presetId }, placement: true })} />
+                )}
                 {tool === "lights" && (
                   <>
+                    <button
+                      className="secondary-button"
+                      onClick={() => setLibraryOpen("lighting")}
+                    >
+                      从灯具素材库选择
+                    </button>
                     <div className="add-furniture">
                       <select
                         aria-label="新增灯具类型"
@@ -2109,31 +2320,9 @@ function ManualEditorContent({
                       <button
                         className="secondary-button"
                         onClick={() => {
-                          if (document.layout.lights.length >= 12) {
-                            setError("最多支持 12 盏灯具。");
-                            return;
-                          }
-                          const next = clone(document),
-                            p = center(next.layout.outline);
-                          next.layout.lights.push({
-                            id: `light_${crypto.randomUUID().slice(0, 12)}`,
-                            name: `${lightNames[lightKind]} ${next.layout.lights.length + 1}`,
-                            kind: lightKind,
-                            x: round(p.x),
-                            y: round(p.y),
-                            elevation:
-                              {
-                                floor_lamp: 1.5,
-                                table_lamp: 0.85,
-                                ceiling: 2.65,
-                                downlight: 2.65,
-                              }[lightKind] || 2.4,
-                            lumens: 800,
-                            temperature: 3000,
-                            enabled: true,
+                          beginArchitecturePlacement({
+                            lightPreset: lightKind,
                           });
-                          draft.commit(next);
-                          select("lights", next.layout.lights.length - 1);
                         }}
                       >
                         <Plus size={13} />
@@ -2314,7 +2503,7 @@ function ManualEditorContent({
                 onPointerLeave={navigation.onPointerLeave}
                 onPointerDownCapture={(event) => {
                   if (
-                    placement &&
+                    (placement || architecturePlacement) &&
                     event.button === 0 &&
                     !navigation.spaceHeld &&
                     !navigation.panMode
@@ -2327,7 +2516,9 @@ function ManualEditorContent({
                       y: event.clientY,
                     };
                     svg.current.setPointerCapture(event.pointerId);
-                    movePlacement(pointAt(event));
+                    if (architecturePlacement)
+                      moveArchitecturePlacement(pointAt(event));
+                    else movePlacement(pointAt(event));
                     return;
                   }
                   if (event.button === 0 && measureMode) {
@@ -2368,7 +2559,7 @@ function ManualEditorContent({
                     svg.current.releasePointerCapture(event.pointerId);
                   const rect = svg.current.getBoundingClientRect();
                   if (
-                    placement &&
+                    (placement || architecturePlacement) &&
                     Math.hypot(
                       event.clientX - down.x,
                       event.clientY - down.y,
@@ -2377,8 +2568,11 @@ function ManualEditorContent({
                     event.clientX <= rect.right &&
                     event.clientY >= rect.top &&
                     event.clientY <= rect.bottom
-                  )
-                    confirmPlacement(pointAt(event));
+                  ) {
+                    if (architecturePlacement)
+                      confirmArchitecturePlacement(pointAt(event));
+                    else confirmPlacement(pointAt(event));
+                  }
                 }}
                 onPointerCancelCapture={() => {
                   placementPointer.current = null;
@@ -3076,6 +3270,18 @@ function ManualEditorContent({
                     pointerEvents="none"
                   />
                 )}
+                {architectureResult?.item && (
+                  <polygon
+                    points={furnitureCorners(architectureResult.item)
+                      .map((p) => `${p.x},${p.y}`)
+                      .join(" ")}
+                    fill={architectureResult.valid ? "#10b98133" : "#ef444433"}
+                    stroke={architectureResult.valid ? "#047857" : "#dc2626"}
+                    strokeWidth="0.035"
+                    strokeDasharray="0.10 0.05"
+                    pointerEvents="none"
+                  />
+                )}
                 {placementResult && (
                   <g pointerEvents="none">
                     <polygon
@@ -3267,6 +3473,12 @@ function ManualEditorContent({
                   >
                     {selected.type === "lights" && (
                       <>
+                        <button
+                          className="secondary-button"
+                          onClick={() => setLibraryOpen("lighting")}
+                        >
+                          浏览灯具素材库
+                        </button>
                         <div className="edit-number-grid">
                           {number("发光点高度", "elevation", 0.3, 4.5)}
                           {number("灯具亮度", "lumens", 0, 3000, "lm")}
@@ -3514,12 +3726,7 @@ function ManualEditorContent({
                     )}
                     {selected.type === "walls" && (
                       <>
-                        <button
-                          className="secondary-button"
-                          onClick={() => setLibraryOpen("architecture")}
-                        >
-                          从建筑构件库选择
-                        </button>
+                        <ArchitecturePicker tool="walls" replace onChoose={replaceArchitecture} />
                         <label className="edit-label">
                           围护形式
                           <select
@@ -3994,12 +4201,7 @@ function ManualEditorContent({
                     )}
                     {selected.type === "openings" && (
                       <>
-                        <button
-                          className="secondary-button"
-                          onClick={() => setLibraryOpen("architecture")}
-                        >
-                          从建筑构件库选择门窗
-                        </button>
+                        <ArchitecturePicker tool={item.kind === "passage" ? "passages" : "openings"} kind={item.kind} replace onChoose={replaceArchitecture} />
                         {item.kind === "door" && (
                           <>
                             <label className="edit-label">
@@ -4160,8 +4362,12 @@ function ManualEditorContent({
                                 <option value="off">仅保留门洞</option>
                               </select>
                             </label>
-                            {item.door_leaf !== false && (
+                            {item.door_leaf !== false && item.door_style === "sliding" && (
+                              <p className="field-note">推拉门沿轨道开启，不使用旋转角度。当前展示固定轨道造型，暂不支持拖动门扇开合。</p>
+                            )}
+                            {item.door_leaf !== false && item.door_style !== "sliding" && (
                               <>
+                                {item.door_style !== "double" && (
                                 <label className="edit-label">
                                   铰链位置
                                   <select
@@ -4177,6 +4383,7 @@ function ManualEditorContent({
                                     <option value="end">靠墙终点侧</option>
                                   </select>
                                 </label>
+                                )}
                                 <label className="edit-label">
                                   开启方向
                                   <select
@@ -4514,7 +4721,7 @@ function ManualEditorContent({
           drawing={drawing}
           pendingDelete={pendingDelete}
           openingKind={openingKind}
-          placement={placement}
+          placement={placement || architecturePlacement}
           save={save}
         />
       </div>

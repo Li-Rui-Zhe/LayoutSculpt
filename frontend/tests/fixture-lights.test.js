@@ -105,6 +105,41 @@ test("三种环境光照，灯具位置、强度、开关独立且安装幂等",
   assert.equal(other.userData.designLights.length, 0);
 });
 
+test("灯具高度烘焙在网格中时，光源仍位于灯罩中心；隐藏外形不影响照明", () => {
+  for (const baked of [true, false]) {
+    const model = new THREE.Group();
+    model.position.set(7, 0.3, -4);
+    model.rotation.y = 0.4;
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15),
+      new THREE.MeshStandardMaterial({ emissive: "#ffe0b5" }),
+    );
+    mesh.position.set(2, baked ? 0 : 2.45, -1);
+    if (baked) mesh.geometry.translate(0, 2.45, 0);
+    mesh.userData = {
+      fixture_id: "room_main",
+      fixture_kind: "pendant",
+      fixture_lumens: 1200,
+      fixture_temperature: 3000,
+      fixture_enabled: true,
+      fixture_visual_placeholder: true,
+    };
+    model.add(mesh);
+    installFixtureLights(model);
+    const { light } = model.userData.designLights[0];
+    assert.ok(light.position.distanceTo(new THREE.Vector3(2, 2.45, -1)) < 1e-6);
+    assert.ok(
+      light.target.position.distanceTo(new THREE.Vector3(2, 1.45, -1)) < 1e-6,
+    );
+    assert.equal(mesh.visible, false);
+    updateFixtureLights(model, true);
+    assert.equal(light.visible, true);
+    assert.ok(light.intensity > 0);
+    updateFixtureLights(model, false);
+    assert.equal(light.visible, false);
+  }
+});
+
 test("示例模型的灯罩在夜晚点亮，且不改变共享材质或普通模型", () => {
   const model = new THREE.Group();
   const shared = new THREE.MeshStandardMaterial({ color: "#eee8dc" });

@@ -1,0 +1,125 @@
+.floorplan-examples {
+  margin: 18px 0 22px;
+  padding: 16px;
+  border: 1px solid #dce5df;
+  border-radius: 14px;
+  background: #f8faf8;
+}
+.floorplan-examples header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.floorplan-examples header span {
+  color: #7c8982;
+  font-size: 10px;
+}
+.floorplan-example-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.floorplan-example {
+  margin: 0;
+  min-width: 0;
+}
+.floorplan-example-image {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1.4;
+  border: 1px solid #e0e6e1;
+  border-radius: 8px;
+  background: #fff;
+}
+.floorplan-example-image img,
+.floorplan-example-image svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.floorplan-example.blurred img {
+  filter: blur(3px);
+}
+.floorplan-example.cropped img {
+  transform: scale(2.2) translateX(25%);
+}
+.floorplan-example-image > span {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  border-radius: 50%;
+  padding: 3px;
+  display: flex;
+  border: 2px solid #fff;
+}
+.floorplan-example-image .good {
+  background: #247857;
+  color: #fff;
+}
+.floorplan-example-image .bad {
+  background: #a7795a;
+  color: #fff;
+}
+.floorplan-example figcaption {
+  padding-top: 7px;
+}
+.floorplan-example figcaption strong {
+  display: block;
+  font-size: 11px;
+}
+.floorplan-example figcaption small {
+  display: block;
+  margin-top: 4px;
+  color: #7b817c;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.floorplan-examples > p {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #68766e;
+}
+.input-rejected {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 14px;
+  padding: 32px;
+  min-height: 380px;
+  text-align: center;
+}
+.input-rejected > img {
+  width: min(100%, 420px);
+  max-height: 260px;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid #e0e6e1;
+  background: #fff;
+}
+.input-rejected h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.input-rejected p {
+  margin: 0;
+  max-width: 540px;
+  line-height: 1.7;
+  color: #68766e;
+}
+.input-rejected small {
+  color: #7b817c;
+}
+@media (max-width: 600px) {
+  .floorplan-example-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .input-rejected {
+    padding: 20px;
+  }
+}

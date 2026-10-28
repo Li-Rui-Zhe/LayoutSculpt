@@ -34,6 +34,7 @@ def test_recognition_and_review_preserve_balcony_glass_and_base_dimensions():
     layout = balcony_layout()
     wire = pack_layout(layout)
     payload = {k: v for k, v in wire.items() if k != "lights"}
+    payload["input_check"] = {"status": "usable", "reason": "none", "evidence": "阳台及住宅墙体边界清晰可辨"}
     payload["rooms"] = [
         {k: v for k, v in r.items() if k in RecognitionRoom.model_fields}
         for r in wire["rooms"]

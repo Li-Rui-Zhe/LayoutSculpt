@@ -7,7 +7,7 @@ AI 设计区可以上传一张 PNG/JPG/WebP 参考图片（最大 10 MB、1600 �
 1. `POST /api/diy/references` 接收 multipart `file`，验证真实图片格式，纠正 EXIF 方向、透明底合成白色、保持比例缩小到最长 2048 像素。
 2. 标准 PNG 存入 `data/diy_references/<sha256>.png`；响应含 `id`、`url`、宽高。图片不裁成方形，不接收任意文件路径或远程 URL。
 3. `POST /api/diy/generate` 增加可选 `reference_id`。文字和图片至少提供一种。有图时验证模型图片能力，前端也筛选图片模型；纯文字仍可选择文本模型。
-4. 后端将图片复制到该任务的 `data/diy/<asset_id>/reference.png`，通过现有 Codex 客户端的图片输入发送，与文字、已有设计和项目 Skill 一起进入 LangChain/LangGraph。
+4. 后端将图片复制到该任务的 `data/diy/<asset_id>/reference.png`，由所选 Codex 或 API 视觉模型接收，与文字、已有设计和项目 Skill 一起进入 LangChain/LangGraph。
 5. 输出仍为可编辑部件设计，校验后生成 GLB 并自动入素材库。参考图片编号保留在任务 request 中，重开或重试时可以继续使用。
 
 图片仅作为外观参考；单张图没有可靠的背面和尺度信息，AI 会合理补全，不能保证扫描级精度。使用「AI 接入」中所选来源的视觉模型理解图片，可通过本机 Codex 或具备图片能力的 DeepSeek API 模型调用；未提供图片能力时会阻止带图生成。用户参考图和生成模型保存在忽略 Git 提交的 data 目录。

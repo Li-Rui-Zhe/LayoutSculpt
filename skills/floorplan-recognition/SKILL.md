@@ -3,7 +3,11 @@ name: floorplan-recognition
 description: 将上传的住宅二维户型图转为可校验的房间、墙体和门窗结构，供造个家三维建模使用。
 ---
 
-先识别户型外轮廓及比例，再确认房间邻接，最后读取门窗。保持原图的左右和朝向，不做空间重排。
+先在同一次读图中判断原图可用性，填写 input_check，再识别户型外轮廓及比例、房间邻接和门窗。保持原图的左右和朝向，不做空间重排。
+
+原图门禁：仅当明确非二维户型图（not_floorplan，例如人物照、风景照）、严重模糊到主要墙线无法辨认（severe_blur）、关键住宅结构被裁断且无法恢复完整边界（cropped_structure），或主要结构确实无法辨认（unreadable）时，input_check.status=rejected。evidence 用简短中文指出原图中具体可见的问题。拒绝时 outline、rooms、walls、openings 都返回空数组，title 填“请更换户型图”，scale_note 留空，warnings 可为空；不要猜测或编造墙体以满足几何格式，也不要生成补图。本条优先于下文对完整几何的要求。
+
+结构可辨认时 input_check.status=usable、reason=none，evidence 说明可见结构依据，继续识别。不因手绘、黑白、拍照、无尺寸、个别文字模糊或置信度低直接拒绝。缺尺寸继续估算并在 scale_note 说明；局部不确定写 warnings。轻微裁掉广告或空白不算关键结构缺失。拒绝必须基于可见证据，不使用自报置信度阈值。
 
 完整输出 outline、rooms、walls、openings。优先保留真实墙厚、阳台凹凸和门洞。非轴对齐结构可以直接用端点表达，不必强行规整为矩形。
 

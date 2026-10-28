@@ -15,7 +15,7 @@ def travertine_texture():
     return Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8))
 
 
-def cushion_mesh(radii):
+def cushion_mesh(radii, subdivisions=4):
     """Puffed rectangular upholstery with smooth, explicitly authored normals.
 
     The thin axis has an elliptical profile; the face is a rounded rectangle.
@@ -26,7 +26,7 @@ def cushion_mesh(radii):
         raise ValueError("靠垫半径必须是三个有限的正数")
     thin = int(np.argmin(radii))
     plane = [axis for axis in range(3) if axis != thin]
-    mesh = trimesh.creation.icosphere(subdivisions=4)
+    mesh = trimesh.creation.icosphere(subdivisions=subdivisions)
     directions = mesh.vertices.copy()
     fourth = (directions[:, plane] ** 4).sum(axis=1)
     squared = directions[:, thin] ** 2
@@ -87,6 +87,10 @@ def olive_tree():
             leaf.apply_scale([0.025, rng.uniform(0.055, 0.082), 0.006])
             leaf.apply_transform(trimesh.transformations.rotation_matrix(rng.uniform(-1.2, 1.2), [1, 0, 1]))
             leaf.apply_transform(trimesh.transformations.rotation_matrix(angle + j, [0, 1, 0]))
+            # Every leaf has a twig connected to its branch; no floating flakes.
+            attach = leaf.vertices[np.argmin(leaf.vertices[:, 1])] + center
+            branches.append(trimesh.creation.cylinder(radius=.0015,
+                segment=[start + (end - start) * .65, attach], sections=5))
             leaf.apply_translation(center)
             leaves[j % 3].append(leaf)
     add("植栽_橄榄枝干", trimesh.util.concatenate(branches), [107, 88, 61])

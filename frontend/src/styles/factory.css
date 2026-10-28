@@ -1177,7 +1177,7 @@ input[type="checkbox"] {
   height: 17px;
   background: #344850;
 }
-.task-pipeline li > span {
+.task-pipeline li > .pipeline-step-marker {
   border: 1px solid #456069;
   border-radius: 50%;
   width: 22px;
@@ -1194,14 +1194,14 @@ input[type="checkbox"] {
 .task-pipeline .done {
   color: #a2bda0;
 }
-.task-pipeline .done > span {
+.task-pipeline .done > .pipeline-step-marker {
   background: #314c41;
   border-color: #456653;
 }
 .task-pipeline .current {
   color: #e0c594;
 }
-.task-pipeline .current > span {
+.task-pipeline .current > .pipeline-step-marker {
   border-color: #9b8965;
 }
 .inspector details {

@@ -1,5 +1,5 @@
 // Uses isolated browser responses and local fixture models; never edits user tasks.
-import { expect } from "@playwright/test";
+import { expect as baseExpect } from "@playwright/test";
 import { launchReviewBrowser } from "./browser.mjs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
@@ -7,6 +7,7 @@ import path from "node:path";
 import { findPython } from "../python.mjs";
 
 const root = process.cwd();
+const expect = baseExpect.configure({ timeout: 30000 });
 const output = path.join(root, "data/visual-review/architecture-library");
 await mkdir(output, { recursive: true });
 const id = "ba1c0000000000000000000000000001";
@@ -128,11 +129,14 @@ const browser = await launchReviewBrowser();
 const errors = [],
   checks = [],
   previews = [],
+  saves = [],
   unexpectedWrites = [];
 let draft = null,
   draftRevision = 0;
+const otherDrafts = new Map();
+let page;
 try {
-  const page = await browser.newPage({
+  page = await browser.newPage({
     viewport: { width: 1600, height: 1000 },
     deviceScaleFactor: 1,
   });
@@ -147,7 +151,9 @@ try {
       return json({
         ...health,
         capabilities: [
-          ...(health.capabilities || []),
+          ...(health.capabilities || []).filter(
+            (value) => value !== "architecture_openings",
+          ),
           ...(supportsOpenings ? ["architecture_openings"] : []),
         ],
       });
@@ -158,6 +164,10 @@ try {
     if (p === "/api/project-metadata") return json({ items: [] });
     if (p === `/api/jobs/${id}`) return json(job);
     if (p === `/api/jobs/${id}/timeline`) return json({ items: [] });
+    if (p === `/api/jobs/${id}/edit` && request.method() === "POST") {
+      saves.push(request.postDataJSON());
+      return json(job);
+    }
     if (p === `/api/jobs/${id}/events`)
       return route.fulfill({
         contentType: "text/event-stream",
@@ -170,6 +180,16 @@ try {
         body: originalModel,
       });
     if (p.startsWith("/api/drafts/")) {
+      if (decodeURIComponent(p) !== `/api/drafts/edit:${id}`) {
+        if (request.method() === "POST") {
+          const previous = otherDrafts.get(p);
+          otherDrafts.set(p, {
+            document: request.postDataJSON().document,
+            revision: (previous?.revision || 0) + 1,
+          });
+        }
+        return json(otherDrafts.get(p) || { document: null, revision: 0 });
+      }
       if (request.method() === "POST") {
         draft = request.postDataJSON().document;
         draftRevision++;
@@ -257,6 +277,10 @@ assert verify_export(doc,folder/'model.glb')['geometry_verified']
     .click();
   await expect(page.getByLabel("围护形式")).toHaveValue("glass_railing");
   await expect(page.getByText(/围护总高 1.20/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "平面设计", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.getByRole("button", { name: "三维设计", exact: true }).click();
   await expect.poll(() => previews.length).toBeGreaterThan(0);
   const applied = previews.find(
     (p) => p.layout.walls[3].boundary_type === "glass_railing",
@@ -271,9 +295,8 @@ assert verify_export(doc,folder/'model.glb')['geometry_verified']
     .click();
   await expect(page.getByLabel("围护形式")).toHaveValue("wall");
   checks.push("从素材库应用到指定墙段，进入三维草稿，保留相邻实墙且支持撤销");
-  await page
-    .getByRole("button", { name: "从建筑构件库选择", exact: true })
-    .click();
+  await page.goto(`${base}/?project=${id}&assetType=architecture#library`);
+  await page.getByLabel("建筑构件应用墙段").selectOption("front");
   await page
     .getByLabel("建筑构件分类")
     .getByRole("button", { name: /^门/ })
@@ -289,6 +312,7 @@ assert verify_export(doc,folder/'model.glb')['geometry_verified']
     .getByRole("button", { name: "安装到选中墙段", exact: true })
     .click();
   await expect(page.getByLabel("门扇样式")).toHaveValue("double");
+  await page.getByRole("button", { name: "三维设计", exact: true }).click();
   await expect
     .poll(() =>
       previews.some((p) => p.layout.openings[0]?.door_style === "double"),
@@ -314,19 +338,8 @@ assert verify_export(doc,folder/'model.glb')['geometry_verified']
     .getByRole("button", { name: "安装到选中墙段", exact: true })
     .click();
   await expect(page.getByLabel("窗户样式")).toHaveValue("casement");
-  await page
-    .getByRole("button", { name: "从建筑构件库选择门窗", exact: true })
-    .click();
-  await page
-    .getByLabel("建筑构件分类")
-    .getByRole("button", { name: /^窗/ })
-    .click();
-  await page
-    .getByLabel("建筑构件列表")
-    .getByRole("button", { name: /^双扇推拉窗/ })
-    .click();
-  await page.getByLabel("建筑构件安装方式").selectOption("0");
-  await page.getByRole("button", { name: "替换选中开口", exact: true }).click();
+  await page.getByRole("button", { name: "三维设计", exact: true }).click();
+  await page.getByLabel("更换构件款式").selectOption("sliding_window");
   await expect(page.getByLabel("窗户样式")).toHaveValue("sliding");
   await expect
     .poll(() =>
@@ -340,9 +353,8 @@ assert verify_export(doc,folder/'model.glb')['geometry_verified']
   await page.screenshot({
     path: path.join(output, "sliding-window-applied.png"),
   });
-  await page
-    .getByRole("button", { name: "从建筑构件库选择门窗", exact: true })
-    .click();
+  await page.goto(`${base}/?project=${id}&assetType=architecture#library`);
+  await page.getByLabel("建筑构件应用墙段").selectOption("front");
   await page
     .getByLabel("建筑构件分类")
     .getByRole("button", { name: /^门/ })
@@ -369,6 +381,7 @@ assert verify_export(doc,folder/'model.glb')['geometry_verified']
   await page
     .getByRole("button", { name: "安装到选中墙段", exact: true })
     .click();
+  await page.getByRole("button", { name: "三维设计", exact: true }).click();
   await expect
     .poll(() =>
       previews.some(
@@ -379,7 +392,166 @@ assert verify_export(doc,folder/'model.glb')['geometry_verified']
     )
     .toBe(true);
   checks.push(
-    "门、窗、通道分类可筛选；双开门安装、窗口替换、开口避让、重叠拦截和真实 GLB 生成通过",
+    "门、窗、通道分类可筛选；双开门安装、画布内直接换窗、开口避让、重叠拦截和真实 GLB 生成通过",
+  );
+  // Exercise both placement gestures through the UI; use only the isolated task.
+  const plan = page.getByLabel("人工设计平面图", { exact: true });
+  const placementBar = page.getByRole("region", {
+    name: "建筑构件放置",
+    exact: true,
+  });
+  const planPoint = async (x, y) =>
+    plan.evaluate(
+      (svg, p) => {
+        const screen = new DOMPoint(p.x, p.y).matrixTransform(
+          svg.getScreenCTM(),
+        );
+        return { x: screen.x, y: screen.y };
+      },
+      { x, y },
+    );
+  const openPlacement = async (name, view) => {
+    await page.getByRole("button", { name: `${view}设计`, exact: true }).click();
+    const category = /门|窗/.test(name) ? "门窗" : /通道/.test(name) ? "通道" : "墙体";
+    await page.locator(".edit-tool-tabs").getByRole("button", { name: category, exact: true }).click();
+    await page.getByRole("button", { name: "添加", exact: true }).click();
+    await page.getByLabel("选择建筑构件", { exact: true }).getByRole("button", { name: new RegExp(`^${name}`) }).click();
+    await expect(placementBar).toBeVisible();
+    await expect(page.locator(".edit-history").getByRole("button", { name: "建筑构件", exact: true })).toHaveCount(0);
+  };
+  await openPlacement("半高隔墙", "平面");
+  const center = await planPoint(2, 1.5);
+  await page.mouse.move(center.x, center.y);
+  await expect(placementBar).toHaveAttribute("data-valid", "true");
+  await page.getByRole("button", { name: "取消放置", exact: true }).click();
+  await expect(placementBar).toHaveCount(0);
+  expect(draft.layout.walls).toHaveLength(4);
+  await openPlacement("半高隔墙", "平面");
+  await page.mouse.move(center.x, center.y);
+  await expect(placementBar).toHaveAttribute("data-valid", "true");
+  await placementBar
+    .getByRole("button", { name: "确认放置", exact: true })
+    .click();
+  await expect.poll(() => draft?.layout.walls.length).toBe(5);
+  expect(draft.layout.walls[4].boundary_type).toBe("parapet");
+  if (!(await page.getByLabel("墙体高度", { exact: true }).isVisible()))
+    await page
+      .locator("summary")
+      .filter({ hasText: /^墙体尺寸与位置$/ })
+      .click();
+  await page.getByLabel("墙体高度", { exact: true }).fill("1.4");
+  await page.getByLabel("墙体高度", { exact: true }).press("Enter");
+  await expect.poll(() => draft?.layout.walls[4]?.height).toBe(1.4);
+  await page.getByRole("button", { name: "撤销设计", exact: true }).click();
+  await expect.poll(() => draft?.layout.walls[4]?.height).toBe(1.2);
+  await page.getByRole("button", { name: "撤销设计", exact: true }).click();
+  await expect.poll(() => draft?.layout.walls.length).toBe(4);
+  await page.getByRole("button", { name: "重做设计", exact: true }).click();
+  await expect.poll(() => draft?.layout.walls.length).toBe(5);
+  await openPlacement("单开平开门", "平面");
+  const back = await planPoint(2, 0);
+  await page.mouse.move(back.x, back.y);
+  await expect(placementBar).toHaveAttribute("data-valid", "true");
+  await page.mouse.click(back.x, back.y);
+  await expect.poll(() => draft?.layout.openings.length).toBe(3);
+  expect(draft.layout.openings[2].wall_id).toBe("back");
+  await expect(
+    page.getByRole("button", { name: "平面设计", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.screenshot({ path: path.join(output, "plan-placement.png") });
+  checks.push(
+    "平面新增墙段和贴墙安装门：候选预览、取消、确认按钮、画布点击、撤销重做均通过，保留平面视图",
+  );
+
+  await openPlacement("实体低栏板", "三维");
+  const scene = page.locator(".scene-editor-canvas canvas");
+  await expect(scene).toBeVisible();
+  const placeScene = async (bar = placementBar) => {
+    const box = await scene.boundingBox();
+    for (const fy of [0.55, 0.65, 0.45, 0.75, 0.35]) {
+      for (const fx of [0.5, 0.65, 0.35, 0.75, 0.25]) {
+        const x = box.x + box.width * fx,
+          y = box.y + box.height * fy;
+        await page.mouse.move(x, y);
+        if ((await bar.getAttribute("data-valid")) === "true") {
+          await page.mouse.click(x, y);
+          await expect(bar).toHaveCount(0);
+          return;
+        }
+      }
+    }
+    throw Error(`三维没有找到可放置的位置：${await bar.innerText()}`);
+  };
+  await placeScene();
+  await expect.poll(() => draft?.layout.walls.length).toBe(6);
+  await page
+    .getByRole("button", { name: "删除墙体及附着对象", exact: true })
+    .click();
+  await page.getByRole("button", { name: "确认删除", exact: true }).click();
+  await expect.poll(() => draft?.layout.walls.length).toBe(5);
+  await page.getByRole("button", { name: "撤销设计", exact: true }).click();
+  await expect.poll(() => draft?.layout.walls.length).toBe(6);
+  await openPlacement("卫生间磨砂窗", "三维");
+  await placeScene();
+  await expect.poll(() => draft?.layout.openings.length).toBe(4);
+  expect(draft.layout.openings[3].glass_type).toBe("frosted");
+  await expect
+    .poll(() => previews.some((p) => p.layout.openings.length === 4), {
+      timeout: 30000,
+    })
+    .toBe(true);
+  await page.locator(".edit-tool-tabs").getByRole("button", { name: "灯具", exact: true }).click();
+  await page.getByRole("button", { name: "添加", exact: true }).click();
+  await page.getByRole("button", { name: "从灯具素材库选择", exact: true }).click();
+  await expect(page.getByLabel("灯具素材列表").getByRole("button")).toHaveCount(
+    6,
+  );
+  await page.getByRole("button", { name: "在平面中放置", exact: true }).click();
+  const lightBar = page.getByRole("region", { name: "灯具放置", exact: true });
+  await expect(lightBar).toBeVisible();
+  const lightPoint = await planPoint(2, 2.4);
+  await page.mouse.move(lightPoint.x, lightPoint.y);
+  await expect(lightBar).toHaveAttribute("data-valid", "true");
+  await page.mouse.click(lightPoint.x, lightPoint.y);
+  await expect.poll(() => draft?.layout?.lights.length).toBe(1);
+  expect(draft.layout.lights[0].kind).toBe("floor_lamp");
+  await page.getByLabel("灯具亮度", { exact: true }).fill("520");
+  await page.getByLabel("灯具亮度", { exact: true }).press("Enter");
+  await expect.poll(() => draft?.layout?.lights[0]?.lumens).toBe(520);
+  await page
+    .getByRole("button", { name: "浏览灯具素材库", exact: true })
+    .click();
+  await page
+    .getByLabel("灯具素材列表")
+    .getByRole("button", { name: /陶瓷床头台灯/ })
+    .click();
+  await page.getByRole("button", { name: "在三维中放置", exact: true }).click();
+  await expect(scene).toBeVisible();
+  await placeScene(lightBar);
+  await expect.poll(() => draft?.layout?.lights.length).toBe(2);
+  expect(draft.layout.lights[1].kind).toBe("table_lamp");
+  await expect(page.locator(".scene-sync")).toHaveText("已同步", {
+    timeout: 60000,
+  });
+  checks.push(
+    "灯具素材库六款模型可浏览，平面放置落地灯并调整亮度、三维放置台灯、真实模型同步通过",
+  );
+  await page
+    .getByRole("button", { name: "保存并生成三维", exact: true })
+    .click();
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0].layout.lights).toHaveLength(2);
+  expect(saves[0].layout.walls).toHaveLength(6);
+  expect(saves[0].layout.openings).toHaveLength(4);
+  await page.reload();
+  await expect(scene).toBeVisible();
+  await expect(page.locator(".scene-sync")).toHaveText("已同步", {
+    timeout: 60000,
+  });
+  await expect.poll(() => draft?.layout.walls.length).toBe(6);
+  await page.screenshot({ path: path.join(output, "scene-placement.png") });
+  checks.push(
+    "三维画布新增栏板、墙面安装磨砂窗、真实 GLB 预览、保存请求及刷新后的草稿恢复通过",
   );
   supportsOpenings = false;
   await page.goto(`${base}/?project=${id}&assetType=architecture#library`);
@@ -432,6 +604,18 @@ assert verify_export(doc,folder/'model.glb')['geometry_verified']
     JSON.stringify(report, null, 2),
   );
   console.log(JSON.stringify(report, null, 2));
+} catch (error) {
+  if (page) {
+    await page.screenshot({
+      path: path.join(output, "failure.png"),
+      fullPage: true,
+    });
+    await writeFile(
+      path.join(output, "failure.txt"),
+      await page.locator("body").innerText(),
+    );
+  }
+  throw error;
 } finally {
   await browser.close();
 }

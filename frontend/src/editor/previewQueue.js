@@ -1,3 +1,4 @@
+import { previewKey } from "./previewIdentity.js";
 // 一次只构建一个草稿；旧请求即使不响应取消，也不能覆盖较新的结果。
 export function createPreviewQueue({
   build,
@@ -9,14 +10,19 @@ export function createPreviewQueue({
   let serial = initialRevision,
     timer,
     controller,
+    pendingSignature,
     closed = false;
   return {
     cancel() {
+      pendingSignature = undefined;
       serial++;
       clearTimeout(timer);
       controller?.abort();
     },
     submit(document) {
+      const signature = previewKey(document);
+      if (closed || pendingSignature === signature) return;
+      pendingSignature = signature;
       const revision = ++serial;
       clearTimeout(timer);
       controller?.abort();
@@ -36,6 +42,8 @@ export function createPreviewQueue({
         } catch (error) {
           if (!closed && revision === serial && !signal.aborted)
             report({ phase: "error", revision, message: error.message });
+        } finally {
+          if (revision === serial) pendingSignature = undefined;
         }
       }, delay);
     },

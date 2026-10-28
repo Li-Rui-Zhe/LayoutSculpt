@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 from PIL import Image
+from scipy.spatial import cKDTree
 from shapely.geometry import Polygon, box as rectangle
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,12 +22,13 @@ SHOWCASE_ID = "forest-home-v3"
 
 from backend.app.architecture import validate_generated_structure
 from backend.app.consistency import verify_export
-from backend.app.glb_builder import Builder
+from backend.app.glb_builder import Builder, CUT_HEIGHT
 from backend.app.schemas import Layout
 from backend.app.schemas import Furnishing
 from backend.app.quality import validate_generated_furnishing
-from scripts.showcase_textiles import draped_throw, sofa_triangles, upper_surface
+from scripts.showcase_textiles import draped_throw, sofa_triangles, upper_surface, curtain_panel
 from scripts.showcase_finishes import travertine_texture, cushion_mesh, vessel_mesh, olive_tree
+from scripts.showcase_garden import Garden
 
 
 def points(x0, z0, x1, z1):
@@ -73,7 +75,8 @@ def document():
 
     opening("north", "window", 0.55, 2.2, 1.1, 1.5)
     opening("north", "door", 3.15, 0.95)
-    opening("north", "window", 6.55, 2.4, 0.35, 2.25)
+    # The bed needs a solid headboard wall; daylight enters from its side.
+    opening("east", "window", 0.55, 2.8, 0.5, 2.05)
     opening("west", "window", 2.85, 2.9, 0.45, 2.15)
     opening("east", "window", 4.55, 1.4, 0.75, 1.85)
     opening("east", "window", 7.0, 1.0, 1.3, 1.3)
@@ -119,13 +122,14 @@ def document():
         item("chair", "弧面软包餐椅", "dining", x, 0.59, 0.46, 0.5, 0.8)
         item("chair", "弧面软包餐椅", "dining", x, 2.13, 0.46, 0.5, 0.8, 180)
     for name, room, x, z, h in [
-        ("客厅琴叶榕", "living", 0.65, 6.5, 1.75),
+        ("客厅橄榄树", "living", 0.65, 6.5, 1.75),
         ("餐边绿植", "dining", 5.48, 0.6, 1.35),
         ("卧室绿植", "bedroom", 9.1, 3.12, 1.15),
-        ("露台橄榄树", "terrace", 5.25, 8.9, 1.85),
-        ("露台绿植", "terrace", 0.65, 8.95, 1.5),
+        ("露台橄榄树", "terrace", 5.30, 9.02, 1.8),
+        ("露台绿植", "terrace", 4.25, 9.05, 1.15),
     ]:
-        item("plant", name, room, x, z, 0.55, 0.55, h)
+        span = .82 if name == "露台橄榄树" else .55
+        item("plant", name, room, x, z, span, span, h, elevation=.036 if room == "terrace" else 0)
     return {
         "title": "林间光庭 · 设计师私宅",
         "confidence": 1,
@@ -227,6 +231,9 @@ class Showcase(Builder):
         for cushion in (self.cushion_olive, self.cushion_terracotta):
             cushion.normalTexture = self.materials["fabric"].normalTexture
             cushion.baseColorTexture = weave
+        self.curtain_linen = material("软装_暖白亚麻窗帘", [232, 224, 208], .98)
+        self.curtain_linen.baseColorTexture = weave
+        self.curtain_linen.normalTexture = self.materials["fabric"].normalTexture
         self.parquet = trimesh.visual.material.PBRMaterial(
             name="地板_人字拼橡木",
             baseColorFactor=[255, 255, 255, 255],
@@ -336,7 +343,7 @@ class Showcase(Builder):
         mesh.apply_scale(radii)
         self.smooth_detail(name, mesh, x, z, h, mat or self.materials[role])
 
-    def smooth_detail(self, name, mesh, x, z, height, mat, angle=0, *, uv=None):
+    def smooth_detail(self, name, mesh, x, z, height, mat, angle=0, *, uv=None, metadata=None):
         mesh.visual = trimesh.visual.TextureVisuals(
             uv=mesh.vertices[:, [0, 2]] if uv is None else uv, material=mat)
         # Trimesh exports cached normals by default. glTF falls back to flat
@@ -345,7 +352,7 @@ class Showcase(Builder):
         transform = trimesh.transformations.rotation_matrix(angle, [0, 1, 0])
         transform[:3, 3] = self.pos(x, height, z)
         self.scene.add_geometry(mesh, node_name=name, geom_name=name, transform=transform,
-                                metadata={"decoration_kind": "showcase_detail"})
+                                metadata={"decoration_kind": "showcase_detail", **(metadata or {})})
 
     def cushion(self, name, x, z, height, radii, mat, angle=0, *, lean=0, support=None):
         mesh = cushion_mesh(radii)
@@ -420,9 +427,12 @@ class Showcase(Builder):
         _ = cloth.vertex_normals
         self.scene.add_geometry(cloth, node_name="沙发垂落针织毯", geom_name="沙发垂落针织毯",
                                 metadata={"decoration_kind": "sofa_throw"})
-        self.block(
-            "沙发贵妃躺位", 1.95, 5.6, 1.35, 0.89, 0.21, 0.28, "fabric", self.cream, 0.2
-        )
+        # Independent ottoman: real legs and frame, with an upholstered cushion.
+        for x in [1.97, 2.73]:
+            for z in [5.61, 6.09]:
+                self.block("脚凳实木支腿", x, z, .055, .055, .20, .07, "wood", radius=.012)
+        self.block("脚凳承托框", 2.35, 5.85, .96, .66, .09, .23, "wood", radius=.045)
+        self.cushion("脚凳亚麻软包", 2.35, 5.85, .395, [.52, .08, .37], self.cream)
         self.cushion("苔绿织物靠枕", 1.28, 3.65, 0.73, [0.075, 0.23, 0.23], self.cushion_olive,
                      0.08, lean=0.18, support=sofa_support)
         self.cushion("陶土织物靠枕", 1.28, 5.55, 0.73, [0.075, 0.23, 0.24], self.cushion_terracotta,
@@ -448,6 +458,14 @@ class Showcase(Builder):
             self.block(
                 "岛台竖向细槽", x, 2.306, 0.023, 0.022, 0.73, 0.12, "wood", radius=0.008
             )
+        self.block("岛台嵌入电磁炉", 1.12, 1.95, .66, .48, .012, .956,
+                   "dark", self.charcoal, .025)
+        for x in [.96, 1.28]:
+            ring = trimesh.creation.annulus(r_min=.094, r_max=.096, height=.001, sections=48)
+            ring.apply_transform(trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0]))
+            self.smooth_detail(f"电磁炉炉圈_{x}", ring, x, 1.95, .969, self.bronze)
+        self.block("岛台下吸排烟口", 1.12, 1.68, .56, .035, .008, .957,
+                   "dark", self.charcoal, .008)
         # Oval dining table and four chairs, all with space to pull out.
         self.block("椭圆餐桌", 4.58, 1.36, 1.85, 0.9, 0.075, 0.74, "wood", radius=0.44)
         for x in [4.15, 5.0]:
@@ -484,39 +502,29 @@ class Showcase(Builder):
             self.block(f"床头亚麻灯罩_{x}", x, 0.75, 0.27, 0.27, 0.14, 0.62,
                        "white", glow, 0.12, metadata={
                            "fixture_id": f"bedside_{x}", "fixture_kind": "table_lamp",
-                           "fixture_lumens": 180, "fixture_temperature": 2700,
+                           "fixture_lumens": 105, "fixture_temperature": 2700,
                            "fixture_enabled": True, "fixture_visual_placeholder": False,
                            "fixture_cast_shadow": False})
-        for x in [6.35, 9.3]:
-            for dx in np.linspace(-0.1, 0.1, 5):
-                self.block(
-                    "亚麻窗帘褶皱",
-                    x + dx,
-                    0.24,
-                    0.055,
-                    0.13,
-                    2.35,
-                    0.12,
-                    "fabric",
-                    self.cream,
-                    0.025,
-                )
+        self.window_curtains("主卧", 9.37, .44, 3.68, wall_id="east")
         self.signature_details()
-        # A terrace with slatted bench and handmade planters.
-        self.block("露台长凳", 2.68, 9.03, 3.25, 0.52, 0.10, 0.42, "wood", radius=0.035)
-        for x in [1.55, 3.8]:
-            self.block("长凳支撑", x, 9.03, 0.12, 0.4, 0.37, 0.05, "wood", radius=0.02)
+        Garden(self).build()
         # Small decor is modelled at real scale, not painted into a preview.
         for x, z, h in [
             (3.2, 4.65, 0.51),
             (4.7, 1.4, 0.85),
             (8.85, 5.62, 0.82),
         ]:
-            self.disc("陶瓷花器", x, z, 0.075, 0.18, h, "white")
-            for dx, dz in [(-0.07, 0.02), (0.04, 0.02), (0, -0.06)]:
-                self.orb(
-                    "花器枝叶", x + dx, z + dz, h + 0.31, [0.07, 0.16, 0.03], "leaf"
-                )
+            vase = vessel_mesh()
+            vase.apply_scale(.65)
+            vase.apply_transform(trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0]))
+            self.smooth_detail(f"手作细颈花器_{x}", vase, x, z, h, self.paper)
+            for index, (dx, dz) in enumerate([(-.07, .02), (.04, .02), (0, -.06)]):
+                stem = trimesh.creation.cylinder(radius=.0015, sections=6,
+                    segment=[[0, .12, 0], [dx, .32 + index * .025, dz]])
+                self.smooth_detail(f"花器细枝_{x}_{index}", stem, x, z, h, self.olive)
+                for t in [.65, .85, 1]:
+                    self.orb(f"花器小叶_{x}_{index}_{t}", x + dx * t, z + dz * t,
+                             h + (.32 + index * .025) * t, [.022, .045, .006], mat=self.olive)
         for i in range(3):
             self.block(
                 "茶几画册",
@@ -549,49 +557,54 @@ class Showcase(Builder):
                 metadata={"fixture_visual_placeholder": True},
             )
         self.lamp("餐桌纸灯", 4.7, 1.42, 2.18, 0.32, 450)
-        self.disc(
-            "落地灯底座",
-            0.55,
-            2.85,
-            0.19,
-            0.035,
-            0.05,
-            "metal",
-            metadata={"fixture_visual_placeholder": True},
-        )
-        self.block(
-            "落地灯细杆",
-            0.55,
-            2.85,
-            0.025,
-            0.025,
-            1.5,
-            0.05,
-            "metal",
-            radius=0.008,
-            metadata={"fixture_visual_placeholder": True},
-        )
         self.lamp("书房台灯", 9.1, 4.75, 1.08, 0.12, 240)
         self.lamp("浴室壁灯", 6.8, 8.36, 1.4, 0.12, 240)
 
+    def window_curtains(self, name, x, start, end, *, wall_id):
+        # Track is physically attached above the window; curtains clear the floor.
+        cut = wall_id not in {"north", "west"}
+        metadata = {"wall_id": wall_id, "cutaway_upper": cut}
+        self.block(f"{name}窗帘细轨道", x, (start + end) / 2, .075, end - start + .64,
+                   .025, 2.65, "white", self.paper, .008, metadata=metadata)
+        for index, z in enumerate([start, end]):
+            mesh, uv = curtain_panel(mirror=bool(index))
+            self.smooth_detail(f"{name}连续亚麻窗帘_{index + 1}", mesh, x, z, .075,
+                               self.curtain_linen, math.pi / 2, uv=uv, metadata=metadata)
+            if cut:
+                # Keep the original intact for the full view. A closed lower
+                # section follows the same horizontal cut as its supporting wall.
+                origin = [0, CUT_HEIGHT - .075, 0]
+                textured = mesh.slice_plane(origin, [0, -1, 0], cap=False)
+                lower = mesh.slice_plane(origin, [0, -1, 0], cap=True)
+                distance, nearest = cKDTree(textured.vertices).query(lower.vertices)
+                if distance.max() > 1e-7:
+                    raise ValueError("窗帘剖切纹理顶点不匹配")
+                self.smooth_detail(f"{name}剖切窗帘_{index + 1}", lower, x, z, .075,
+                                   self.curtain_linen, math.pi / 2,
+                                   uv=textured.visual.uv[nearest],
+                                   metadata={"wall_id": wall_id, "cutaway_only": True})
+            # Small hanging tabs join the gathered header to its track.
+            for dz in np.linspace(-.24, .24, 6):
+                self.block(f"{name}窗帘挂扣_{index}_{dz:.2f}", x, z + dz, .012, .009,
+                           .025, 2.642, "white", self.paper, .003, metadata=metadata)
+
     def architectural_details(self):
         # Individual planks, seams and folds give the model detail at every zoom.
-        for x in np.arange(0.22, 5.82, 0.145):
-            self.block("露台防腐木地板", float(x), 8.38, 0.137, 2.17, 0.022, 0.045, "wood", radius=0.009,
-                       metadata={"floor_room_id": "terrace"})
-        for x in [0.75, 4.75]:
-            self.block("露台陶土花箱", x, 9.24, 0.85, 0.38, 0.28, 0.07, "accent", self.terracotta, 0.05)
-            self.block("花箱种植土", x, 9.24, 0.76, 0.29, 0.025, 0.345, "dark", self.charcoal, 0.03)
         # Curtains frame the living-room window without covering the view.
-        for z in [2.69, 5.9]:
-            for dz in np.linspace(-0.16, 0.16, 7):
-                self.block("客厅落地亚麻帘", 0.22, z + dz, 0.14, 0.065, 2.48, 0.07, "fabric", self.cream, 0.025)
+        self.window_curtains("客厅", .25, 2.79, 5.89, wall_id="west")
         # Low headboard panelling stays readable in both cutaway and full views.
         self.block("主卧整幅软包背景", 7.8, 0.2, 3.08, 0.06, 0.95, 0.12, "accent", radius=0.02)
         for x in np.linspace(6.35, 9.25, 20):
             self.block("床头细木格栅", float(x), 0.24, 0.018, 0.026, 0.89, 0.15, "wood", radius=0.006)
         # Kitchen backsplash and a visible appliance complete the cooking zone.
         self.block("厨房洞石挡水", 1.16, 0.14, 1.98, 0.035, 0.17, 0.93, "stone", radius=0.008)
+        # Quiet relief artwork sits on the new solid bedroom wall.
+        self.block("主卧织物画框", 7.8, .15, 1.42, .055, .62, 1.57, "wood", radius=.012)
+        self.block("主卧织物画底", 7.8, .183, 1.36, .018, .56, 1.60,
+                   "fabric", self.paper, .006)
+        for index, (x, height, width) in enumerate([(7.45, .25, .18), (7.70, .36, .22), (8.01, .30, .28), (8.31, .19, .15)]):
+            self.orb(f"主卧浮雕织物_{index}", x, .20, 1.82, [width / 2, height / 2, .012],
+                     mat=self.olive if index == 1 else self.rug)
         self.block("咖啡机机身", 1.92, 0.49, 0.25, 0.24, 0.28, 0.95, "dark", self.charcoal, 0.025)
         self.block("咖啡机金属前面板", 1.92, 0.617, 0.2, 0.016, 0.18, 1.02, "metal", radius=0.006)
         self.disc("咖啡机杯子", 1.92, 0.65, 0.035, 0.065, 0.95, "white")
@@ -634,39 +647,9 @@ class Showcase(Builder):
                    "glass", glass, 0.004)
         self.block("露台东侧扶手", 6, 9.1, 0.035, 1.0, 0.035, 1.09,
                    "metal", self.bronze, 0.009)
-        self.disc("花园茶桌底座", 2.9, 8.12, 0.23, 0.31, 0.07, "stone")
-        self.block("花园椭圆茶桌", 2.9, 8.12, 1.0, 0.60, 0.055, 0.38,
-                   "stone", radius=0.28)
-        self.disc("花园茶盘", 2.9, 8.12, 0.16, 0.012, 0.437, "wood")
-        self.disc("花园茶杯", 2.98, 8.12, 0.032, 0.055, 0.45, "white")
-        # A sculptural water bowl nestles beside the planting, clear of the main route.
-        bowl = trimesh.creation.revolve(np.array([
-            [0.12, 0], [0.24, 0.06], [0.37, 0.23], [0.38, 0.25],
-            [0.35, 0.25], [0.29, 0.16], [0.12, 0.04], [0.12, 0],
-        ]), sections=64)
-        bowl.apply_transform(trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0]))
-        self.smooth_detail("庭院石钵", bowl, 0.75, 8.05, 0.07, self.materials["stone"])
-        water = trimesh.creation.cylinder(radius=0.30, height=0.007, sections=64)
-        water.apply_transform(trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0]))
-        water_mat = material("庭院_静水", [69, 99, 89], 0.18, 0.28)
-        self.smooth_detail("庭院静水", water, 0.75, 8.05, 0.26, water_mat)
         for x in [0.08, 1.25, 2.42, 3.59, 4.76, 5.92]:
             self.block("栏杆古铜细立柱", x, 9.6, 0.022, 0.026, 0.79, 0.32,
                        "metal", self.bronze, 0.006)
-        # A low lounge bench with squared linen pads, layered planting and garden lamps.
-        for x in [1.62, 2.68, 3.74]:
-            self.cushion(f"露台亚麻坐垫_{x}", x, 9.02, 0.56, [0.49, 0.055, 0.24], self.cream)
-        self.cushion("露台橄榄靠垫", 1.62, 9.2, 0.76, [0.23, 0.21, 0.09], self.cushion_olive)
-        self.cushion("露台陶土靠垫", 3.74, 9.2, 0.76, [0.23, 0.21, 0.09], self.cushion_terracotta)
-        rng = np.random.default_rng(29)
-        greens = [material(f"庭院叶色_{i}", rgb) for i, rgb in enumerate(
-            ([65, 88, 54], [88, 110, 65], [117, 131, 81]))]
-        for side in [0.75, 4.75]:
-            for i in range(22):
-                x, z = side + rng.uniform(-0.35, 0.35), 9.24 + rng.uniform(-0.12, 0.12)
-                h = rng.uniform(0.49, 0.69)
-                self.orb(f"花箱层叠绿叶_{side}_{i}", x, z, h,
-                         [0.07, 0.13, 0.06], mat=greens[i % 3])
         for x in [0.28, 5.72]:
             self.block("庭院矮灯底座", x, 7.5, 0.10, 0.10, 0.34, 0.05,
                        "metal", self.charcoal, 0.015)
@@ -678,24 +661,10 @@ class Showcase(Builder):
                            "fixture_lumens": 85, "fixture_temperature": 2700,
                            "fixture_enabled": True, "fixture_visual_placeholder": False,
                            "fixture_cast_shadow": False})
-        # Real floor lamp: the diffuser is visible; no floating helper bulbs.
-        self.disc("阅读落地灯圆盘", 0.55, 2.48, 0.20, 0.025, 0.05, "metal")
-        self.block("阅读落地灯铜杆", 0.55, 2.48, 0.018, 0.018, 1.5, 0.065,
-                   "metal", self.bronze, 0.006)
-        shade = trimesh.creation.revolve(np.array([
-            [0.04, 0], [0.10, -0.015], [0.20, -0.08], [0.29, -0.18],
-            [0.29, -0.195], [0.20, -0.095], [0.10, -0.03], [0.04, -0.015],
-        ]), sections=48)
-        shade.apply_transform(trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0]))
-        self.smooth_detail("阅读落地灯雕塑灯罩", shade, 0.55, 2.48, 1.67, self.bronze)
-        glow = material("灯具_阅读磨砂罩", [249, 237, 214])
-        glow.emissiveFactor = [1, 0.71, 0.4]
-        self.block("阅读灯柔光面", 0.55, 2.48, 0.44, 0.44, 0.015, 1.475,
-                   "white", glow, 0.21, metadata={
-                       "fixture_id": "reading_lamp", "fixture_kind": "floor_lamp",
-                       "fixture_lumens": 420, "fixture_temperature": 2700,
-                       "fixture_enabled": True, "fixture_visual_placeholder": False,
-                       "fixture_cast_shadow": False})
+        # Same refined fixture as the library and generated homes.
+        self.light_fixture(dict(id="reading_lamp", kind="floor_lamp", name="亚麻阅读落地灯",
+                                x=.55, y=2.48, elevation=1.5, lumens=420,
+                                temperature=2700, enabled=True, cast_shadow=False))
         # Stone vanity backsplash and an actual reflective, round-topped mirror.
         self.block("浴室洞石背墙", 6.8, 8.455, 1.16, 0.022, 1.78, 0.12,
                    "stone", radius=0.01, metadata={"cutaway_upper": True})
@@ -771,7 +740,7 @@ if __name__ == "__main__":
         "source": "authored_sample",
         "model_url": f"/models/{SHOWCASE_ID}.glb",
         "revision": hashlib.sha256(candidate.read_bytes()).hexdigest()[:12],
-        "description": "洞石与胡桃木 · 花园露台 · 艺廊客餐厅 · 温润光影",
+        "description": "柚木花园会客厅 · 洞石与胡桃木 · 自然织物 · 温润光影",
         "geometry_verified": proof["geometry_verified"],
     }
     (ROOT / f"public/models/{SHOWCASE_ID}.json").write_text(

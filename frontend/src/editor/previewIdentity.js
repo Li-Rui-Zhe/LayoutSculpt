@@ -1,4 +1,10 @@
-// 编辑器的选择/锁定元数据不影响模型；隐藏状态和所有实际设计参数仍参与比较。
+// 名称、说明及编辑器元数据不改变可见几何；仍随草稿保存和正式导出。
+// 只消除浮点尾差（米制数据保留 9 位小数），不修改保存数据或吞掉毫米级编辑。
+export const previewNumber = (value) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Number(value.toFixed(9))
+    : value;
+
 export function previewKey(value) {
   const normalize = (item) => {
     if (Array.isArray(item)) return item.map(normalize);
@@ -7,11 +13,22 @@ export function previewKey(value) {
         Object.keys(item)
           .sort()
           .filter(
-            (key) => !["edit_id", "edit_locked", "edit_group"].includes(key),
+            (key) =>
+              ![
+                "edit_id",
+                "edit_locked",
+                "edit_group",
+                "name",
+                "title",
+                "confidence",
+                "scale_note",
+                "warnings",
+                "notes",
+              ].includes(key),
           )
           .map((key) => [key, normalize(item[key])]),
       );
-    return item;
+    return previewNumber(item);
   };
   return JSON.stringify(normalize(value));
 }

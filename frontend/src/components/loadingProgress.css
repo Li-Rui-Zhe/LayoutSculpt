@@ -130,23 +130,37 @@
 }
 .loading-progress-inline {
   display: inline-block;
-  flex: 0 0 26px;
-  width: 26px;
+  flex: 0 0 36px;
+  width: 36px;
   height: 4px;
-  border-radius: 9px;
-  background: currentColor;
+  border-radius: 4px;
+  background: #dfe8da;
   position: relative;
   overflow: hidden;
   vertical-align: middle;
-  opacity: 0.8;
+  isolation: isolate;
 }
 .loading-progress-inline > i {
   display: block;
   width: 4%;
   height: 100%;
   border-radius: inherit;
-  background: #ffffffb0;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, #527d62, #91b083);
   transition: width 0.6s linear;
+}
+.loading-progress-inline > i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent, #ffffff70, transparent);
+  transform: translateX(-100%);
+  animation: loading-glow 2s ease-in-out infinite;
+}
+.loading-progress-inline[data-complete="true"] > i::after {
+  animation: none;
+  opacity: 0;
 }
 .empty-state > .loading-progress {
   flex: none;
@@ -176,7 +190,8 @@
   .loading-progress,
   .loading-progress-fill,
   .loading-progress-fill::after,
-  .loading-progress-inline > i {
+  .loading-progress-inline > i,
+  .loading-progress-inline > i::after {
     animation: none !important;
     transition: none !important;
   }

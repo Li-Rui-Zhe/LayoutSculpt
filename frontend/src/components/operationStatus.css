@@ -45,6 +45,9 @@
 .task-progress-display > .progress-track {
   display: block;
 }
+.activity-page > .task-progress-display {
+  margin-bottom: 20px;
+}
 .route-load-status {
   position: fixed;
   z-index: 90;

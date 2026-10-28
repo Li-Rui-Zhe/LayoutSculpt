@@ -71,7 +71,8 @@ try {
   await expect(page.locator("#viewport canvas")).toHaveAttribute(
     "data-model-url",
     /\/api\/jobs\/.+\/model.glb/,
-    { timeout: 30000 },
+    // 包含独立 Python 冷启动与真实 GLB 构建，不作为响应时间基准。
+    { timeout: 120000 },
   );
   await page.getByRole("button", { name: "外观设置", exact: true }).click();
   await expect(

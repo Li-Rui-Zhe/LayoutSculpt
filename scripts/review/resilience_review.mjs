@@ -55,7 +55,8 @@ try {
   await expect(
     page.getByRole("button", { name: "重试同步", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".library-card").first()).toBeVisible();
+  // 首次需要建立素材索引；等待卡片就绪后才验证收藏的断线恢复。
+  await expect(page.locator(".library-card").first()).toBeVisible({ timeout: 60000 });
   const count = await page.locator(".library-card").count();
   expect(count).toBeLessThanOrEqual(48);
   const more = page.getByRole("button", { name: /加载更多素材/ });

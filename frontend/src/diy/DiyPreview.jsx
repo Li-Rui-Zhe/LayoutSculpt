@@ -37,6 +37,11 @@ import { scenePose, sceneModes } from "../editor/sceneEdits.js";
 import { objectFocusBounds, focusCamera } from "../editor/objectFocus.js";
 import { createSceneObjectFeedback } from "../editor/sceneObjectFeedback.js";
 import "../editor/sceneObjectFeedback.css";
+import { bindLiveDoors, syncLiveDoors } from "../editor/liveDoors.js";
+import { liveSceneSnapshot, liveCapabilities } from "../editor/liveSceneUpdates.js";
+import { syncFixtureParameters } from "../viewer/fixtureLights.js";
+import { bindLiveLights, syncLiveLights } from "../editor/liveLights.js";
+import { createFrameRenderer } from "../viewer/frameRenderer.js";
 import {
   updateLiveArchitecture,
   clearLiveArchitecture,
@@ -226,12 +231,13 @@ export default function DiyPreview({
     const selection = new THREE.BoxHelper(new THREE.Object3D(), 0x2d8b65);
     selection.visible = false;
     scene.add(selection);
-    const render = () => {
+    const frames = createFrameRenderer(() => {
       if (!disposed) {
         runtime.current?.objectFeedback?.project();
         renderer.render(scene, camera);
       }
-    };
+    });
+    const render = frames.request;
     const quality = interactionQuality({
       ratio: window.devicePixelRatio,
       apply: (ratio) => {
@@ -254,6 +260,7 @@ export default function DiyPreview({
       grid,
       selection,
       render,
+      renderNow: frames.flush,
       light,
       frontDirection,
       ambient,
@@ -476,6 +483,7 @@ export default function DiyPreview({
     renderer.domElement.addEventListener("pointerup", pointerUp);
     return () => {
       disposed = true;
+      frames.close();
       rt.objectFeedback?.dispose();
       quality.close();
       window.removeEventListener("pointerup", quality.end);
@@ -712,6 +720,8 @@ export default function DiyPreview({
       rt.gizmo.detach();
       clearLiveArchitecture(rt);
       rt.modelDocument = modelDocument;
+      rt.liveDoors = modelDocument ? bindLiveDoors(gltf.scene, modelDocument) : new Map();
+      rt.liveLights = modelDocument ? bindLiveLights(gltf.scene, modelDocument) : new Map();
       rt.liveGroups = modelDocument
         ? bindLiveFurniture(gltf.scene, modelDocument)
         : null;
@@ -779,9 +789,27 @@ export default function DiyPreview({
     const marker = new THREE.Line(geometry, material);
     marker.renderOrder = 1000;
     rt.scene.add(marker);
+    let volume;
+    if (["architecture", "light"].includes(placement.kind)) {
+      const box = new THREE.BoxGeometry(item.width, item.height, item.depth);
+      volume = new THREE.LineSegments(new THREE.EdgesGeometry(box), material);
+      box.dispose();
+      volume.position.set(
+        item.x - rt.liveOrigin.x,
+        (item.elevation || 0) + item.height / 2,
+        item.y - rt.liveOrigin.y,
+      );
+      volume.rotation.y = (-item.rotation * Math.PI) / 180;
+      volume.renderOrder = 1000;
+      rt.scene.add(volume);
+    }
     rt.render();
     return () => {
       rt.scene.remove(marker);
+      if (volume) {
+        rt.scene.remove(volume);
+        volume.geometry.dispose();
+      }
       geometry.dispose();
       material.dispose();
       rt.render();
@@ -819,7 +847,16 @@ export default function DiyPreview({
     // 即使拖动的是结构手柄，家具位置也从同一草稿更新。
     if (rt.liveGroups && liveDocument && rt.gizmo.object === rt.editHandle)
       syncLiveFurniture(rt.liveGroups, liveDocument);
-    if (liveDocument) updateLiveArchitecture(rt, liveDocument, cutaway, night);
+    if (liveDocument) {
+      syncLiveLights(rt.liveLights, liveDocument);
+      if (rt.liveDoors && rt.modelDocument) syncLiveDoors(rt.liveDoors, rt.modelDocument, liveDocument);
+      updateLiveArchitecture(rt, liveDocument, cutaway, night);
+      if (rt.modelDocument && !rt.architectureOverlay) {
+        const visual = liveSceneSnapshot(rt.modelDocument, liveDocument, liveCapabilities(rt));
+        syncFixtureParameters(rt.group.children[0], visual.layout.lights);
+        updateFixtureLights(rt.group.children[0], night);
+      }
+    }
     if (modelDocument) updateRoomHighlight(rt, liveDocument, liveSelection);
     else clearRoomHighlight(rt);
     for (const mesh of rt.group.children) {
@@ -934,7 +971,7 @@ export default function DiyPreview({
     const target = pendingDocument || liveDocument;
     if (sceneStatus && rt?.modelDocument && target)
       rt.objectFeedback?.update(
-        rt.modelDocument,
+        liveSceneSnapshot(rt.modelDocument, target, liveCapabilities(rt)),
         target,
         sceneStatus.phase,
         liveSelection,
@@ -951,38 +988,44 @@ export default function DiyPreview({
     const url = pendingReady.current;
     if (!rt || !url || url !== modelUrl) return;
     // 以首次真实渲染为完成标记，避免解析完成却还没出现画面，或出现后仍读条。
-    rt.render();
+    rt.renderNow();
     pendingReady.current = null;
     setHasContent(true);
     setLoading(false);
-    callbacks.current.onModelReady?.(url);
+    callbacks.current.onModelReady?.(url, liveCapabilities(rt));
   }, [version, modelUrl]);
   // 结构对象也有可见选框，完整墙体下仍可辨认定位目标。
+  const objectOutline = useRef(null);
   useEffect(() => {
     const rt = runtime.current;
-    if (
-      !rt ||
-      !modelDocument ||
-      !liveDocument ||
-      !liveSelection ||
-      !rt.group.children.length
-    )
-      return;
-    const box = objectFocusBounds(liveDocument, liveSelection, rt.liveOrigin);
-    if (!box) return;
-    const helper = new THREE.Box3Helper(box, 0x168a68);
+    if (!rt || !modelDocument) return;
+    const helper = new THREE.Box3Helper(new THREE.Box3(), 0x168a68);
+    helper.visible = false;
     helper.material.depthTest = false;
     helper.material.transparent = true;
     helper.material.opacity = 0.9;
     helper.renderOrder = 1000;
     helper.raycast = () => {};
+    objectOutline.current = helper;
     rt.scene.add(helper);
-    rt.render();
     return () => {
+      objectOutline.current = null;
       rt.scene.remove(helper);
       helper.geometry.dispose();
       helper.material.dispose();
     };
+  }, [modelDocument, version]);
+  useEffect(() => {
+    const rt = runtime.current;
+    const helper = objectOutline.current;
+    if (!rt || !helper) return;
+    const box = liveDocument && liveSelection && rt.group.children.length
+      ? objectFocusBounds(liveDocument, liveSelection, rt.liveOrigin)
+      : null;
+    helper.visible = !!box;
+    // 拖动只更新包围盒，避免每帧销毁并创建选框几何与材质。
+    if (box) helper.box.copy(box);
+    rt.render();
   }, [liveDocument, liveSelection, modelDocument, version]);
   const lastFocus = useRef(null);
   useEffect(() => {
@@ -1201,7 +1244,9 @@ export default function DiyPreview({
       </div>
       <span className="diy-preview-hint">
         {placement
-          ? "绿色可放置 · 红色表示冲突 · R 旋转 · Esc 取消"
+          ? placement.kind === "light" ? "点击放置灯具 · 绿色可放置 · Esc 取消" : placement.kind === "architecture" && placement.walls
+            ? "点击墙面安装 · 绿色可放置 · 红色表示冲突 · Esc 取消"
+            : "绿色可放置 · 红色表示冲突 · R 旋转 · Esc 取消"
           : modelDocument
             ? "拖动物体摆放 · 空白处拖动旋转视角 · 滚轮缩放"
             : "拖动旋转 · 滚轮缩放"}

@@ -7,6 +7,66 @@ from scripts.build_showcase import ROOT, SHOWCASE_ID
 from scripts.showcase_textiles import sofa_triangles, upper_surface
 
 
+@pytest.mark.parametrize("mirror", [False, True])
+def test_curtain_is_one_closed_fabric_panel_with_gathered_header(mirror):
+    from scripts.showcase_textiles import curtain_panel
+
+    mesh, uv = curtain_panel(mirror=mirror)
+    assert mesh.is_watertight and mesh.is_winding_consistent and mesh.volume > 0
+    assert len(mesh.split()) == 1
+    assert mesh.extents[0] == pytest.approx(.62, abs=.002)
+    assert mesh.extents[1] == pytest.approx(2.57, abs=.002)
+    assert .08 < mesh.extents[2] < .12  # Folds have depth, not solid column bodies.
+    assert np.isfinite(uv).all() and len(uv) == len(mesh.vertices)
+    top = mesh.vertices[mesh.vertices[:, 1] > 2.56, 0]
+    assert np.ptp(top) < mesh.extents[0] * .86
+
+
+def test_shipped_curtains_have_connected_cloth_and_tracks_in_both_rooms():
+    scene = trimesh.load(ROOT / f"public/models/{SHOWCASE_ID}.glb", force="scene")
+    curtains = [name for name in scene.geometry if "连续亚麻窗帘" in name]
+    assert len(curtains) == 4
+    assert not any("亚麻窗帘褶皱" in name or "客厅落地亚麻帘" in name for name in scene.geometry)
+    for room in ["主卧", "客厅"]:
+        assert any(name.startswith(f"{room}窗帘细轨道_") for name in scene.geometry)
+    for name in curtains:
+        transform, geometry = scene.graph[name]
+        mesh = scene.geometry[geometry].copy()
+        assert mesh.is_watertight and len(mesh.split()) == 1
+        mesh.apply_transform(transform)
+        assert mesh.bounds[0, 1] == pytest.approx(.075, abs=.002)
+        assert mesh.bounds[1, 1] == pytest.approx(2.645, abs=.002)
+
+
+def test_curtains_follow_supporting_wall_cut_and_restore_full_height():
+    from backend.app.glb_builder import CUT_HEIGHT
+
+    scene = trimesh.load(ROOT / f"public/models/{SHOWCASE_ID}.glb", force="scene")
+    parts = {
+        node: edge.get("metadata", {})
+        for (_, node), edge in scene.graph.transforms.edge_data.items()
+        if "窗帘" in node
+    }
+    lower = [name for name in parts if "剖切窗帘" in name]
+    assert len(lower) == 2
+    for name in lower:
+        assert parts[name]["cutaway_only"] is True
+        assert parts[name]["wall_id"] == "east"
+        transform, geometry = scene.graph[name]
+        mesh = scene.geometry[geometry].copy()
+        assert mesh.is_watertight and mesh.volume > 0
+        assert np.isfinite(mesh.visual.uv).all()
+        mesh.apply_transform(transform)
+        assert mesh.bounds[1, 1] == pytest.approx(CUT_HEIGHT, abs=1e-5)
+        assert mesh.bounds[0, 1] == pytest.approx(.075, abs=.002)
+    for name, meta in parts.items():
+        if "剖切窗帘" in name:
+            continue
+        # Full curtains, rails and every tab share the wall's visibility rule.
+        assert meta["cutaway_upper"] is name.startswith("主卧")
+        assert meta["wall_id"] == ("east" if name.startswith("主卧") else "west")
+
+
 def test_throw_has_thickness_smooth_normals_and_clears_sofa():
     scene = trimesh.load(ROOT / f"public/models/{SHOWCASE_ID}.glb", force="scene")
     cloth = scene.geometry["沙发垂落针织毯"]
@@ -47,9 +107,9 @@ def test_shipped_soft_surfaces_include_normals_for_smooth_gltf_shading():
     length = struct.unpack_from("<I", blob, 12)[0]
     gltf = json.loads(blob[20:20 + length])
     soft = [mesh for mesh in gltf["meshes"] if any(
-        term in mesh.get("name", "") for term in ("织物靠枕", "露台亚麻坐垫", "露台橄榄靠垫", "露台陶土靠垫", "沙发垂落针织毯")
+        term in mesh.get("name", "") for term in ("织物靠枕", "坐垫", "靠背软垫", "苔绿腰枕", "脚凳亚麻软包", "沙发垂落针织毯")
     )]
-    assert len(soft) == 8
+    assert len(soft) == 12
     for mesh in soft:
         for primitive in mesh["primitives"]:
             attributes = primitive["attributes"]

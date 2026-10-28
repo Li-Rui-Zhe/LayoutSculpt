@@ -51,6 +51,13 @@ try {
   await page.getByRole("button", { name: "切换到晴天", exact: true }).click();
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${output}/desktop.png` });
+  for (const room of ["terrace", "living", "bedroom"]) {
+    await page.getByRole("combobox", { name: "定位房间" }).selectOption(room);
+    await page.waitForTimeout(800);
+    await canvas.screenshot({ path: `${output}/detail-${room}.png` });
+  }
+  await page.getByRole("combobox", { name: "定位房间" }).selectOption("");
+  checks.push("露台、客厅、主卧可以定位近看，复查家具支撑与摆放");
   await page.getByRole("button", { name: "完整墙体", exact: true }).click();
   await expect(canvas).toHaveAttribute("data-wall-view", "full");
   await canvas.screenshot({ path: `${output}/full-walls.png` });

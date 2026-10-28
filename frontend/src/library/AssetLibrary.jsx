@@ -23,6 +23,7 @@ import "./libraryWorkspace.css";
 import { useLibraryPreferences } from "../hooks/useLibraryPreferences.js";
 import MaterialLibrary from "./MaterialLibrary.jsx";
 import ArchitectureLibrary from "./ArchitectureLibrary.jsx";
+import LightingLibrary from "./LightingLibrary.jsx";
 import AssetManager from "./AssetManager.jsx";
 import { readContext, writeContext } from "../hooks/urlContext.js";
 import {
@@ -84,6 +85,7 @@ export default function AssetLibrary({
   architectureDocument,
   selectedWallId = "",
   onApplyBoundary,
+  onSelectArchitectureProject,
 }) {
   const contextKey = onClose
     ? `library-context:${currentJobId}`
@@ -381,7 +383,9 @@ export default function AssetLibrary({
                   ? `${items.length} 个模型`
                   : assetType === "architecture"
                     ? "建筑构件"
-                    : "装修材质"}
+                    : assetType === "lighting"
+                      ? "灯具"
+                      : "装修材质"}
               </small>
             </h1>
           </div>
@@ -408,6 +412,12 @@ export default function AssetLibrary({
             >
               <BrickWall size={16} />
               建筑构件
+            </button>
+            <button
+              aria-pressed={assetType === "lighting"}
+              onClick={() => setAssetType("lighting")}
+            >
+              灯具
             </button>
           </div>
         </div>
@@ -494,7 +504,7 @@ export default function AssetLibrary({
           </button>
           <button
             className="primary-button"
-            hidden={assetType === "architecture"}
+            hidden={["architecture", "lighting"].includes(assetType)}
             disabled={!onCreate || opening}
             onClick={() =>
               openAction(() =>
@@ -518,13 +528,22 @@ export default function AssetLibrary({
           {openError}
         </p>
       )}
-      {assetType === "architecture" ? (
+      {assetType === "lighting" ? (
+        <LightingLibrary
+          job={architectureJob}
+          jobs={jobs}
+          onSelectProject={onSelectArchitectureProject}
+          onApply={onApplyBoundary}
+        />
+      ) : assetType === "architecture" ? (
         <ArchitectureLibrary
           refreshKey={revision}
           job={architectureJob}
           document={architectureDocument}
           selectedWallId={selectedWallId}
           onApply={onApplyBoundary}
+          jobs={jobs}
+          onSelectProject={onSelectArchitectureProject}
         />
       ) : assetType === "materials" ? (
         <MaterialLibrary

@@ -1,4 +1,4 @@
-"""墙地面材质统一由本地 Codex 设计参数，任务存 SQLite。"""
+"""墙地面材质由所选 Codex 或 API 模型设计参数，任务存 SQLite。"""
 
 import asyncio
 import json

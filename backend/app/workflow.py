@@ -1,4 +1,4 @@
-"""LangGraph 管理节点与检查点，LangChain 组合提示词、Codex 模型和结构解析器。"""
+"""LangGraph 管理节点与检查点，LangChain 组合提示词、所选 AI 来源与结构解析器。"""
 
 import asyncio
 import json
@@ -13,10 +13,8 @@ from langgraph.graph import END, START, StateGraph
 
 from .ai_cache import StageCache, compact_json, read_metrics, record_metric
 from .ai_contracts import (
-    LayoutExtraction,
     LayoutReviewPatch,
     apply_review_patch,
-    unpack_layout,
 )
 from .ai_failures import ai_failure_message, classify_ai_error
 from .ai_requests import asset_input, furnishing_schema, layout_input, review_schema
@@ -26,6 +24,8 @@ from .codex import CodexChatModel, CodexClient, CodexError
 from .consistency import matches_confirmation, source_hash, structure_hash
 from .modeling import build_model
 from .public_errors import public_message
+from .input_quality import SourceImageRejected
+from .recognition_contract import RecognitionExtraction, validate_recognition
 from .quality import finish_design, prepare_generated_furnishing
 from .recovery import REVIEW_TIMEOUT_WARNING
 from .resilience import transient_ai_error
@@ -319,6 +319,9 @@ def create_graph(
             raise
         except Exception as exc:
             trace["status"] = "timed_out" if isinstance(exc, TimeoutError) else "failed"
+            if isinstance(exc, SourceImageRejected):
+                trace["status"] = "input_rejected"
+                trace["failure"] = {"code": "input_image_rejected", "retryable": False}
             trace.setdefault("failure", classify_ai_error(exc))
             # 限定为阶段名和安全分类；详细上游响应不写入公开任务数据。
             if trace["failure"]["code"] == "invalid_result":
@@ -343,19 +346,19 @@ def create_graph(
             stage="识别户型结构",
             progress=12,
             agent="户型识别",
-            message="正在读取房间、墙体及门窗",
+            message="正在检查原图可用性，并读取房间、墙体及门窗",
         )
         extracted, trace = await run_agent(
             state,
             "recognition",
             "floorplan-recognition",
-            LayoutExtraction,
+            RecognitionExtraction,
             {"task": "依据原图识别实际结构，保持原图朝向、比例和全部可辨认墙体门窗"},
-            unpack_layout,
+            validate_recognition,
             artifact="recognition-wire",
         )
         workspace = settings.workspace(state["job_id"])
-        layout = unpack_layout(extracted).model_dump()
+        layout = validate_recognition(RecognitionExtraction.model_validate(extracted)).model_dump()
         (workspace / "recognition.json").write_text(
             json.dumps(layout, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -967,6 +970,12 @@ class JobRunner:
                 else "任务已停止，原始图片已保留",
             )
             raise
+        except SourceImageRejected as exc:
+            await self.store.update(
+                job_id, status="failed", stage="请更换户型图",
+                error=str(exc), message=str(exc),
+                result={"input_check": exc.check.model_dump(), "failure": {"code": "input_image_rejected"}},
+            )
         except Exception as exc:  # noqa: BLE001 - persist every terminal worker failure
             current = await self.store.get(job_id)
             message = ai_failure_message(exc, current["stage"]) or public_message(

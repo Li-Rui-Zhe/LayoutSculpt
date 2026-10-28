@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useModels } from "../hooks/useModels.js";
 import ImagePreparation from "./ImagePreparation.jsx";
+import FloorplanExamples from "./FloorplanExamples.jsx";
 import { materials, materialCategories } from "../catalog.js";
 import { useCustomTextures } from "../materials/customTextures.js";
 import MaterialSample from "./MaterialSample.jsx";
@@ -28,11 +29,19 @@ import {
   hasGenerationDraft,
 } from "../hooks/generationDraftContent.js";
 
-export default function GenerationForm({ projects, onCancel, onCreated }) {
+export default function GenerationForm({
+  projects,
+  onCancel,
+  onCreated,
+  replacementJob,
+}) {
   const completion = useProgressGate();
   const textureStatus = useCustomTextures();
   const [finishes, setFinishes] = useState({ walls: "", floor: "" });
-  const models = useModels();
+  const models = useModels({
+    initialModel: replacementJob?.options?.model,
+    initialEffort: replacementJob?.options?.effort,
+  });
   const modelOptions = useRef(null);
   const picker = useRef(null);
   const backupPicker = useRef(null);
@@ -126,13 +135,31 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
     readGenerationDraft()
       .then((value) => {
         draftReadable.current = true;
-        if (live && value?.version === 1 && hasGenerationDraft(value))
+        if (
+          live &&
+          !replacementJob &&
+          value?.version === 1 &&
+          hasGenerationDraft(value)
+        )
           applyDraft(value);
       })
       .catch(() => {
         if (live) setDraftError("浏览器草稿存储不可用，请在离开前提交任务。");
       })
       .finally(() => {
+        if (live && replacementJob) {
+          const o = replacementJob.options || {};
+          applyDraft({
+            name: replacementJob.name,
+            style: o.style,
+            styleDescription: o.style_description,
+            notes: o.notes,
+            finishes: { walls: o.wall_material, floor: o.floor_material },
+            collaboration: o.collaboration,
+            manualReview: o.review_mode === "manual",
+            furnitureMode: o.furniture_mode,
+          });
+        }
         if (live) setDraftLoaded(true);
       });
     return () => {
@@ -520,6 +547,12 @@ export default function GenerationForm({ projects, onCancel, onCreated }) {
                 使用示例户型 ↗
               </button>
             </div>
+            {replacementJob && !file && (
+              <p className="field-note" role="status">
+                设计偏好已带入，请选择新的户型图。原任务和原图仍保留。
+              </p>
+            )}
+            <FloorplanExamples />
             {file && (
               <div className="upload-actions">
                 <button

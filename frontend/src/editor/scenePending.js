@@ -1,4 +1,5 @@
 import { liveKey, liveObjects } from "./liveModel.js";
+import { previewNumber } from "./previewIdentity.js";
 
 const types = ["furniture", "lights", "walls", "rooms", "openings"];
 export function sceneObjectSignature(item, type) {
@@ -28,7 +29,7 @@ export function sceneObjectSignature(item, type) {
           )
           .map((k) => [k, stable(v[k])]),
       );
-    return v;
+    return previewNumber(v);
   };
   return JSON.stringify(stable(item, true));
 }

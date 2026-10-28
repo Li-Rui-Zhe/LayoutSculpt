@@ -16,9 +16,7 @@ export function Swatch({ material, selected, onSelect }) {
       <MaterialSample material={material} className="chip" />
       <span className="label">{material.name}</span>
       <small>
-        {material.family === "软装搭配"
-          ? material.sub.split(" · ")[0]
-          : `${material.family} · ${material.finish}`}
+        {`${material.family} · ${material.finish}`}
       </small>
     </button>
   );
@@ -98,18 +96,12 @@ export function MaterialDock({
       )}
       <div className="material-guide">
         <strong>
-          {state.category === "walls"
-            ? "墙面饰面"
-            : state.category === "floor"
-              ? "地板与铺法"
-              : "软装搭配"}
+          {state.category === "walls" ? "墙面饰面" : "地板与铺法"}
         </strong>
         <p>
           {state.category === "walls"
             ? "选择漆面、木饰面或墙布，预览表面纹理与光泽。"
-            : state.category === "floor"
-              ? "选择木地板、瓷砖或石材，纹理与铺装样式一起应用。"
-              : "坐垫、靠枕、床品、窗帘与地毯分别搭配，保留层次。"}
+            : "选择木地板、瓷砖或石材，纹理与铺装样式一起应用。"}
         </p>
       </div>
       <div id="dock-materials">
@@ -125,7 +117,7 @@ export function MaterialDock({
           ))}
       </div>
       <div className="material-current" aria-live="polite">
-        <span>当前{state.category === "fabric" ? "搭配" : "材质"}</span>
+        <span>当前材质</span>
         <strong>{chosen?.name || "模型原始材质"}</strong>
         <p>
           {chosen?.usage ||

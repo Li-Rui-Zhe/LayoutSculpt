@@ -227,6 +227,51 @@
   background: #fff0e4;
   color: #984a24;
 }
+.scene-rendering-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  flex: none;
+  margin: 0 12px 8px;
+  padding: 10px 12px;
+  border: 1px solid #dbe5d8;
+  border-radius: 9px;
+  background: #f7faf4;
+  color: #576e5c;
+}
+.scene-rendering-note > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.scene-editor-canvas .scene-rendering-note p {
+  flex: 1;
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.scene-rendering-note p span {
+  display: block;
+  color: #748371;
+}
+.scene-rendering-note button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  color: #576e5c;
+}
+.scene-rendering-note button:hover {
+  background: #e7eee2;
+}
+.scene-rendering-note button:focus-visible {
+  outline: 2px solid #5b8a6d;
+  outline-offset: 2px;
+}
 .scene-error > span {
   flex: 1;
   min-width: 0;
@@ -385,6 +430,47 @@
   }
 }
 
+.architecture-placement-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 12px 16px;
+  background: #eef6e9;
+  border: 1px solid #c8dcc0;
+  border-radius: 12px;
+  margin-bottom: 10px;
+}
+.architecture-placement-bar > div {
+  flex: 1 1 230px;
+}
+.architecture-placement-bar p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: #566952;
+}
+.architecture-placement-bar fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.architecture-placement-bar .edit-number {
+  width: 100px;
+}
+.architecture-placement-bar button {
+  padding: 9px 12px;
+  border: 1px solid #c5d6be;
+  background: #fff;
+  border-radius: 7px;
+  color: #355a31;
+}
+.architecture-placement-bar[data-valid="false"] p {
+  color: #805c35;
+}
 .manual-editor .inspector-heading strong {
   color: #264c38;
 }
@@ -403,7 +489,13 @@
 }
 
 @media (max-width: 600px) {
-  .scene-topbar { flex-wrap: wrap; }
-  .manual-editor .rotation-compact .rotation-presets { flex-basis: 180px; }
-  .manual-editor .rotation-compact .rotation-slider { min-width: 50px; }
+  .scene-topbar {
+    flex-wrap: wrap;
+  }
+  .manual-editor .rotation-compact .rotation-presets {
+    flex-basis: 180px;
+  }
+  .manual-editor .rotation-compact .rotation-slider {
+    min-width: 50px;
+  }
 }

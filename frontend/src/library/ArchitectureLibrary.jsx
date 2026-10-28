@@ -19,6 +19,8 @@ export default function ArchitectureLibrary({
   selectedWallId = "",
   onApply,
   refreshKey = 0,
+  jobs = [],
+  onSelectProject,
 }) {
   const [selected, setSelected] = useState(architectureItems[2]);
   const [query, setQuery] = useState("");
@@ -34,6 +36,7 @@ export default function ArchitectureLibrary({
     [swing, setSwing] = useState("left");
   const [replaceKey, setReplaceKey] = useState("");
   const [wallId, setWallId] = useState(selectedWallId);
+  const [length, setLength] = useState(2.4);
   const [loaded, setLoaded] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -103,6 +106,7 @@ export default function ArchitectureLibrary({
     height,
     thickness,
     sill_height: glass ? sill : 0,
+    length,
     ...(isOpening
       ? {
           width,
@@ -266,7 +270,7 @@ export default function ArchitectureLibrary({
             </p>
           )}
           <p className="library-note architecture-guidance">
-            选择构件后可旋转查看。门窗与通道按尺寸安装到墙上，支持新增或替换；墙体围护按原墙段长度适配。
+            选择构件后可旋转查看，在平面或三维中放置。门窗与通道贴墙安装，墙体和围护支持新增，也可替换已有构件。
           </p>
         </div>
         <aside
@@ -462,8 +466,101 @@ export default function ArchitectureLibrary({
           </p>
           <div className="library-placement architecture-placement">
             <strong>{job?.name || "选择目标方案"}</strong>
+            {!!onSelectProject && (
+              <label>
+                放入方案
+                <select
+                  aria-label="建筑构件目标方案"
+                  value={job?.id || ""}
+                  onChange={(e) => onSelectProject(e.target.value)}
+                  disabled={applying}
+                >
+                  <option value="">请选择可编辑的方案</option>
+                  {jobs
+                    .filter((j) =>
+                      ["succeeded", "awaiting_review"].includes(j.status),
+                    )
+                    .map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
             {eligible ? (
               <>
+                <div className="architecture-canvas-entry">
+                  <strong>
+                    {isOpening ? "在墙上安装新构件" : "新增独立墙段 / 围护"}
+                  </strong>
+                  {!isOpening && (
+                    <label>
+                      新墙段长度（m）
+                      <input
+                        type="number"
+                        aria-label="新构件长度"
+                        min="0.1"
+                        max="30"
+                        step="0.1"
+                        value={length}
+                        onChange={(e) =>
+                          setLength(
+                            e.target.value === "" ? "" : Number(e.target.value),
+                          )
+                        }
+                      />
+                    </label>
+                  )}
+                  <p className="library-note">
+                    {isOpening
+                      ? "进入设计页后点击安装墙面，绿色位置可放置；放好后可沿墙拖动、调整宽高。"
+                      : "进入设计页后点击落点，支持旋转；放好后可拖动墙段、修改两端及高度。"}
+                  </p>
+                  <div className="architecture-entry-actions">
+                    {[
+                      ["plan", "在平面中放置"],
+                      ["scene", "在三维中放置"],
+                    ].map(([view, label]) => (
+                      <button
+                        key={view}
+                        className="primary-button"
+                        disabled={
+                          !document ||
+                          !onApply ||
+                          applying ||
+                          (isOpening && !runtime.ready)
+                        }
+                        onClick={async () => {
+                          if (lock.current) return;
+                          lock.current = true;
+                          setApplying(true);
+                          setApplyError("");
+                          try {
+                            await onApply({
+                              placement: true,
+                              configuration: {
+                                ...configuration,
+                                opening_ref: undefined,
+                              },
+                              view,
+                            });
+                          } catch (e) {
+                            setApplyError(e.message);
+                          } finally {
+                            lock.current = false;
+                            setApplying(false);
+                          }
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <strong className="architecture-existing-title">
+                  或应用到已有墙段
+                </strong>
                 <label>
                   应用墙段
                   <select
@@ -585,7 +682,7 @@ export default function ArchitectureLibrary({
               </>
             ) : (
               <p className="library-note">
-                打开一个已识别或已完成的方案，即可选择墙段应用。现在可以先浏览、旋转和调整样板。
+                选择一个已识别或已完成的方案，即可放置和调整构件。现在可以先浏览、旋转和调整样板。
               </p>
             )}
           </div>

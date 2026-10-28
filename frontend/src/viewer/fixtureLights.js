@@ -159,9 +159,17 @@ export function installFixtureLights(model, { sample = false } = {}) {
       2,
     );
     light.name = `人工设计光源_${data.fixture_id}`;
-    light.position.copy(
-      model.worldToLocal(marker.getWorldPosition(new THREE.Vector3())),
-    );
+    // GLB may bake elevation into vertices rather than the node transform.
+    // Anchor illumination to the emitting surface, including already saved GLBs.
+    const emitter = new THREE.Vector3();
+    if (marker.isMesh && marker.geometry?.attributes.position?.count) {
+      marker.geometry.computeBoundingBox();
+      marker.geometry.boundingBox.getCenter(emitter);
+      marker.localToWorld(emitter);
+    } else {
+      marker.getWorldPosition(emitter);
+    }
+    light.position.copy(model.worldToLocal(emitter));
     if (light.isSpotLight) {
       light.angle = Math.PI * (data.fixture_kind === "downlight" ? 0.18 : 0.38);
       light.penumbra = 1;
@@ -182,8 +190,15 @@ export function installFixtureLights(model, { sample = false } = {}) {
       softenOwnShadeShadow(shade, light);
     const materials = [],
       surfaces = [];
+    const ownedMaterials = new Map();
     marker.traverse((obj) => {
       if (obj.isMesh) {
+        // 各灯泡可能共用 GLB 材质，独立开关/色温不能串到其他灯具。
+        const own = (material) => {
+          if (!ownedMaterials.has(material)) ownedMaterials.set(material, material.clone());
+          return ownedMaterials.get(material);
+        };
+        obj.material = Array.isArray(obj.material) ? obj.material.map(own) : own(obj.material);
         surfaces.push(obj);
         obj.castShadow = false;
         for (const m of [obj.material].flat())
@@ -192,6 +207,7 @@ export function installFixtureLights(model, { sample = false } = {}) {
     });
     model.add(light);
     return {
+      id: data.fixture_id,
       light,
       materials,
       surfaces,
@@ -202,6 +218,19 @@ export function installFixtureLights(model, { sample = false } = {}) {
   // Lights are siblings of their geometry. Hiding a placeholder never hides
   // its illumination or removes its editable source record.
   hidePlaceholderVisuals(model, markers);
+}
+
+export function syncFixtureParameters(model, lights) {
+  const byId = new Map(lights.map((light) => [light.id, light]));
+  for (const fixture of model?.userData.designLights || []) {
+    const value = byId.get(fixture.id);
+    if (!value) continue;
+    fixture.enabled = value.enabled !== false;
+    fixture.lumens = value.lumens;
+    const color = colors[value.temperature] || colors[3000];
+    fixture.light.color.set(color);
+    for (const material of fixture.materials) material.emissive.set(color);
+  }
 }
 
 export function updateFixtureLights(model, night, strength = 1) {

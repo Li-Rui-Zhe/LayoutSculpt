@@ -139,6 +139,7 @@ class FakeCodex:
             output = furniture_data()
         elif title == "LayoutExtraction":
             output = pack_layout(Layout.model_validate(layout_data()))
+            output["input_check"] = {"status": "usable", "reason": "none", "evidence": "完整住宅边界与内部墙线可辨认"}
         elif title == "LayoutReviewPatch":
             revision = re.search(r'"base_revision":"([a-f0-9]{64})"', kwargs["prompt"]).group(1)
             output = LayoutReviewPatch(base_revision=revision, checks=sorted(CHECKS), summary="逐项核对完成，未发现需修改的结构", warnings=[]).model_dump()

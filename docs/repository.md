@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-支持本机 Codex 和 DeepSeek API 的开源 AI 空间设计工作台：户型识别、交互式 3D 编辑、建筑构件与家具素材库、材质创作、GLB 导出。
+支持 Codex 与 API 接入的开源 AI 空间设计工作台，集户型识别、可交互 3D 编辑、家具与墙地面 DIY、素材管理和成果导出于一体。
 
 该文案与 `package.json` 的 `description` 保持一致，用于仓库 About / Description 等对外介绍。API 接入范围以 [AI 接入说明](ai-connections.md) 为准。
 
@@ -31,7 +31,17 @@
 
 ### README 展示素材
 
-README 使用品牌横幅 `header.svg`、当前「林间光庭」昼夜展示 `showcase-garden.webp` 和工作台 `workbench.webp`。墙地面搭配 `materials.gif` 是此前「林间暖居」的操作记录，家具模板编辑 `diy.gif` 使用内置玄关柜。全部画面来自真实程序渲染，截图验收隔离用户任务与草稿；不包含私人户型或上传原图。原始帧和制作中间文件保留在被忽略的 `data/` 中。
+README 使用品牌横幅 `header.svg`、当前「林间光庭」操作演示 `showcase.gif`、墙地面搭配 `materials.gif`、家具模板编辑 `diy.gif` 和接入页面 `ai-connections.gif`。`showcase-garden.webp`、`workbench.webp` 保留静态展示。GIF 从当前页面录制，家具使用内置玄关柜，AI 接入只展示未连接的设置入口，不输入凭据或调用 AI。录制隔离用户任务、连接状态和草稿，不包含私人户型或上传原图。原始帧与制作中间文件保留在被忽略的 `data/` 中。
+
+更新演示时，先构建并启动当前项目，再从根目录执行：
+
+```sh
+pnpm build
+node scripts/review/record_readme.mjs
+python scripts/build_readme_gifs.py
+```
+
+Python 使用项目 `.venv`；Windows 可执行 `.venv\Scripts\python.exe scripts/build_readme_gifs.py`。录制默认连接 `http://127.0.0.1:8000`，可用 `STUDIO_BASE_URL` 指定已有项目服务。单独重录可在录制命令末尾加 `showcase`、`materials`、`diy` 或 `ai-connections`。每帧写入清单方便续录；录制报错时应修复并完成对应组，再编码和检查首、中、末帧，不发布不完整演示。字体优先使用 Windows 微软雅黑或 macOS 苹方。
 
 详细用法移至 [设计工作流](design-workflows.md)，相关功能截图放在 `docs/images/` 并由文档引用。日常反馈与可选的私密报告入口见根目录 [SECURITY.md](../SECURITY.md)。
 
@@ -53,4 +63,6 @@ README 使用品牌横幅 `header.svg`、当前「林间光庭」昼夜展示 `s
 
 ## 仓库地址与上游
 
-当前发布仓库为 [Li-Rui-Zhe/LayoutSculpt](https://github.com/Li-Rui-Zhe/LayoutSculpt)，本地 `origin` 指向该仓库。另一份来源仓库 [L-rui-zhe/LayoutSculpt](https://github.com/L-rui-zhe/LayoutSculpt) 可用于对照或同步，其远端名称由本地配置决定。普通克隆只会自动创建 `origin`；提交前用 `git remote -v` 核对目标，不对来源仓库强制推送。
+项目维护在 [Li-Rui-Zhe/LayoutSculpt](https://github.com/Li-Rui-Zhe/LayoutSculpt) 与 [L-rui-zhe/LayoutSculpt](https://github.com/L-rui-zhe/LayoutSculpt)。文档与代码可以在两处使用，`origin`、`upstream` 只是各自本地配置的名称，不表示固定账号。普通克隆通常将所克隆仓库命名为 `origin`；提交前用 `git remote -v` 核对目标，只推送约定的仓库，不自动同步另一账号或强制覆盖远端。
+
+GitHub About / Description 是仓库设置，推送 `package.json` 不会自动更新它。已登录 GitHub CLI 的维护者可运行 `gh repo edit <账号>/LayoutSculpt --description "<上方项目简介>"`，或在仓库首页 About 旁的设置中更新。不要将 GitHub 令牌写入项目配置。

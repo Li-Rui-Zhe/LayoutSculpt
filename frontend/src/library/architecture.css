@@ -9,6 +9,35 @@
   flex: none;
   isolation: isolate;
 }
+.architecture-canvas-entry {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #dce3d6;
+}
+.architecture-entry-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.architecture-entry-actions .primary-button {
+  margin: 0;
+  padding: 10px 6px;
+}
+.architecture-existing-title {
+  display: block;
+  margin: 14px 0 8px;
+  font-size: 12px;
+  color: #6a7668;
+}
+.architecture-canvas-entry input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #dce3d6;
+  border-radius: 8px;
+}
 .architecture-preview canvas {
   display: block;
   width: 100%;

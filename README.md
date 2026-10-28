@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/images/header.svg" alt="LayoutSculpt — 从一张平面图，到一个理想的家" width="100%">
+  <img src="docs/images/header.svg" alt="LayoutSculpt — 从户型识别，到空间设计与素材创作" width="100%">
 </p>
 
 <p align="center">
-  <strong>一张户型图，一次空间想象。</strong><br>
+  <strong>从户型识别，到空间设计与素材创作。</strong><br>
   Codex / API 接入 · 户型识别 · 三维编辑 · 建筑构件 · 材质与家具创作
 </p>
 
@@ -18,7 +18,9 @@
 
 ---
 
-**LayoutSculpt** 是基于 React、Three.js 和 FastAPI 的开源 AI 空间设计工作台，支持本机 Codex 和外部 API 接入，目前直接 API 已接入 DeepSeek。它覆盖户型识别、结构核对、交互式三维编辑、建筑构件与家具素材库、墙地面材质创作及 GLB 导出，可从上传户型开始，也可在已有方案中继续设计、制作与复用素材。
+**LayoutSculpt** 是支持 Codex 与 API 接入的开源 AI 空间设计工作台，集户型识别、可交互 3D 编辑、家具与墙地面 DIY、素材管理和成果导出于一体。
+
+项目采用 React、Three.js、FastAPI、LangChain、LangGraph 和 SQLite。你可以上传户型开始设计，也可以直接体验示例、编辑已有空间，或制作与复用家具、墙面和地板素材。当前直接 API 接入为 **DeepSeek 官方接口**，Codex 支持复用本机环境或使用项目独立环境。
 
 **本地单人使用** · 浏览器连接本机服务 · 任务保存在本机 · 普通生成无需安装 Blender
 
@@ -29,10 +31,10 @@
 ## 从平面，到空间
 
 <p align="center">
-  <a href="docs/images/showcase-garden.webp"><img src="docs/images/showcase-garden.webp" alt="林间光庭：花园露台、暖木洞石与真实三维昼夜光影" width="100%"></a>
+  <a href="docs/images/showcase.gif"><img src="docs/images/showcase.gif" alt="当前林间光庭示例的真实操作：旋转空间、切换晴天与夜晚、查看俯视布局" width="100%"></a>
 </p>
 
-<p align="center"><sub>01 / 林间光庭 · 走进你的第一个空间<br>93.2㎡、七个功能分区，花园茶席、洞石岛台与温暖夜景。画面来自项目实际 Three.js 渲染。</sub></p>
+<p align="center"><sub>01 / 林间光庭 · 走进你的第一个空间<br>93.2㎡、七个功能分区，柚木花园会客厅、洞石岛台与温暖夜景。画面来自项目实际 Three.js 渲染。</sub></p>
 
 > 演示为随项目提供的原创「林间光庭」，不是上传户型的一键识别结果。用户任务默认先展示通过几何检查的三维初稿，并标记尚未人工核对；高级设置可选择先人工核对。还原度仍取决于原图质量与人工校对。
 
@@ -53,14 +55,14 @@
 ## 同一个家，不同的氛围
 
 <p align="center">
-  <a href="docs/images/materials.gif"><img src="docs/images/materials.gif" alt="真实外观设置操作：更换墙面饰面、地板铺法并切换夜间照明" width="100%"></a>
+  <a href="docs/images/materials.gif"><img src="docs/images/materials.gif" alt="真实外观设置操作：更换墙面饰面、按房间铺设地板并还原材质" width="100%"></a>
 </p>
 
-<p align="center"><sub>02 / 材质搭配 · 漆面、木饰面、墙布与多种地板<br>直接点击材质样板查看结果；GIF 为此前「林间暖居」样板间的真实操作记录。</sub></p>
+<p align="center"><sub>02 / 材质搭配 · 墙面独立饰面，地板按房间铺设<br>使用当前「林间光庭」示例录制；点击样板直接查看结果。</sub></p>
 
 - 墙面与地板都能调整；房间可单独铺设，人工设计支持逐墙独立饰面。
 - 预览可撤销、重做和还原；将墙地面保存为新的设计版本后，GLB 保留对应材质。
-- 素材库分为三维模型、装修材质和建筑构件，支持分类搜索；墙面材质可在立体墙段上旋转查看。
+- 素材库分为三维模型、装修材质、建筑构件和灯具，支持分类搜索；墙面材质可在立体墙段上旋转查看。灯具提供六款真实模型，可在平面或三维中选择落点添加。
 
 ### 建筑构件，也能在素材库里选
 
@@ -155,6 +157,10 @@ pnpm start
 
 ### 选择 AI 来源
 
+![AI 接入页面：DeepSeek API 与 Codex 两种入口](docs/images/ai-connections.gif)
+
+演示只展示接入入口与设置项，不填写密钥、不发起付费请求，也不代表演示账户已经连接。模型能力与额度以实际服务为准。
+
 左侧的 **AI 接入** 页面优先提供简单的 DeepSeek API 接入：粘贴密钥，点击「连接并使用」即可完成检测和保存。进阶用户可复用本机 Codex，或准备项目独立环境并在官方页面登录。模型选择和更新恢复收在折叠设置中。生成表单仍可临时选择来源；已有任务保留原来的模型，不会自动换用另一家服务。
 
 DeepSeek 密钥通过本机后端加密保存，页面不回显，也不写入任务和设计文件。文字模型可用于无参考图的家具、墙地面材质设计；户型识别及带图复核需要支持图片理解的模型。设置和排错详见 [AI 接入说明](docs/ai-connections.md)。
@@ -219,6 +225,8 @@ Windows 下，未显式设置 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY` 时�
 
 AI 输出结构化数据，程序据此建模，不执行 AI 返回的任意 Python。确认后的墙体、房间、门窗和轮廓被锁定，家具规划不能改写。导出后重新读取实际 GLB，检查墙体体积、门窗高度区间截面、房间地面及基座轮廓。
 
+新建页提供正反例参考。识别调用同时检查原图是否为可读户型；明确非户型或严重模糊、无法可靠提取结构的输入会说明原因并提示更换原图，避免继续生成无依据的空间。门禁不额外生成图片，也不能保证所有识别误差都被发现。
+
 <details>
 <summary><strong>失败处理、阶段恢复与一致性边界</strong></summary>
 
@@ -244,7 +252,7 @@ AI 输出结构化数据，程序据此建模，不执行 AI 返回的任意 Pyt
 - 三维：左键旋转、右键平移、滚轮缩放；触屏支持单指旋转及双指缩放／平移。适配按钮恢复全图。
 - 墙体：切换「剖切／完整」，下载的 GLB 保留完整墙高。
 - 照明：白天关闭人工灯，夜晚按保存的灯位、亮度、色温及开关照明。隐藏裸灯泡占位造型，保留实际光照。
-- 手动布局：点击「手动调整布局」，结构核对阶段也可编辑。新增门窗前选择目标墙，并调整尺寸、位置及门扇／窗台参数。
+- 人工设计：完整生成后进入「平面设计」或「三维设计」，两页共享草稿；结构核对阶段可先修改二维结构。新增门窗前选择目标墙，并调整尺寸、位置及门扇／窗台参数。家具移动、门扇开合和灯具位置等可直接更新已有三维模型，保存生成时输出独立成果。
 - 平面编辑：滚轮围绕鼠标缩放，空白拖动或手形模式平移；空格临时平移，`0` 适配全图，方向键微移，Shift 加速。
 - 保存手动修改后生成独立版本，原方案保留。网页材质影响当前预览及效果图，模型下载保留生成时材质。
 
@@ -287,7 +295,7 @@ node scripts/review/verify_workspace.mjs <任务ID>
 | 目录 | 内容 |
 | --- | --- |
 | `frontend/src/` | React 界面、平面编辑器、Three.js 预览 |
-| `backend/app/` | API、Codex 适配、LangGraph、SQLite、校验与 GLB 构建 |
+| `backend/app/` | FastAPI、Codex / DeepSeek 适配、LangChain / LangGraph、SQLite、校验与 GLB 构建 |
 | `backend/tests/`、`frontend/tests/` | 隔离测试 |
 | `skills/` | 项目 AI 角色契约与提示，随任务保存快照 |
 | `assets/furniture/` | 家具索引和必需 GLB；源工程可用制作脚本在本地重建 |
@@ -331,4 +339,4 @@ AI 缓存每 6 小时检查，最多保留 30 天及 512 MB；清理不会删除
 
 [Apache License 2.0](LICENSE)。
 
-<p align="center"><sub>LayoutSculpt<br>从一张平面图，到一个理想的家。</sub></p>
+<p align="center"><sub>LayoutSculpt<br>从户型识别，到空间设计与素材创作。</sub></p>

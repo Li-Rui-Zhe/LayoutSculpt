@@ -1,0 +1,68 @@
+[
+  {
+    "kind": "floor_lamp",
+    "name": "亚麻阅读落地灯",
+    "description": "暖白织物灯罩、细金属杆和稳固圆盘底座，适合沙发或阅读角。",
+    "elevation": 1.5,
+    "lumens": 650,
+    "temperature": 3000,
+    "revision": "a7d396184de7",
+    "model_url": "/models/lights/floor_lamp.glb?v=a7d396184de7",
+    "thumbnail_url": "/models/lights/floor_lamp.png?v=a7d396184de7"
+  },
+  {
+    "kind": "table_lamp",
+    "name": "陶瓷床头台灯",
+    "description": "圆润陶瓷灯身配亚麻灯罩。放好后按桌面高度调整光源离地高度。",
+    "elevation": 1.1,
+    "lumens": 350,
+    "temperature": 3000,
+    "revision": "debf810c0c53",
+    "model_url": "/models/lights/table_lamp.glb?v=debf810c0c53",
+    "thumbnail_url": "/models/lights/table_lamp.png?v=debf810c0c53"
+  },
+  {
+    "kind": "pendant",
+    "name": "乳白玻璃吊灯",
+    "description": "乳白玻璃灯罩、细吊线和金属顶盘，适合餐桌上方。",
+    "elevation": 2.2,
+    "lumens": 800,
+    "temperature": 3000,
+    "revision": "f15369f4aeff",
+    "model_url": "/models/lights/pendant.glb?v=f15369f4aeff",
+    "thumbnail_url": "/models/lights/pendant.png?v=f15369f4aeff"
+  },
+  {
+    "kind": "ceiling",
+    "name": "薄边吸顶灯",
+    "description": "纤薄暖白边框与整面柔光罩，适合卧室和走廊。",
+    "elevation": 2.65,
+    "lumens": 1200,
+    "temperature": 3000,
+    "revision": "c5842c7bc470",
+    "model_url": "/models/lights/ceiling.glb?v=c5842c7bc470",
+    "thumbnail_url": "/models/lights/ceiling.png?v=c5842c7bc470"
+  },
+  {
+    "kind": "downlight",
+    "name": "防眩筒灯",
+    "description": "细边装饰圈、内凹深杯和小面积光学面，适合局部照明。",
+    "elevation": 2.65,
+    "lumens": 450,
+    "temperature": 3000,
+    "revision": "1f507a393dfa",
+    "model_url": "/models/lights/downlight.glb?v=1f507a393dfa",
+    "thumbnail_url": "/models/lights/downlight.png?v=1f507a393dfa"
+  },
+  {
+    "kind": "bulb",
+    "name": "磨砂灯泡",
+    "description": "真实比例的磨砂灯泡和螺口灯座，可作为基础光源。",
+    "elevation": 2.4,
+    "lumens": 500,
+    "temperature": 3000,
+    "revision": "f86525dbcc20",
+    "model_url": "/models/lights/bulb.glb?v=f86525dbcc20",
+    "thumbnail_url": "/models/lights/bulb.png?v=f86525dbcc20"
+  }
+]

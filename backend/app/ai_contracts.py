@@ -11,6 +11,7 @@ from pydantic import Field
 from .architecture import validate_generated_structure
 from .consistency import structure_hash
 from .schemas import Layout, LightFixture, Number, Opening, Room, StrictModel
+from .input_quality import InputCheck, SourceImageRejected
 
 XY = Annotated[list[Number], Field(min_length=2, max_length=2)]
 CHECKS = {"outline", "scale", "rooms", "walls", "openings", "access"}
@@ -69,6 +70,12 @@ def wall_dict(wall):
 
 
 def unpack_layout(wire):
+    raw = wire if isinstance(wire, dict) else wire.model_dump()
+    if "input_check" in raw:
+        check = InputCheck.model_validate(raw["input_check"])
+        if check.status == "rejected":
+            raise SourceImageRejected(check)
+        wire = {key: value for key, value in raw.items() if key != "input_check"}
     wire = LayoutExtraction.model_validate(wire) if isinstance(wire, dict) else wire
     data = wire.model_dump()
     data.update(

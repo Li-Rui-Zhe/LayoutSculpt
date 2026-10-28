@@ -737,10 +737,19 @@ button:hover:not(:disabled) {
   background: #fff2df;
   color: #9b6630;
 }
-.result-first .task-pipeline li > span {
+.result-first .task-pipeline li > .pipeline-step-marker {
   background: #eef3e8;
   border-color: #d5e0cf;
   color: #5f7b56;
+}
+.result-first .task-pipeline li.current > .pipeline-step-marker {
+  border-color: #6c8e68;
+  background: #e2eedc;
+  color: #345a3d;
+}
+.result-first .task-pipeline li.current > b {
+  color: #345a3d;
+  font-weight: 600;
 }
 .result-first .progress-track {
   background: #e9eee4;
@@ -1173,10 +1182,10 @@ button:hover:not(:disabled) {
   }
 }
 .result-first .task-pipeline li.review-incomplete,
-.result-first .task-pipeline li.review-incomplete > span {
+.result-first .task-pipeline li.review-incomplete > .pipeline-step-marker {
   color: #79541f;
 }
-.result-first .task-pipeline li.review-incomplete > span {
+.result-first .task-pipeline li.review-incomplete > .pipeline-step-marker {
   border-color: #dcc6a2;
   background: #fff8eb;
 }

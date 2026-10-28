@@ -32,7 +32,7 @@ try {
   await expect(page.locator("#viewport canvas")).toHaveAttribute(
     "data-model-url",
     /\/preview\/model.glb/,
-    { timeout: 30000 },
+    { timeout: 120000 },
   );
   await expect(page.locator(".initial-preview-status")).toBeVisible();
   await expect(page.locator(".initial-preview-status")).toContainText(
@@ -42,7 +42,7 @@ try {
   await expect(page.locator("#viewport canvas")).toHaveAttribute(
     "data-model-url",
     /\/artifacts\/model.glb/,
-    { timeout: 30000 },
+    { timeout: 120000 },
   );
   const completed = await (
     await page.request.get(`${base}/api/jobs/${created.id}`)

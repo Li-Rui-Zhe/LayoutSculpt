@@ -20,7 +20,7 @@ from backend.app.ai_requests import (
 from backend.app.codex import CodexClient, CodexError, strict_output_schema
 from backend.app.config import Settings
 from backend.app.main import create_app
-from backend.app.recognition_contract import RecognitionContract
+from backend.app.recognition_contract import RecognitionContract, RecognitionExtraction
 from backend.app.resilience import transient_ai_error
 from backend.app.schemas import CustomStyleFurnishing, Furnishing
 from backend.tests.test_ai_pipeline import canonical_layout, patch_for
@@ -166,7 +166,7 @@ def test_compact_recognition_flows_through_parser_review_and_build(tmp_path):
         assert (
             len(json.dumps(strict_output_schema(schema)))
             < len(
-                json.dumps(strict_output_schema(LayoutExtraction.model_json_schema()))
+                json.dumps(strict_output_schema(RecognitionExtraction.model_json_schema()))
             )
             * 0.65
         )

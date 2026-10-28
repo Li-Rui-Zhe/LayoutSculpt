@@ -46,6 +46,11 @@ export function createDirectDrag(document, selection, point, initialRay) {
 
 export function installDirectDrag({ element, rt, callbacks, pick, rayAt }) {
   let gesture = null;
+  let frame = null;
+  const cancelFrame = () => {
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+  };
   const stop = (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -53,6 +58,7 @@ export function installDirectDrag({ element, rt, callbacks, pick, rayAt }) {
   const finish = (cancel = false) => {
     const previous = gesture;
     if (!previous) return;
+    cancelFrame();
     gesture = null;
     rt.directDragging = false;
     rt.controls.enabled = true;
@@ -141,7 +147,12 @@ export function installDirectDrag({ element, rt, callbacks, pick, rayAt }) {
     const transform = gesture.transformForRay(rayAt(event));
     if (!transform) return;
     gesture.transform = transform;
-    callbacks.current.onSceneGesture?.("preview", transform);
+    // 高频鼠标事件每帧合并一次，松手仍提交最后落点，取消不泄漏待执行更新。
+    if (frame === null) frame = requestAnimationFrame(() => {
+      frame = null;
+      if (gesture?.transform)
+        callbacks.current.onSceneGesture?.("preview", gesture.transform);
+    });
   };
   const up = (event) => {
     if (!gesture || event.pointerId !== gesture.pointerId) return;

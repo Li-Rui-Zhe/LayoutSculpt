@@ -10,6 +10,20 @@ import {
 import { updateLiveArchitecture } from "../src/editor/liveArchitecture.js";
 import { createPreviewQueue } from "../src/editor/previewQueue.js";
 import { identifyObjects, lockedChange } from "../src/editor/objectIdentity.js";
+import { canSyncLiveScene } from "../src/editor/liveSceneUpdates.js";
+import { liveKey } from "../src/editor/liveModel.js";
+
+test("高精度家具平移保留未改变尺寸和角度，不顺带触发模型重建", () => {
+  const base = doc();
+  const item = base.furniture.items[0];
+  Object.assign(item, { width: 1.23456789, depth: 0.9876543, height: 0.81234567, rotation: 23.45678 });
+  const selection = { type: "furniture", index: 0 };
+  const pose = scenePose(base, selection);
+  const next = applySceneEdit(base, selection, { ...pose, x: pose.x + 0.1, scale: { x: 1, y: 1, z: 1 } });
+  for (const key of ["width", "depth", "height", "rotation", "elevation"])
+    assert.equal(next.furniture.items[0][key], item[key]);
+  assert.equal(canSyncLiveScene(base, next, { furnitureKeys: [liveKey(item, 0)] }), true);
+});
 
 const doc = () =>
   identifyObjects(
@@ -328,6 +342,12 @@ test("直接拖窗沿墙升降且不超墙高；俯视拖窗仍可水平移动",
 
 test("首拖使用命中对象；点击不提交，单次拖动仅提交一次，取消不提交", () => {
   const previousWindow = globalThis.window;
+  const previousRequest = globalThis.requestAnimationFrame;
+  const previousCancel = globalThis.cancelAnimationFrame;
+  const frames = new Map();
+  let frameId = 0;
+  globalThis.requestAnimationFrame = (fn) => { frames.set(++frameId, fn); return frameId; };
+  globalThis.cancelAnimationFrame = (id) => frames.delete(id);
   globalThis.window = new EventTarget();
   const element = new EventTarget();
   let captured = false;
@@ -380,17 +400,26 @@ test("首拖使用命中对象；点击不提交，单次拖动仅提交一次�
     send("pointerdown");
     send("pointermove", 30);
     send("pointermove", 40);
-    send("pointerup", 40);
+    assert.equal(frames.size, 1);
+    const tick = [...frames.values()][0];
+    frames.clear();
+    tick();
+    send("pointermove", 50);
+    send("pointerup", 50);
     assert.deepEqual(events[0][2], { type: "furniture", index: 0 });
     assert.deepEqual(
       events.map((e) => e[0]),
-      ["start", "preview", "preview", "end"],
+      ["start", "preview", "end"],
     );
+    assert.equal(events[1][1].x, 2.4);
+    assert.equal(events[2][1].x, 2.5);
+    assert.equal(frames.size, 0);
     assert.equal(rt.controls.enabled, true);
     events.length = 0;
     send("pointerdown");
     send("pointermove", 20);
     send("pointercancel");
+    assert.equal(frames.size, 0);
     assert.equal(events.at(-1)[0], "cancel");
     assert.equal(events.filter((e) => e[0] === "end").length, 0);
     assert.equal(captured, false);
@@ -402,5 +431,7 @@ test("首拖使用命中对象；点击不提交，单次拖动仅提交一次�
   } finally {
     cleanup();
     globalThis.window = previousWindow;
+    globalThis.requestAnimationFrame = previousRequest;
+    globalThis.cancelAnimationFrame = previousCancel;
   }
 });

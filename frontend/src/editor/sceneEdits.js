@@ -9,6 +9,11 @@ import {
 import { fitOutline } from "./autoOutline.js";
 import { liveObjects } from "./liveModel.js";
 
+// 平移/旋转时保留未改轴及尺寸的原精度，不能顺带量化为新的几何尺寸。
+const sameNumber = (a, b) => Math.abs(a - b) < 1e-9;
+const changedCoordinate = (value, before) =>
+  sameNumber(value, before) ? before : round(value);
+
 export function scenePose(document, selection) {
   const item =
     selection && liveObjects(document, selection.type)[selection.index];
@@ -80,20 +85,20 @@ export function applySceneEdit(document, selection, transform) {
   };
   if (selection.type === "furniture") {
     Object.assign(item, {
-      x: round(x),
-      y: round(y),
-      elevation: round(elevation - 0.035),
-      rotation: normalizeRotation(rotation),
-      width: round(item.width * scale.x),
-      depth: round(item.depth * scale.z),
-      height: round(item.height * scale.y),
+      x: changedCoordinate(x, item.x),
+      y: changedCoordinate(y, item.y),
+      elevation: sameNumber(elevation, pose.elevation) ? item.elevation : round(elevation - 0.035),
+      rotation: sameNumber(rotation, pose.rotation) ? item.rotation : normalizeRotation(rotation),
+      width: sameNumber(scale.x, 1) ? item.width : round(item.width * scale.x),
+      depth: sameNumber(scale.z, 1) ? item.depth : round(item.depth * scale.z),
+      height: sameNumber(scale.y, 1) ? item.height : round(item.height * scale.y),
     });
     reconcileFurnitureRoom(next, item);
   } else if (selection.type === "lights")
     Object.assign(item, {
-      x: round(x),
-      y: round(y),
-      elevation: round(elevation),
+      x: changedCoordinate(x, item.x),
+      y: changedCoordinate(y, item.y),
+      elevation: changedCoordinate(elevation, item.elevation),
     });
   else if (selection.type === "rooms") item.polygon = item.polygon.map(point);
   else if (selection.type === "walls") {

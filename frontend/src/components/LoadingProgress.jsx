@@ -87,6 +87,7 @@ export function InlineProgress({
           : `预计 ${Math.floor(value)}%`
       }
       data-settled={lifecycle.phase === "settled"}
+      data-complete={lifecycle.complete && value >= 100}
     >
       <i style={{ width: `${value}%`, transition: "none" }} />
     </span>

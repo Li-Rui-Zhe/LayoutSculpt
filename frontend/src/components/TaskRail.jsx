@@ -1,4 +1,3 @@
-import { InlineProgress } from "./LoadingProgress.jsx";
 import TaskProgress from "./TaskProgress.jsx";
 import VersionCompare from "./VersionCompare.jsx";
 import Modal from "./Modal.jsx";
@@ -34,11 +33,7 @@ export function StatusBadge({ status }) {
     }[status] || Box;
   return (
     <span className={`status-badge ${status}`}>
-      <InlineProgress
-        active={status === "running"}
-        cancelled={!["running", "succeeded"].includes(status)}
-        fallback={<Icon size={11} />}
-      />
+      <Icon size={11} aria-hidden="true" />
       {statusNames[status] || "示例"}
     </span>
   );
@@ -218,7 +213,9 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
                   </time>
                 </div>
               </div>
-              <TaskProgress job={job} compact />
+              {(creating || projects.selectedId !== job.id) && (
+                <TaskProgress job={job} compact />
+              )}
             </button>
             <div className="project-version-actions">
               {job.status === "succeeded" && (

@@ -105,7 +105,7 @@ export default function EditorSaveBar({
           fallback={<Save size={15} />}
         />
         {placement
-          ? "请先放置或取消家具"
+          ? "请先完成或取消放置"
           : reviewing
             ? "确认修改并继续生成"
             : "保存并生成三维"}

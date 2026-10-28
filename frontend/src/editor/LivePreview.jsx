@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Info, X } from "lucide-react";
 import RotationControl from "./RotationControl.jsx";
 import DiyPreview from "../diy/DiyPreview.jsx";
 import { createPreviewQueue } from "./previewQueue.js";
@@ -8,6 +8,7 @@ import { apiErrorMessage } from "../apiErrors.js";
 import SceneSyncStatus from "./SceneSyncStatus.jsx";
 import { preparePreviewDocument } from "./previewDocument.js";
 import { previewKey, previewFeedback } from "./previewIdentity.js";
+import { canSyncLiveScene, mayReuseSavedScene } from "./liveSceneUpdates.js";
 
 export default function LivePreview({
   document,
@@ -33,12 +34,35 @@ export default function LivePreview({
   savedDocument,
 }) {
   const [cutaway, setCutaway] = useState(true);
+  const renderingNoteId = useId();
+  const [showRenderingNote, setShowRenderingNote] = useState(() => {
+    try {
+      return (
+        localStorage.getItem("layoutsculpt:editor-rendering-note:v1") !==
+        "dismissed"
+      );
+    } catch {
+      return true;
+    }
+  });
+  const dismissRenderingNote = () => {
+    setShowRenderingNote(false);
+    try {
+      localStorage.setItem(
+        "layoutsculpt:editor-rendering-note:v1",
+        "dismissed",
+      );
+    } catch {
+      // Storage restrictions must not prevent closing an informational note.
+    }
+  };
   const [rotationOpen, setRotationOpen] = useState(false);
   useEffect(
     () => setRotationOpen(false),
     [selected?.type, selected?.index, jobId],
   );
   const [hasVisibleModel, setHasVisibleModel] = useState(false);
+  const [readyVersion, setReadyVersion] = useState(0);
   const [model, setModel] = useState(null),
     [state, setState] = useState({ phase: "pending" }),
     [retry, setRetry] = useState(0);
@@ -130,6 +154,18 @@ export default function LivePreview({
   useEffect(() => {
     if (!active) return;
     const rendered = readyModel.current;
+    // 返回三维页或刷新时先载入已有模型，确认本地绑定能力后再决定是否建模。
+    if (!rendered && retry === 0 && savedModelUrl && mayReuseSavedScene(savedDocument, preview.document)) {
+      queue.current?.cancel();
+      setState({ phase: "loading", revision: revision.current });
+      return;
+    }
+    if (rendered && currentModel.current?.url === rendered.url && canSyncLiveScene(currentModel.current.document, preview.document, rendered.capabilities)) {
+      queue.current?.cancel();
+      setModel((current) => current?.fallback ? { ...current, fallback: false } : current);
+      setState({ phase: "ready", revision: revision.current });
+      return;
+    }
     // 同一份已显示的模型不重复生成；切回页面、锁定对象也不应重新读条。
     if (rendered?.key === key && currentModel.current?.url === rendered.url) {
       queue.current?.cancel();
@@ -152,7 +188,7 @@ export default function LivePreview({
       return;
     }
     queue.current?.submit(JSON.parse(signature));
-  }, [key, jobId, active, retry, savedKey, savedModelUrl]);
+  }, [key, jobId, active, retry, savedKey, savedModelUrl, readyVersion]);
   useEffect(
     () => () => {
       if (currentUrl.current) URL.revokeObjectURL(currentUrl.current);
@@ -195,6 +231,18 @@ export default function LivePreview({
           </span>
         </div>
         <div className="live-preview-light">
+          <button
+            type="button"
+            aria-expanded={showRenderingNote}
+            aria-controls={renderingNoteId}
+            onClick={() =>
+              showRenderingNote
+                ? dismissRenderingNote()
+                : setShowRenderingNote(true)
+            }
+          >
+            画质说明
+          </button>
           {!placement &&
             selected?.type === "furniture" &&
             item &&
@@ -211,6 +259,24 @@ export default function LivePreview({
           </button>
         </div>
       </div>
+      {showRenderingNote && (
+        <div className="scene-rendering-note" id={renderingNoteId} role="note">
+          <Info size={15} aria-hidden="true" />
+          <p>
+            为让拖动、旋转和调整更流畅，三维设计页适当简化了光影渲染，画面会比方案预览更简洁，感谢理解。
+            <span>
+              这不会降低模型几何或设计数据的精度；保存并生成三维后，可返回预览查看完整效果。
+            </span>
+          </p>
+          <button
+            type="button"
+            aria-label="关闭画质说明"
+            onClick={dismissRenderingNote}
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       {(editError || state.phase === "error") && (
         <div className="scene-error" role="alert">
           <span>{editError ? `修改未应用：${editError}` : status}</span>
@@ -282,11 +348,12 @@ export default function LivePreview({
           onPlacementMove={onPlacementMove}
           onPlacementConfirm={onPlacementConfirm}
           onSceneGesture={onGesture}
-          onModelReady={(url) => {
+          onModelReady={(url, capabilities) => {
             const loaded = currentModel.current;
             if (url !== loaded?.url) return;
             setHasVisibleModel(true);
-            readyModel.current = { url, key: loaded.key };
+            readyModel.current = { url, key: loaded.key, capabilities };
+            setReadyVersion((value) => value + 1);
             if (loaded.key === desiredKey.current) {
               setState({ phase: "ready", revision: revision.current });
               if (loaded.fallback)

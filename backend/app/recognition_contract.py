@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field
 
-from .ai_contracts import XY, WallWire
+from .ai_contracts import XY, WallWire, LayoutExtraction, unpack_layout
+from .input_quality import InputCheck, SourceImageRejected
 from .schemas import Positive, StrictModel
 
 
@@ -44,11 +45,24 @@ class RecognitionOpening(StrictModel):
 
 class RecognitionContract(StrictModel):
     model_config = ConfigDict(title="LayoutExtraction")
+    input_check: InputCheck
     title: str = Field(min_length=1, max_length=80)
     confidence: float = Field(ge=0, le=1)
     scale_note: str = Field(max_length=800)
     warnings: list[str] = Field(max_length=30)
-    outline: list[XY] = Field(min_length=3, max_length=512)
+    outline: list[XY] = Field(max_length=512, description="原图可用时至少三个顶点；拒绝时为空，不编造结构")
     rooms: list[RecognitionRoom] = Field(max_length=35)
     walls: list[WallWire] = Field(max_length=120)
     openings: list[RecognitionOpening] = Field(max_length=80)
+
+
+class RecognitionExtraction(LayoutExtraction):
+    model_config = ConfigDict(title="LayoutExtraction")
+    input_check: InputCheck
+    outline: list[XY] = Field(max_length=512)
+
+
+def validate_recognition(output):
+    if output.input_check.status == "rejected":
+        raise SourceImageRejected(output.input_check)
+    return unpack_layout(output.model_dump(exclude={"input_check"}))

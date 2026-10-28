@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
   <title id="title">LayoutSculpt · 户型设计工厂</title>
-  <desc id="desc">支持本机 Codex 和 DeepSeek API 的 AI 空间设计工作台，集户型识别、交互式三维编辑、建筑构件、家具与材质创作及 GLB 导出于一体。</desc>
+  <desc id="desc">支持 Codex 与 API 接入的开源 AI 空间设计工作台，集户型识别、可交互 3D 编辑、家具与墙地面 DIY、素材管理和成果导出于一体。</desc>
   <defs>
     <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#18392f"/><stop offset="1" stop-color="#10251f"/></linearGradient>
     <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#bcd3bb" stroke-opacity=".07"/></pattern>
@@ -15,7 +15,7 @@
     </g>
     <text x="112" y="73" fill="#b5ceb7" font-size="17" letter-spacing="3">LAYOUTSCULPT</text>
     <text x="50" y="165" fill="#f5f2e7" font-size="67" font-weight="700" letter-spacing="6">LayoutSculpt</text>
-    <text x="54" y="209" fill="#c9d5c5" font-size="23">从一张平面图，到一个理想的家。</text>
+    <text x="54" y="209" fill="#c9d5c5" font-size="23">从户型识别，到空间设计与素材创作。</text>
     <g font-size="13" text-anchor="middle" fill="#d9e4d4">
       <rect x="54" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="97" y="271">React 19</text>
       <rect x="150" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="193" y="271">Three.js</text>

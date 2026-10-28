@@ -84,5 +84,14 @@ Desktop.ini
 *.swo
 *~
 *.tmp
+*.orig
+*.rej
+.eslintcache
+
+# Local recordings and intermediate frames; published GIF/WebP remain tracked
+/recordings/
+/docs/images/.frames/
+/docs/images/*.webm
+/docs/images/*.mp4
 
 # Keep runtime furniture GLB, showcase models, materials and lockfiles tracked.

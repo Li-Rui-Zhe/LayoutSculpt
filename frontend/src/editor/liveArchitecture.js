@@ -4,10 +4,12 @@ import { updateCutaway } from "../viewer/cutaway.js";
 import { updateFixtureLights } from "../viewer/fixtureLights.js";
 import { isGlassBoundary, boundaryFrameParts } from "./balcony.js";
 import { openingParts } from "./openingVisuals.js";
+import { liveSceneSnapshot, liveCapabilities } from "./liveSceneUpdates.js";
+import { previewKey } from "./previewIdentity.js";
 
 // 地板饰面等待精细模型原子替换；不为换色临时重建整屋建筑。
 function geometrySignature(layout) {
-  return JSON.stringify({
+  return previewKey({
     ...layout,
     rooms: layout.rooms.map((room) =>
       Object.fromEntries(
@@ -24,7 +26,7 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
   const model = rt.group.children[0];
   if (!model || !rt.modelDocument) return;
   const signature = geometrySignature(document.layout);
-  const base = geometrySignature(rt.modelDocument.layout);
+  const base = geometrySignature(liveSceneSnapshot(rt.modelDocument, document, liveCapabilities(rt)).layout);
   const key = signature === base ? null : signature + cutaway + night;
   if (rt.architectureKey === key) return;
   rt.architectureKey = key;

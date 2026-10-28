@@ -7,7 +7,7 @@ export function readContext(key, fallback = "") {
     tab: ["design", "source", "activity", "assets", "edit", "review"],
     editorView: ["plan", "scene"],
     diyMode: ["furniture", "walls", "floor"],
-    assetType: ["models", "materials", "architecture"],
+    assetType: ["models", "materials", "architecture", "lighting"],
     materialCategory: ["walls", "floor"],
     librarySource: ["all", "builtin", "imported", "diy", "generated", "sample"],
     librarySort: ["source", "name", "recent"],
