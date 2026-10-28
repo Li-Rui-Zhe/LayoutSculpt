@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-支持 Codex 与 API 接入的开源 AI 空间设计工作台，集户型识别、可交互 3D 编辑、家具与墙地面 DIY、素材管理和成果导出于一体。
+支持 Codex 与 API 接入的开源 AI 空间设计工作台，涵盖户型识别、交互式 3D 编辑、建筑构件与灯具、家具与墙地面 DIY、素材管理及 GLB 导出。
 
 该文案与 `package.json` 的 `description` 保持一致，用于仓库 About / Description 等对外介绍。API 接入范围以 [AI 接入说明](ai-connections.md) 为准。
 

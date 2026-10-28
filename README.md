@@ -18,7 +18,7 @@
 
 ---
 
-**LayoutSculpt** 是支持 Codex 与 API 接入的开源 AI 空间设计工作台，集户型识别、可交互 3D 编辑、家具与墙地面 DIY、素材管理和成果导出于一体。
+**LayoutSculpt** 是支持 Codex 与 API 接入的开源 AI 空间设计工作台，涵盖户型识别、交互式 3D 编辑、建筑构件与灯具、家具与墙地面 DIY、素材管理及 GLB 导出。
 
 项目采用 React、Three.js、FastAPI、LangChain、LangGraph 和 SQLite。你可以上传户型开始设计，也可以直接体验示例、编辑已有空间，或制作与复用家具、墙面和地板素材。当前直接 API 接入为 **DeepSeek 官方接口**，Codex 支持复用本机环境或使用项目独立环境。
 
