@@ -11,6 +11,12 @@ from .surface_materials import wall_material
 
 def add_wall_surfaces(builder, cut_height):
     for wall in builder.document["walls"]:
+        # Paint and decorative overlays belong only to the solid plinth.
+        surface_height = (wall.get("sill_height", 0)
+                          if wall.get("boundary_type") in {"glass_railing", "glazing"}
+                          else wall["height"])
+        if surface_height <= 0:
+            continue
         a, b = wall["start"], wall["end"]
         dx, dy = b["x"] - a["x"], b["y"] - a["y"]
         length = math.hypot(dx, dy)
@@ -37,7 +43,7 @@ def add_wall_surfaces(builder, cut_height):
                 offset=0,
                 width=length,
                 bottom=0,
-                height=wall["height"],
+                height=surface_height,
                 layer=0,
             )
             for side in ["left", "right"]
@@ -49,8 +55,8 @@ def add_wall_surfaces(builder, cut_height):
             sign = 1 if side == "left" else -1
             identifier = region["material"]
             for low, high in [
-                (0, min(cut_height, wall["height"])),
-                (cut_height, wall["height"]),
+                (0, min(cut_height, surface_height)),
+                (cut_height, surface_height),
             ]:
                 bottom, top = (
                     max(low, region["bottom"]),

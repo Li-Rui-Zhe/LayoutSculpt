@@ -1,5 +1,6 @@
 {
   "name": "layoutsculpt",
+  "description": "支持本机 Codex 和 DeepSeek API 的开源 AI 空间设计工作台：户型识别、交互式 3D 编辑、建筑构件与家具素材库、材质创作、GLB 导出。",
   "version": "2.0.0",
   "private": true,
   "type": "module",

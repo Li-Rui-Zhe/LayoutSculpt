@@ -27,6 +27,8 @@ class WallWire(StrictModel):
     t: float = Field(ge=0.06, le=0.6, description="实际墙厚 thickness，米")
     h: float = Field(ge=0.3, le=4.5, description="实际墙高 height，米；阳台低栏板不可按普通层高墙处理")
     ext: bool = Field(description="是否外墙 exterior")
+    boundary_type: Literal["wall", "parapet", "glass_railing", "glazing"] = Field(default="wall", description="原图围护：实墙、实体低栏板、玻璃栏板、封闭阳台玻璃；不能只凭房间名猜测")
+    sill_height: float = Field(default=0, ge=0, le=4.5, description="玻璃下方实体基座高度；h 是包含基座的总高度")
     finish: Literal["default", "white", "cream", "sage", "gray"] = "default"
 
 
@@ -60,6 +62,8 @@ def wall_dict(wall):
         "thickness": wall.t,
         "height": wall.h,
         "exterior": wall.ext,
+        "boundary_type": wall.boundary_type,
+        "sill_height": wall.sill_height,
         "finish": wall.finish,
     }
 
@@ -93,6 +97,8 @@ def pack_layout(layout):
             "t": w.thickness,
             "h": w.height,
             "ext": w.exterior,
+            "boundary_type": w.boundary_type,
+            "sill_height": w.sill_height,
             "finish": w.finish,
         }
         for w in layout.walls
@@ -178,9 +184,9 @@ def apply_review_patch(layout, patch):
                 if change.action == "update":
                     # 结构复核只修正建筑信息，不能用模型的默认值覆盖人工装修和编辑属性。
                     geometry_keys = (
-                        ("id", "name", "kind", "polygon")
+                        ("id", "name", "kind", "polygon", "balcony_type")
                         if key == "rooms"
-                        else ("id", "start", "end", "thickness", "height", "exterior")
+                        else ("id", "start", "end", "thickness", "height", "exterior", "boundary_type", "sill_height")
                     )
                     replacement = {
                         **objects[change.id],

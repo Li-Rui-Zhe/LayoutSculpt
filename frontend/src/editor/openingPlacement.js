@@ -39,6 +39,8 @@ export function validateOpening(layout, opening) {
   const errors = [];
   const wall = layout.walls.find((wall) => wall.id === opening.wall_id);
   if (!wall) return ["请先选择安装墙体。"];
+  if (wall.boundary_type === "glass_railing")
+    errors.push("玻璃栏板不能安装门窗或通道，请选择实墙或封窗墙段。");
   if (layout.openings.length >= 80) errors.push("最多可放置 80 个门窗或通道。");
   if (!["door", "window", "passage"].includes(opening.kind))
     errors.push("请选择有效的开口类型。");

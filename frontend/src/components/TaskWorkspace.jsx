@@ -203,6 +203,9 @@ export default function TaskWorkspace({
   headingHost,
   placementRequest,
   onPlacementConsumed,
+  boundaryRequest,
+  onBoundaryConsumed,
+  onArchitectureContext,
   materialRequest,
   onMaterialConsumed,
   onMaterialContext,
@@ -259,6 +262,13 @@ export default function TaskWorkspace({
   useEffect(() => {
     if (placementRequest && job?.status === "succeeded") setTab("edit");
   }, [placementRequest, job?.status]);
+  useEffect(() => {
+    if (
+      boundaryRequest &&
+      ["succeeded", "awaiting_review"].includes(job?.status)
+    )
+      setTab("edit");
+  }, [boundaryRequest, job?.status]);
   const [panel, setPanel] = useState(hasModel ? "overview" : "task");
   useEffect(() => {
     if (!materialRequest || lastMaterialRequest.current === materialRequest.id)
@@ -501,6 +511,9 @@ export default function TaskWorkspace({
             onDesignModeChange={onDiyModeChange}
             placementRequest={placementRequest}
             onPlacementConsumed={onPlacementConsumed}
+            boundaryRequest={boundaryRequest}
+            onBoundaryConsumed={onBoundaryConsumed}
+            onArchitectureContext={onArchitectureContext}
             floorRequest={floorRequest}
             onFloorConsumed={() => setFloorRequest(null)}
             onClose={() => {
@@ -1106,7 +1119,9 @@ export default function TaskWorkspace({
                   </button>
                 ) : (
                   <div className="sample-overview">
-                    <span className="sample-eyebrow">原创样板间 / 光庭系列</span>
+                    <span className="sample-eyebrow">
+                      原创样板间 / 光庭系列
+                    </span>
                     <h3>{showcase.title.split(" · ")[0]}</h3>
                     <p>把自然光留给生活，把温柔留给夜晚。</p>
                     <div

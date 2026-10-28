@@ -23,6 +23,7 @@ class RecognitionRoom(StrictModel):
         "other",
     ]
     polygon: list[XY] = Field(min_length=3, max_length=24)
+    balcony_type: Literal["unknown", "open", "enclosed"] = "unknown"
     floor_finish: Literal["default", "oak", "walnut", "tile", "stone"] = "default"
 
 
@@ -35,6 +36,10 @@ class RecognitionOpening(StrictModel):
     bottom: float = Field(ge=0, le=3)
     hinge: Literal["start", "end"] = "start"
     swing: Literal["left", "right"] = "left"
+    door_style: Literal["hinged", "double", "sliding"] = "hinged"
+    door_material: Literal["wood", "glass"] = "wood"
+    window_style: Literal["fixed", "casement", "sliding"] = "fixed"
+    glass_type: Literal["clear", "frosted"] = "clear"
 
 
 class RecognitionContract(StrictModel):

@@ -294,7 +294,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         return {
             "status": "ok",
             "api_version": "2.1.0",
-            "capabilities": ["custom_style", "project_restore", "atomic_creation", "surface_model_selection", "ai_provider_selection"],
+            "capabilities": ["custom_style", "project_restore", "atomic_creation", "surface_model_selection", "ai_provider_selection", "architecture_openings"],
             "codex": {
                 "available": bool(
                     shutil.which(getattr(codex.local, "command", settings.codex_command))

@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>一张户型图，一次空间想象。</strong><br>
-  AI 识别 · 三维预览 · 材质搭配 · 家具 DIY
+  Codex / API 接入 · 户型识别 · 三维编辑 · 建筑构件 · 材质与家具创作
 </p>
 
 <p align="center">
@@ -18,9 +18,11 @@
 
 ---
 
-**LayoutSculpt**是基于 React、Three.js 和 FastAPI 的开源 AI 户型设计工作台。上传二维户型图，先查看真实三维初稿，再生成可调整、可下载的完整空间；还能为房间搭配材质，制作并复用自己的家具。
+**LayoutSculpt** 是基于 React、Three.js 和 FastAPI 的开源 AI 空间设计工作台，支持本机 Codex 和外部 API 接入，目前直接 API 已接入 DeepSeek。它覆盖户型识别、结构核对、交互式三维编辑、建筑构件与家具素材库、墙地面材质创作及 GLB 导出，可从上传户型开始，也可在已有方案中继续设计、制作与复用素材。
 
 **本地单人使用** · 浏览器连接本机服务 · 任务保存在本机 · 普通生成无需安装 Blender
+
+在「AI 接入」选择模型来源：本机 Codex 可复用现有 CLI，也可由项目独立管理；DeepSeek API 通过密钥连接。户型及参考图识别需要服务商实际提供支持图片理解的模型，文字模型可用于无参考图的家具和材质设计。来源选择与具体能力见 [AI 接入说明](docs/ai-connections.md)。
 
 <a id="preview"></a>
 
@@ -58,7 +60,21 @@
 
 - 墙面与地板都能调整；房间可单独铺设，人工设计支持逐墙独立饰面。
 - 预览可撤销、重做和还原；将墙地面保存为新的设计版本后，GLB 保留对应材质。
-- 素材库按用途浏览配色与模型，支持搜索、三维预览与下载。
+- 素材库分为三维模型、装修材质和建筑构件，支持分类搜索；墙面材质可在立体墙段上旋转查看。
+
+### 建筑构件，也能在素材库里选
+
+「素材库 → 建筑构件」提供 **5 类、17 种常用住宅构件**：
+
+| 分类 | 构件 |
+| --- | --- |
+| 墙体 | 普通实墙、半高隔墙、落地玻璃隔断 |
+| 门 | 单开平开门、双开平开门、双扇玻璃移门、卫生间窄门 |
+| 窗 | 固定窗、双扇平开窗、双扇推拉窗、落地固定窗、卫生间磨砂窗 |
+| 通道 | 标准无门扇门洞、宽开放通道 |
+| 阳台围护 | 实体低栏板、玻璃栏板、阳台封窗玻璃 |
+
+选中构件可旋转预览并调整尺寸；墙体围护按原墙段长度适配，门窗和通道会创建真实开口，也可替换已有开口。应用到人工设计草稿后可撤销，保存生成后更新正式模型。安装会检查墙高、重叠、边界及锁定状态。完整入口和阳台高度说明见 [建筑构件与阳台围护](docs/balcony-boundaries.md)。
 
 <a id="diy"></a>
 
@@ -108,7 +124,7 @@ Codex 可复用本机环境，也可由项目准备独立 CLI、配置与登录�
 以下命令在 Windows PowerShell 中运行，项目目录可放在 D 盘：
 
 ```powershell
-git clone git@github.com:L-rui-zhe/LayoutSculpt.git D:\LayoutSculpt
+git clone git@github.com:Li-Rui-Zhe/LayoutSculpt.git D:\LayoutSculpt
 cd D:\LayoutSculpt
 pnpm install --frozen-lockfile
 python -m venv .venv
@@ -162,7 +178,7 @@ pnpm dev:all
 
 ### 配置
 
-默认继承本机 Codex 登录及模型配置。需要覆盖项目配置时：
+AI 来源在「AI 接入」页面选择并保存；选择 Codex 时可继承本机登录和模型配置，选择 DeepSeek API 时使用接入页保存的连接。需要覆盖项目环境选项时：
 
 ```powershell
 Copy-Item .env.example .env
@@ -309,7 +325,7 @@ AI 缓存每 6 小时检查，最多保留 30 天及 512 MB；清理不会删除
 
 ## 安全与隐私
 
-日常问题与建议欢迎通过 [Issues](https://github.com/L-rui-zhe/LayoutSculpt/issues) 交流；需要私下沟通的安全问题，可使用 [Security Policy](SECURITY.md) 中的可选入口。分享截图或报告时请隐去密钥、登录信息及个人数据。AI 识别会调用所配置的服务，任务本地保存不表示推理完全离线。
+日常问题与建议欢迎通过 [Issues](https://github.com/Li-Rui-Zhe/LayoutSculpt/issues) 交流；需要私下沟通的安全问题，可使用 [Security Policy](SECURITY.md) 中的可选入口。分享截图或报告时请隐去密钥、登录信息及个人数据。AI 识别会调用所配置的服务，任务本地保存不表示推理完全离线。
 
 ## 许可
 

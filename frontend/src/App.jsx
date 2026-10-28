@@ -64,6 +64,8 @@ export default function App() {
   }, [diyMode]);
   const surfaceDiy = surface === "diy" && diyMode !== "furniture";
   const [placementRequest, setPlacementRequest] = useState(null);
+  const [boundaryRequest, setBoundaryRequest] = useState(null);
+  const [architectureContext, setArchitectureContext] = useState(null);
   const [materialRequest, setMaterialRequest] = useState(null);
   const [materialContext, setMaterialContext] = useState({ id: "", rooms: [] });
   const navigate = (next) => {
@@ -403,6 +405,32 @@ export default function App() {
           )}
           {surface === "library" && (
             <AssetLibrary
+              architectureJob={projects.job}
+              architectureDocument={
+                architectureContext &&
+                architectureContext.jobId === projects.job?.id
+                  ? architectureContext.document
+                  : null
+              }
+              selectedWallId={
+                architectureContext &&
+                architectureContext.jobId === projects.job?.id
+                  ? architectureContext.wallId
+                  : ""
+              }
+              onApplyBoundary={
+                projects.job &&
+                ["succeeded", "awaiting_review"].includes(projects.job.status)
+                  ? (request) => {
+                      setBoundaryRequest({
+                        ...request,
+                        id: crypto.randomUUID(),
+                        jobId: projects.job.id,
+                      });
+                      navigate("workspace");
+                    }
+                  : null
+              }
               materialRooms={
                 materialContext.id === (projects.job?.id || "sample")
                   ? materialContext.rooms
@@ -503,6 +531,13 @@ export default function App() {
                   : null
               }
               onPlacementConsumed={() => setPlacementRequest(null)}
+              boundaryRequest={
+                boundaryRequest?.jobId === projects.job?.id
+                  ? boundaryRequest
+                  : null
+              }
+              onBoundaryConsumed={() => setBoundaryRequest(null)}
+              onArchitectureContext={setArchitectureContext}
               materialRequest={
                 materialRequest?.jobId === (projects.job?.id || "sample")
                   ? materialRequest

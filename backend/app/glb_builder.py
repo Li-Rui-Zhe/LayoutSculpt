@@ -19,7 +19,9 @@ from PIL import Image
 from shapely.geometry import Point, Polygon
 
 from .config import ROOT
-from .architecture import wall_sections, wall_finish_key
+from .architecture import wall_sections, section_finish, BOUNDARY_GLASS
+from .balcony import add_boundary_frames
+from .opening_visuals import add_opening_variant
 from .wall_surfaces import add_wall_surfaces
 from .furniture_details import construct, construct_basic, kitchen_details
 from .diy_schema import DiyDesign
@@ -594,7 +596,7 @@ class Builder:
                 )
                 mesh.apply_translation([-self.cx, top, -self.cz])
                 groups.setdefault((finish, bottom >= CUT_HEIGHT), []).append(mesh)
-                if bottom == 0:
+                if bottom == 0 and finish != BOUNDARY_GLASS:
                     trim = polygon.buffer(0.014, join_style=2).difference(polygon)
                     rings = [trim] if trim.geom_type == "Polygon" else list(trim.geoms)
                     for ring in rings:
@@ -626,6 +628,12 @@ class Builder:
                 material = wall_material(
                     finish.removeprefix("material:"), self.texture_root
                 )
+            if finish == BOUNDARY_GLASS:
+                material = trimesh.visual.material.PBRMaterial(
+                    name="阳台_清透玻璃", baseColorFactor=[183, 219, 223, 48],
+                    alphaMode="BLEND", doubleSided=True,
+                    roughnessFactor=0.12, metallicFactor=0,
+                )
             # Explicit engine avoids runtime executable discovery. This removes
             # hidden coplanar caps at window-sill/lintel heights as well as seams.
             lower = groups.get((finish, False), [])
@@ -640,10 +648,11 @@ class Builder:
                 metadata={
                     "cutaway_full": True,
                     "architecture_network": True,
+                    "boundary_glass": finish == BOUNDARY_GLASS,
                     "wall_ids": [
                         w["id"]
                         for w in self.document["walls"]
-                        if wall_finish_key(w) == finish
+                        if finish in {section_finish(w, 0), section_finish(w, w["height"] - 1e-6)}
                     ],
                     "wall_material": finish.removeprefix("material:")
                     if finish.startswith("material:")
@@ -707,6 +716,7 @@ class Builder:
                 },
             )
         self.wall_network()
+        add_boundary_frames(self)
         add_wall_surfaces(self, CUT_HEIGHT)
         for wall in doc["walls"]:
             a, b = wall["start"], wall["end"]
@@ -737,7 +747,14 @@ class Builder:
                     **self.cut_metadata,
                     "opening_index": doc["openings"].index(opening),
                     "opening_kind": opening["kind"],
+                    "opening_glass": opening["kind"] == "window" or opening.get("door_material") == "glass",
                 }
+                if (opening.get("door_style", "hinged") != "hinged"
+                        or opening.get("door_material", "wood") != "wood"
+                        or opening.get("window_style", "fixed") != "fixed"
+                        or opening.get("glass_type", "clear") != "clear"):
+                    add_opening_variant(self, wall, opening)
+                    continue
                 start, end = opening["offset"], opening["offset"] + opening["width"]
                 bottom = min(opening["bottom"], height)
                 top = min(opening["bottom"] + opening["height"], height)

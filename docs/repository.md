@@ -2,6 +2,12 @@
 
 仓库用于展示、运行和复现“LayoutSculpt”，保留产品代码、必要资产、测试及使用说明。
 
+## 项目简介
+
+支持本机 Codex 和 DeepSeek API 的开源 AI 空间设计工作台：户型识别、交互式 3D 编辑、建筑构件与家具素材库、材质创作、GLB 导出。
+
+该文案与 `package.json` 的 `description` 保持一致，用于仓库 About / Description 等对外介绍。API 接入范围以 [AI 接入说明](ai-connections.md) 为准。
+
 ## 保留
 
 - React / Three.js 前端、FastAPI 后端和项目 AI 契约。
@@ -47,4 +53,4 @@ README 使用品牌横幅 `header.svg`、当前「林间光庭」昼夜展示 `s
 
 ## 仓库地址与上游
 
-当前发布仓库为 [L-rui-zhe/LayoutSculpt](https://github.com/L-rui-zhe/LayoutSculpt)，克隆与反馈链接均指向此处。本地 `origin` 用于向该仓库推送；此前拉取代码的 `Li-Rui-Zhe/LayoutSculpt` 保留为 `upstream`，用于对照或同步上游。普通克隆只会自动创建 `origin`，需要对照上游时再自行添加。提交前用 `git remote -v` 核对目标，不对上游强制推送。
+当前发布仓库为 [Li-Rui-Zhe/LayoutSculpt](https://github.com/Li-Rui-Zhe/LayoutSculpt)，本地 `origin` 指向该仓库。另一份来源仓库 [L-rui-zhe/LayoutSculpt](https://github.com/L-rui-zhe/LayoutSculpt) 可用于对照或同步，其远端名称由本地配置决定。普通克隆只会自动创建 `origin`；提交前用 `git remote -v` 核对目标，不对来源仓库强制推送。

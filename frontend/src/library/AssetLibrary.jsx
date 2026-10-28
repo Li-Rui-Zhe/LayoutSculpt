@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Upload,
   Check,
+  BrickWall,
 } from "lucide-react";
 import { api } from "../api.js";
 import DiyPreview from "../diy/DiyPreview.jsx";
@@ -21,6 +22,7 @@ import "./library.css";
 import "./libraryWorkspace.css";
 import { useLibraryPreferences } from "../hooks/useLibraryPreferences.js";
 import MaterialLibrary from "./MaterialLibrary.jsx";
+import ArchitectureLibrary from "./ArchitectureLibrary.jsx";
 import AssetManager from "./AssetManager.jsx";
 import { readContext, writeContext } from "../hooks/urlContext.js";
 import {
@@ -78,6 +80,10 @@ export default function AssetLibrary({
   floorOnly = false,
   initialAssetType = "models",
   materialRoomId = "all",
+  architectureJob,
+  architectureDocument,
+  selectedWallId = "",
+  onApplyBoundary,
 }) {
   const contextKey = onClose
     ? `library-context:${currentJobId}`
@@ -371,7 +377,11 @@ export default function AssetLibrary({
             <h1>
               素材库{" "}
               <small>
-                {assetType === "models" ? `${items.length} 个模型` : "装修材质"}
+                {assetType === "models"
+                  ? `${items.length} 个模型`
+                  : assetType === "architecture"
+                    ? "建筑构件"
+                    : "装修材质"}
               </small>
             </h1>
           </div>
@@ -391,6 +401,13 @@ export default function AssetLibrary({
             >
               <Palette size={16} />
               装修材质
+            </button>
+            <button
+              aria-pressed={assetType === "architecture"}
+              onClick={() => setAssetType("architecture")}
+            >
+              <BrickWall size={16} />
+              建筑构件
             </button>
           </div>
         </div>
@@ -477,6 +494,7 @@ export default function AssetLibrary({
           </button>
           <button
             className="primary-button"
+            hidden={assetType === "architecture"}
             disabled={!onCreate || opening}
             onClick={() =>
               openAction(() =>
@@ -500,7 +518,15 @@ export default function AssetLibrary({
           {openError}
         </p>
       )}
-      {assetType === "materials" ? (
+      {assetType === "architecture" ? (
+        <ArchitectureLibrary
+          refreshKey={revision}
+          job={architectureJob}
+          document={architectureDocument}
+          selectedWallId={selectedWallId}
+          onApply={onApplyBoundary}
+        />
+      ) : assetType === "materials" ? (
         <MaterialLibrary
           rooms={materialRooms}
           onApply={onApplyMaterial}

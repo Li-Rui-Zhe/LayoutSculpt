@@ -78,12 +78,12 @@ def validate_proposal(body, proposal):
     data = body.layout.model_dump(exclude_unset=True)
     changes = []
     for kind, updates, convert, fields in (
-        ("rooms", proposal.rooms, room_dict, ("name", "kind", "polygon")),
+        ("rooms", proposal.rooms, room_dict, ("name", "kind", "polygon", "balcony_type")),
         (
             "walls",
             proposal.walls,
             wall_dict,
-            ("start", "end", "thickness", "height", "exterior"),
+            ("start", "end", "thickness", "height", "exterior", "boundary_type", "sill_height"),
         ),
     ):
         seen = set()
@@ -109,7 +109,7 @@ def validate_proposal(body, proposal):
                     o.edit_locked and o.wall_id == change.id
                     for o in body.layout.openings
                 )
-                and any(converted[key] != target[key] for key in fields)
+                and any(converted[key] != target.get(key, {"boundary_type": "wall", "sill_height": 0, "balcony_type": "unknown"}.get(key)) for key in fields)
             ):
                 raise ValueError("此墙附着已锁定门窗或通道，不能联动修改墙体几何")
             target.update({key: converted[key] for key in fields})

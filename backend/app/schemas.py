@@ -49,6 +49,7 @@ class Room(EditableObject):
         "other",
     ]
     polygon: list[Point] = Field(min_length=3, max_length=24)
+    balcony_type: Literal["unknown", "open", "enclosed"] = "unknown"
     floor_finish: Literal["default", "oak", "walnut", "tile", "stone"] = "default"
     floor_enabled: bool = True
     floor_rotation: float = Field(default=0, ge=-180, le=180)
@@ -84,6 +85,8 @@ class Wall(EditableObject):
     thickness: float = Field(ge=0.06, le=0.6)
     height: float = Field(ge=0.3, le=4.5, description="墙体实际高度，支持阳台栏板和矮隔墙；非防护规范校验")
     exterior: bool
+    boundary_type: Literal["wall", "parapet", "glass_railing", "glazing"] = "wall"
+    sill_height: float = Field(default=0, ge=0, le=4.5, description="玻璃围护下方实体基座高度，米；不改变总高度")
     load_bearing: bool = False
     finish: Literal["default", "white", "cream", "sage", "gray"] = "default"
     wall_material: Literal[WALL_MATERIALS] | TextureReference | None = None
@@ -93,6 +96,11 @@ class Wall(EditableObject):
 
     @model_validator(mode="after")
     def valid_regions(self):
+        if self.boundary_type in {"glass_railing", "glazing"}:
+            if self.load_bearing:
+                raise ValueError("承重实墙不能直接转换为玻璃围护")
+            if self.sill_height >= self.height:
+                raise ValueError("玻璃围护基座必须低于围护总高度")
         length = math.hypot(self.end.x - self.start.x, self.end.y - self.start.y)
         for i, r in enumerate(self.finish_regions):
             if (
@@ -123,6 +131,10 @@ class Opening(EditableObject):
     hinge: Literal["start", "end"] = "start"
     swing: Literal["left", "right"] = "left"
     angle: float = Field(default=90.0, ge=0, le=110)
+    door_style: Literal["hinged", "double", "sliding"] = "hinged"
+    door_material: Literal["wood", "glass"] = "wood"
+    window_style: Literal["fixed", "casement", "sliding"] = "fixed"
+    glass_type: Literal["clear", "frosted"] = "clear"
 
 
 class LightFixture(EditableObject):
@@ -231,6 +243,8 @@ class Layout(StrictModel):
             if opening.wall_id not in walls:
                 raise ValueError(f"门窗引用不存在的墙体 {opening.wall_id}")
             w = walls[opening.wall_id]
+            if w.boundary_type == "glass_railing":
+                raise ValueError("玻璃栏板不能安装门窗，请先拆分墙段")
             if (
                 opening.offset + opening.width
                 > math.hypot(w.end.x - w.start.x, w.end.y - w.start.y) + 1e-6

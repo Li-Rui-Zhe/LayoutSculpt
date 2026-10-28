@@ -1,0 +1,172 @@
+.architecture-preview {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  height: 185px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: radial-gradient(ellipse at 50% 55%, #f6f7f1, #e7ece2);
+  flex: none;
+  isolation: isolate;
+}
+.architecture-preview canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.architecture-thumbnail {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.architecture-preview.is-interactive {
+  height: 220px;
+  cursor: grab;
+  touch-action: none;
+}
+.architecture-preview.is-interactive:active {
+  cursor: grabbing;
+}
+.architecture-preview-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  white-space: nowrap;
+  color: #5d7362;
+  background: #ffffffe6;
+  padding: 5px 10px;
+  border-radius: 20px;
+  pointer-events: none;
+  z-index: 1;
+}
+.architecture-preview-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 20px;
+  font-size: 12px;
+  color: #667b66;
+}
+.architecture-filters {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #e1e8dd;
+}
+.architecture-filters .library-search {
+  flex: 1;
+}
+.architecture-filters .library-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.architecture-filters .library-tabs button {
+  white-space: nowrap;
+}
+.architecture-card-model {
+  position: relative;
+}
+.architecture-card .architecture-preview {
+  pointer-events: none;
+}
+.library-workspace.asset-library-page .architecture-cards {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.architecture-filters .library-tabs small {
+  margin-left: 5px;
+  color: #7b8c76;
+}
+.architecture-card > small {
+  display: block;
+}
+.architecture-card .library-card-dimensions {
+  display: block;
+  line-height: 1.6;
+}
+.architecture-guidance {
+  margin-top: 18px;
+  line-height: 1.8;
+}
+.architecture-dimensions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.architecture-dimensions label,
+.architecture-placement label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 11px;
+  color: #526c57;
+}
+.architecture-dimensions input,
+.architecture-dimensions select,
+.architecture-placement select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px;
+  border: 1px solid #d7e1d0;
+  border-radius: 7px;
+  background: #fff;
+  color: #345b41;
+}
+.architecture-placement .primary-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.architecture-inspector > * {
+  flex-shrink: 0;
+}
+.architecture-inspector .form-error {
+  font-size: 11px;
+  line-height: 1.7;
+}
+.architecture-inspector .architecture-placement {
+  flex: 0 0 auto;
+  align-content: start;
+}
+.material-inspector .architecture-preview {
+  height: 240px;
+}
+@media (min-width: 1500px) {
+  .architecture-card .architecture-preview {
+    height: 160px;
+  }
+}
+@media (max-width: 900px) {
+  .architecture-filters {
+    flex-wrap: wrap;
+  }
+  .architecture-filters .library-search {
+    flex-basis: 100%;
+  }
+  .architecture-content .architecture-inspector {
+    border-left: 0;
+    border-top: 1px solid #dce4d7;
+  }
+  .library-workspace.asset-library-page .architecture-content .library-browser {
+    order: 0;
+  }
+  .library-workspace.asset-library-page
+    .architecture-content
+    .architecture-inspector {
+    order: 1;
+  }
+  .library-workspace.asset-library-page .architecture-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .architecture-preview {
+    height: 150px;
+  }
+}

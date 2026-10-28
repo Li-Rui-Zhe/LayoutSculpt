@@ -1,5 +1,7 @@
 import polygonClipping from "polygon-clipping";
 import { designIssues } from "../diy/design.js";
+import { boundaryProblems, boundaryNames } from "./balcony.js";
+import { openingParts } from "./openingVisuals.js";
 
 export function segmentInside(a, b, polygon) {
   if (!contains(a, polygon) || !contains(b, polygon)) return false;
@@ -189,6 +191,7 @@ export function searchEntries(entries, query, rooms = []) {
         lightNames[object.kind],
         rooms.find((r) => r.id === object.room_id)?.name,
         type === "walls" ? (object.exterior ? "外墙" : "隔墙") : "",
+        type === "walls" ? boundaryNames[object.boundary_type || "wall"] : "",
       ]
         .filter(Boolean)
         .join(" ")
@@ -213,6 +216,30 @@ export function doorLeafPoints(opening, wall) {
       y: hinge.y + dx * Math.sin(angle) + dy * Math.cos(angle),
     },
   ];
+}
+
+export function doorLeafSegments(opening, wall) {
+  if (opening.door_leaf === false || opening.kind !== "door") return [];
+  if (!opening.door_style || opening.door_style === "hinged")
+    return [doorLeafPoints(opening, wall)];
+  const dx = wall.end.x - wall.start.x,
+    dy = wall.end.y - wall.start.y,
+    length = Math.hypot(dx, dy);
+  const point = (x, z) => ({
+    x: wall.start.x + ((opening.offset + x) * dx) / length - (z * dy) / length,
+    y: wall.start.y + ((opening.offset + x) * dy) / length + (z * dx) / length,
+  });
+  return openingParts(opening, wall.thickness)
+    .filter((p) => ["双开门扇", "推拉门扇"].includes(p.name))
+    .map((p) => {
+      const half = p.size[0] / 2,
+        c = Math.cos(p.angle) * half,
+        s = Math.sin(p.angle) * half;
+      return [
+        point(p.position[0] - c, p.position[2] + s),
+        point(p.position[0] + c, p.position[2] - s),
+      ];
+    });
 }
 export const lightNames = {
   bulb: "灯泡",
@@ -560,6 +587,9 @@ export function problems(document) {
       text: "轮廓坐标必须在 -60～60 米之间。",
     });
   layout.walls.forEach((wall, index) => {
+    const boundaryIssue = boundaryProblems(wall, layout.openings);
+    if (boundaryIssue)
+      issues.push({ type: "walls", index, text: boundaryIssue });
     const regions = wall.finish_regions || [];
     regions.forEach((r, i) => {
       const outside =

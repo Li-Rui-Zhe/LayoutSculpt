@@ -61,11 +61,21 @@ import LightGroupControls from "./LightGroupControls.jsx";
 import FloorTiling from "./FloorTiling.jsx";
 import FloorRoomTarget from "./FloorRoomTarget.jsx";
 import NumberField from "./NumberField.jsx";
+import {
+  boundaryNames,
+  balconyNames,
+  changeBoundary,
+  isGlassBoundary,
+} from "./balcony.js";
 const DiyStudio = lazy(() => import("../diy/DiyStudio.jsx"));
 const SurfaceStudio = lazy(() => import("../diy/SurfaceStudio.jsx"));
 import SurfaceFinishPicker from "./SurfaceFinishPicker.jsx";
 import SurfaceTransfer from "./SurfaceTransfer.jsx";
 import AssetLibrary from "../library/AssetLibrary.jsx";
+import {
+  applyArchitecture,
+  architectureSelection,
+} from "../library/architectureCatalog.js";
 import FurnitureReplacement from "./FurnitureReplacement.jsx";
 import {
   placeLibraryFurniture,
@@ -116,7 +126,7 @@ import {
   splitRoom,
   simplePolygon,
   overlapArea,
-  doorLeafPoints,
+  doorLeafSegments,
 } from "./geometry.js";
 
 const tools = [
@@ -155,7 +165,7 @@ function labelFor(item, type, index) {
     : type === "lights"
       ? item.name
       : type === "walls"
-        ? `墙体 ${index + 1}${item.exterior ? " · 外墙" : " · 隔墙"}`
+        ? `墙体 ${index + 1} · ${item.boundary_type && item.boundary_type !== "wall" ? boundaryNames[item.boundary_type] : item.exterior ? "外墙" : "隔墙"}`
         : type === "rooms"
           ? item.name
           : `${openingNames[item.kind]} ${index + 1}`;
@@ -191,6 +201,9 @@ function ManualEditorContent({
   onClose,
   placementRequest,
   onPlacementConsumed,
+  boundaryRequest,
+  onBoundaryConsumed,
+  onArchitectureContext,
   floorRequest,
   onFloorConsumed,
   designMode = null,
@@ -309,6 +322,25 @@ function ManualEditorContent({
       type: initialTool,
       index: 0,
     });
+  useEffect(() => {
+    if (draft.document)
+      onArchitectureContext?.({
+        jobId: job.id,
+        document: draft.document,
+        wallId:
+          selected?.type === "walls"
+            ? draft.document.layout.walls[selected.index]?.id || ""
+            : selected?.type === "openings"
+              ? draft.document.layout.openings[selected.index]?.wall_id || ""
+              : "",
+      });
+  }, [
+    job.id,
+    draft.document,
+    selected?.type,
+    selected?.index,
+    onArchitectureContext,
+  ]);
   useEffect(() => {
     if (tool !== "furniture") setPlacement(null);
   }, [tool]);
@@ -643,6 +675,48 @@ function ManualEditorContent({
     change(next, objects(next, selected.type)[selected.index]);
     return commitParameter(next);
   };
+  const consumedBoundary = useRef(null);
+  useEffect(() => {
+    if (
+      !boundaryRequest ||
+      !draft.document ||
+      consumedBoundary.current === boundaryRequest.id
+    )
+      return;
+    consumedBoundary.current = boundaryRequest.id;
+    try {
+      const next = applyArchitecture(
+        draft.document,
+        boundaryRequest.wallId,
+        boundaryRequest.configuration,
+      );
+      const result = commitParameter(next);
+      if (result !== true)
+        throw Error(
+          typeof result === "string"
+            ? result
+            : "当前有未完成的编辑，请完成后重新应用构件。",
+        );
+      const selection = architectureSelection(
+        draft.document,
+        next,
+        boundaryRequest.wallId,
+        boundaryRequest.configuration,
+      );
+      setTool(
+        selection.type === "openings"
+          ? next.layout.openings[selection.index].kind === "passage"
+            ? "passages"
+            : "openings"
+          : "walls",
+      );
+      setSelected(selection);
+      setEditorView("scene");
+    } catch (e) {
+      setError(e.message);
+    }
+    onBoundaryConsumed?.();
+  }, [boundaryRequest, draft.document]);
   const rotate = (angle) => {
     if (
       busy ||
@@ -1329,6 +1403,39 @@ function ManualEditorContent({
   if (libraryOpen)
     return (
       <AssetLibrary
+        architectureJob={job}
+        architectureDocument={document}
+        selectedWallId={
+          selected?.type === "walls"
+            ? document.layout.walls[selected.index]?.id
+            : selected?.type === "openings"
+              ? document.layout.openings[selected.index]?.wall_id
+              : ""
+        }
+        onApplyBoundary={({ wallId, configuration }) => {
+          const next = applyArchitecture(document, wallId, configuration);
+          const result = commitParameter(next);
+          if (result !== true)
+            throw Error(
+              typeof result === "string" ? result : "请先完成当前编辑。",
+            );
+          const selection = architectureSelection(
+            document,
+            next,
+            wallId,
+            configuration,
+          );
+          setTool(
+            selection.type === "openings"
+              ? next.layout.openings[selection.index].kind === "passage"
+                ? "passages"
+                : "openings"
+              : "walls",
+          );
+          setSelected(selection);
+          setEditorView("scene");
+          setLibraryOpen(false);
+        }}
         materialRooms={document.layout.rooms.filter(
           (r) => r.floor_enabled !== false,
         )}
@@ -1338,7 +1445,13 @@ function ManualEditorContent({
             : "all"
         }
         floorOnly
-        initialAssetType={libraryOpen === "materials" ? "materials" : "models"}
+        initialAssetType={
+          libraryOpen === "architecture"
+            ? "architecture"
+            : libraryOpen === "materials"
+              ? "materials"
+              : "models"
+        }
         onApplyMaterial={({ materialId, roomId }) => {
           draft.commit((next) => {
             for (const room of next.layout.rooms) {
@@ -2503,10 +2616,10 @@ function ManualEditorContent({
                         {opening.kind === "door" &&
                           opening.door_leaf !== false &&
                           Number.isFinite(opening.angle) &&
-                          (() => {
-                            const [hinge, tip] = doorLeafPoints(opening, wall);
-                            return (
+                          doorLeafSegments(opening, wall).map(
+                            ([hinge, tip], leaf) => (
                               <line
+                                key={leaf}
                                 x1={hinge.x}
                                 y1={hinge.y}
                                 x2={tip.x}
@@ -2515,8 +2628,8 @@ function ManualEditorContent({
                                 strokeWidth="0.045"
                                 strokeDasharray="0.1 0.06"
                               />
-                            );
-                          })()}
+                            ),
+                          )}
                         <circle
                           cx={wall.start.x}
                           cy={wall.start.y}
@@ -2613,19 +2726,18 @@ function ManualEditorContent({
                       />
                       {opening.kind === "door" &&
                         opening.door_leaf !== false &&
-                        (() => {
-                          const [h, t] = doorLeafPoints(opening, wall);
-                          return (
-                            <line
-                              x1={h.x}
-                              y1={h.y}
-                              x2={t.x}
-                              y2={t.y}
-                              stroke="#9b704d"
-                              strokeWidth=".045"
-                            />
-                          );
-                        })()}
+                        doorLeafSegments(opening, wall).map(([h, t], leaf) => (
+                          <line
+                            key={leaf}
+                            data-door-style={opening.door_style || "hinged"}
+                            x1={h.x}
+                            y1={h.y}
+                            x2={t.x}
+                            y2={t.y}
+                            stroke="#9b704d"
+                            strokeWidth=".045"
+                          />
+                        ))}
                       {active("openings", index) && (
                         <text
                           x={(a.x + b.x) / 2}
@@ -3402,6 +3514,62 @@ function ManualEditorContent({
                     )}
                     {selected.type === "walls" && (
                       <>
+                        <button
+                          className="secondary-button"
+                          onClick={() => setLibraryOpen("architecture")}
+                        >
+                          从建筑构件库选择
+                        </button>
+                        <label className="edit-label">
+                          围护形式
+                          <select
+                            aria-label="围护形式"
+                            value={item.boundary_type || "wall"}
+                            onChange={(e) => {
+                              try {
+                                commitParameter(
+                                  changeBoundary(
+                                    document,
+                                    selected.index,
+                                    e.target.value,
+                                  ),
+                                );
+                              } catch (error) {
+                                setError(error.message);
+                              }
+                            }}
+                          >
+                            {Object.entries(boundaryNames).map(([id, name]) => (
+                              <option key={id} value={id}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {item.boundary_type !== "wall" &&
+                          item.boundary_type && (
+                            <p className="field-note">
+                              围护总高 {item.height.toFixed(2)} m。
+                              {item.boundary_type === "glazing"
+                                ? "封窗总高与下方实体基座可分别调整。"
+                                : "低栏板初始按 1.10 m 展示，可在尺寸中按实际修改。"}
+                              室内分隔墙与侧面实墙需逐段核对。
+                            </p>
+                          )}
+                        {isGlassBoundary(item) && (
+                          <NumberField
+                            label="玻璃基座高度"
+                            value={item.sill_height || 0}
+                            min={0}
+                            max={Math.max(0, item.height - 0.05)}
+                            unit="m"
+                            onCommit={(value) =>
+                              patch((_, target) => {
+                                target.sill_height = value;
+                              })
+                            }
+                          />
+                        )}
                         <label className="edit-label">
                           装修哪一侧
                           <select
@@ -3422,10 +3590,15 @@ function ManualEditorContent({
                         </label>
                         <SurfaceFinishPicker
                           category="walls"
+                          disabled={
+                            isGlassBoundary(item) && !(item.sill_height > 0)
+                          }
                           hint={
-                            wallSide === "both"
-                              ? "统一此墙两侧材质，并清除两侧单独设置。"
-                              : `仅修改 ${wallSide === "left" ? "A" : "B"} 面，另一侧保持原样。`
+                            isGlassBoundary(item)
+                              ? "饰面只用于玻璃下方的实体基座，玻璃保持通透。"
+                              : wallSide === "both"
+                                ? "统一此墙两侧材质，并清除两侧单独设置。"
+                                : `仅修改 ${wallSide === "left" ? "A" : "B"} 面，另一侧保持原样。`
                           }
                           value={
                             wallSide === "both"
@@ -3479,7 +3652,9 @@ function ManualEditorContent({
                           <div className="edit-number-grid">
                             {number("墙体厚度", "thickness", 0.06, 0.6)}
                             {number("墙体高度", "height", 0.3, 4.5)}
-                            <small>可单独调整矮墙、阳台栏板高度；防护高度请按实际建筑核对。</small>
+                            <small>
+                              可单独调整矮墙、阳台栏板高度；防护高度请按实际建筑核对。
+                            </small>
                             {["start", "end"].flatMap((key) =>
                               ["x", "y"].map((axis) => (
                                 <NumberField
@@ -3602,6 +3777,28 @@ function ManualEditorContent({
                     )}
                     {selected.type === "rooms" && (
                       <>
+                        {item.kind === "balcony" && (
+                          <label className="edit-label">
+                            阳台形式
+                            <select
+                              aria-label="阳台形式"
+                              value={item.balcony_type || "unknown"}
+                              onChange={(e) =>
+                                patch((_, target) => {
+                                  target.balcony_type = e.target.value;
+                                })
+                              }
+                            >
+                              {Object.entries(balconyNames).map(
+                                ([id, name]) => (
+                                  <option key={id} value={id}>
+                                    {name}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </label>
+                        )}
                         <label className="inspector-switch">
                           铺设地板
                           <input
@@ -3797,6 +3994,82 @@ function ManualEditorContent({
                     )}
                     {selected.type === "openings" && (
                       <>
+                        <button
+                          className="secondary-button"
+                          onClick={() => setLibraryOpen("architecture")}
+                        >
+                          从建筑构件库选择门窗
+                        </button>
+                        {item.kind === "door" && (
+                          <>
+                            <label className="edit-label">
+                              门扇样式
+                              <select
+                                aria-label="门扇样式"
+                                value={item.door_style || "hinged"}
+                                onChange={(e) =>
+                                  patch((_, o) => {
+                                    o.door_style = e.target.value;
+                                  })
+                                }
+                              >
+                                <option value="hinged">单开平开门</option>
+                                <option value="double">双开平开门</option>
+                                <option value="sliding">双扇推拉门</option>
+                              </select>
+                            </label>
+                            <label className="edit-label">
+                              门扇材质
+                              <select
+                                aria-label="门扇材质"
+                                value={item.door_material || "wood"}
+                                onChange={(e) =>
+                                  patch((_, o) => {
+                                    o.door_material = e.target.value;
+                                  })
+                                }
+                              >
+                                <option value="wood">木门</option>
+                                <option value="glass">玻璃门</option>
+                              </select>
+                            </label>
+                          </>
+                        )}
+                        {item.kind === "window" && (
+                          <>
+                            <label className="edit-label">
+                              窗户样式
+                              <select
+                                aria-label="窗户样式"
+                                value={item.window_style || "fixed"}
+                                onChange={(e) =>
+                                  patch((_, o) => {
+                                    o.window_style = e.target.value;
+                                  })
+                                }
+                              >
+                                <option value="fixed">固定窗</option>
+                                <option value="casement">双扇平开窗</option>
+                                <option value="sliding">双扇推拉窗</option>
+                              </select>
+                            </label>
+                            <label className="edit-label">
+                              玻璃类型
+                              <select
+                                aria-label="玻璃类型"
+                                value={item.glass_type || "clear"}
+                                onChange={(e) =>
+                                  patch((_, o) => {
+                                    o.glass_type = e.target.value;
+                                  })
+                                }
+                              >
+                                <option value="clear">清透玻璃</option>
+                                <option value="frosted">磨砂玻璃</option>
+                              </select>
+                            </label>
+                          </>
+                        )}
                         <label className="edit-label">
                           类型
                           <select

@@ -414,8 +414,8 @@ export class StudioScene {
         // Clear glazing transmits the sample's daylight; an opaque shadow here
         // would black out the rooms despite the visible transparent windows.
         if (
-          isShowcase(url) &&
-          [obj.material].flat().some((m) => m.transparent && m.opacity < 0.6)
+          (isShowcase(url) || obj.userData.boundary_glass || obj.userData.opening_glass) &&
+          [obj.material].flat().some((m) => m.transparent && m.opacity < 1)
         )
           obj.castShadow = false;
         obj.receiveShadow = true;
@@ -564,7 +564,11 @@ export class StudioScene {
   }
 
   light(id, animate = false) {
-    const target = environmentTarget(id, this.state?.daylight, isShowcase(this.modelUrl));
+    const target = environmentTarget(
+      id,
+      this.state?.daylight,
+      isShowcase(this.modelUrl),
+    );
     if (
       animate &&
       this.active &&

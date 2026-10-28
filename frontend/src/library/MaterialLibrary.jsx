@@ -8,6 +8,8 @@ import {
 import { api } from "../api.js";
 import { useLibraryPreferences } from "../hooks/useLibraryPreferences.js";
 import MaterialSample from "../components/MaterialSample.jsx";
+import ArchitecturePreview from "./ArchitecturePreview.jsx";
+import "./architecture.css";
 
 const labels = { walls: "墙面", floor: "地板", fabric: "软装" };
 export default function MaterialLibrary({
@@ -190,10 +192,18 @@ export default function MaterialLibrary({
                 </button>
                 <p>{selected.sub}</p>
               </div>
-              <MaterialSample
-                material={selected}
-                className="material-large-sample"
-              />
+              {category === "walls" ? (
+                <ArchitecturePreview
+                  material={selected}
+                  interactive
+                  label={`${selected.name}立体墙面预览`}
+                />
+              ) : (
+                <MaterialSample
+                  material={selected}
+                  className="material-large-sample"
+                />
+              )}
               <dl className="library-metadata">
                 <div>
                   <dt>材质类型</dt>

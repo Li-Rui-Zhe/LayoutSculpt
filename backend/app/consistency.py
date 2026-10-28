@@ -11,13 +11,22 @@ from shapely.ops import unary_union, polygonize_full
 from .architecture import wall_sections
 
 
-def _structure_geometry(layout):
+def _structure_geometry(layout, *, legacy=False):
     data = layout.model_dump() if hasattr(layout, "model_dump") else layout
     return {
         "outline": data["outline"],
-        "rooms": [{k: r[k] for k in ("id", "name", "kind", "polygon")} for r in data["rooms"]],
-        "walls": [{k: w[k] for k in ("id", "start", "end", "thickness", "height", "exterior")} for w in data["walls"]],
-        "openings": data["openings"],
+        "rooms": [{**{k: r[k] for k in ("id", "name", "kind", "polygon")},
+                   **({"balcony_type": r["balcony_type"]} if r.get("balcony_type", "unknown") != "unknown" else {})}
+                  for r in data["rooms"]],
+        "walls": [{**{k: w[k] for k in ("id", "start", "end", "thickness", "height", "exterior")},
+                   **({"boundary_type": w["boundary_type"], "sill_height": w.get("sill_height", 0)}
+                      if w.get("boundary_type", "wall") != "wall" else {})}
+                  for w in data["walls"]],
+        "openings": data["openings"] if legacy else [
+            {key: value for key, value in opening.items()
+             if key not in {"door_style": "hinged", "door_material": "wood", "window_style": "fixed", "glass_type": "clear"}
+             or value != {"door_style": "hinged", "door_material": "wood", "window_style": "fixed", "glass_type": "clear"}[key]}
+            for opening in data["openings"]],
     }
 
 
@@ -49,7 +58,9 @@ def matches_confirmation(layout, confirmation, *, snapshot=None):
     # Accept an old hash only when it verifies its exact persisted snapshot,
     # and that snapshot is numerically identical to the current structure.
     return bool(snapshot is not None
-                and confirmation.get("structure_hash") == _geometry_digest(_structure_geometry(snapshot))
+                and confirmation.get("structure_hash") in {
+                    _geometry_digest(_structure_geometry(snapshot)),
+                    _geometry_digest(_structure_geometry(snapshot, legacy=True))}
                 and structure_hash(snapshot) == expected)
 
 

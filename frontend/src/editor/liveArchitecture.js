@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { planOrigin, liveKey } from "./liveModel.js";
 import { updateCutaway } from "../viewer/cutaway.js";
 import { updateFixtureLights } from "../viewer/fixtureLights.js";
+import { isGlassBoundary, boundaryFrameParts } from "./balcony.js";
+import { openingParts } from "./openingVisuals.js";
 
 // 地板饰面等待精细模型原子替换；不为换色临时重建整屋建筑。
 function geometrySignature(layout) {
@@ -63,7 +65,12 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
       data.furniture_index == null
     )
       palette.floor ||= node.material;
-    if (node.isMesh && !data.editor_proxy && (data.wall_id || data.wall_ids))
+    if (
+      node.isMesh &&
+      !data.editor_proxy &&
+      !data.boundary_glass &&
+      (data.wall_id || data.wall_ids)
+    )
       palette.wall ||= node.material;
     if (data.furniture_index != null || data.liveFurniture) return;
     if (node.isMesh || node.isLight) {
@@ -161,6 +168,33 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
         own,
       );
     };
+    const glass = isGlassBoundary(wall);
+    const glassMaterial = glass
+      ? new THREE.MeshStandardMaterial({
+          color: "#b7dbdf",
+          transparent: true,
+          opacity: 48 / 255,
+          roughness: 0.12,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        })
+      : null;
+    const wallBox = (start, end, bottom, top, thickness, material, data) => {
+      if (!glass)
+        return box(start, end, bottom, top, thickness, material, data);
+      const sill = wall.sill_height || 0;
+      box(start, end, bottom, Math.min(top, sill), thickness, material, data);
+      box(
+        start,
+        end,
+        Math.max(bottom, sill),
+        top,
+        thickness,
+        glassMaterial,
+        data,
+        true,
+      );
+    };
     for (let i = 1; i < cuts.length; i++) {
       const a = cuts[i - 1],
         b = cuts[i],
@@ -169,7 +203,7 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
           (o) => mid > o.offset && mid < o.offset + o.width,
         );
       if (!opening)
-        box(a, b, 0, height, wall.thickness, palette.wall, {
+        wallBox(a, b, 0, height, wall.thickness, palette.wall, {
           wall_id: wall.id,
           live_selection: {
             type: "walls",
@@ -177,7 +211,7 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
           },
         });
       else {
-        box(
+        wallBox(
           a,
           b,
           0,
@@ -192,7 +226,7 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
             },
           },
         );
-        box(
+        wallBox(
           a,
           b,
           opening.bottom + opening.height,
@@ -209,7 +243,80 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
         );
       }
     }
+    if (glass) {
+      const frameMaterial = new THREE.MeshStandardMaterial({
+        color: "#6b7271",
+        metalness: 0.78,
+        roughness: 0.25,
+      });
+      for (const [a, b, low, high] of boundaryFrameParts(wall, openings)) {
+        box(
+          a,
+          b,
+          low,
+          Math.min(high, height),
+          wall.thickness + 0.008,
+          frameMaterial,
+          {
+            wall_id: wall.id,
+            live_selection: {
+              type: "walls",
+              key: liveKey(wall, document.layout.walls.indexOf(wall)),
+            },
+          },
+          true,
+        );
+      }
+    }
     for (const o of openings) {
+      const partMaterials = {};
+      for (const part of openingParts(o, wall.thickness)) {
+        const low = part.position[1] - part.size[1] / 2;
+        const high = Math.min(
+          part.position[1] + part.size[1] / 2,
+          cutaway ? 1.2 : wall.height,
+        );
+        if (high - low < 0.001) continue;
+        const type = part.material;
+        partMaterials[type] ||= new THREE.MeshStandardMaterial({
+          color: {
+            frame: "#e2e2da",
+            wood: "#a98b62",
+            glass: "#b7dbdf",
+            frosted: "#d7e5e5",
+            metal: "#6b726c",
+          }[type],
+          transparent: type === "glass" || type === "frosted",
+          opacity: type === "glass" ? 0.22 : type === "frosted" ? 0.65 : 1,
+          roughness: type === "glass" ? 0.12 : 0.65,
+          depthWrite: !["glass", "frosted"].includes(type),
+          side: THREE.DoubleSide,
+        });
+        const at = o.offset + part.position[0],
+          depth = part.position[2];
+        add(
+          new THREE.BoxGeometry(part.size[0], high - low, part.size[2]),
+          partMaterials[type],
+          new THREE.Vector3(
+            wall.start.x +
+              (dx * at) / length -
+              (dy * depth) / length -
+              origin.x,
+            (low + high) / 2,
+            wall.start.y +
+              (dy * at) / length +
+              (dx * depth) / length -
+              origin.y,
+          ),
+          angle + part.angle,
+          {
+            opening_index: o.index,
+            wall_id: wall.id,
+            live_selection: { type: "openings", key: liveKey(o, o.index) },
+          },
+          true,
+        );
+      }
       // 门、窗、通道都有独立可点选的体积，透明区域不会伪装成实体墙。
       const material = new THREE.MeshStandardMaterial({
         color:
@@ -219,7 +326,7 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
               ? "#b99870"
               : "#57ae8f",
         transparent: true,
-        opacity: o.kind === "door" ? 0.5 : 0.16,
+        opacity: o.kind === "passage" ? 0.12 : 0.025,
         depthWrite: false,
         side: THREE.DoubleSide,
       });

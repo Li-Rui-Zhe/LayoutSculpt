@@ -78,7 +78,8 @@ try {
     page.getByText("原图结构已人工核对 · 模型截面校验通过", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "收起设置面板", exact: true }).click();
-  await page.getByRole("button", { name: /夜晚/ }).click();
+  await page.getByRole("button", { name: /^环境：/ }).click();
+  await page.getByRole("button", { name: "切换到夜晚", exact: true }).click();
   await expect(page.locator("#viewport canvas")).toHaveAttribute(
     "data-lighting-preset",
     "night",
@@ -221,7 +222,10 @@ try {
     timeout: 30000,
   });
   await expect(blocked.getByText(/浏览器存储不可用/)).toBeVisible();
-  await blocked.getByRole("button", { name: /夜晚/ }).click();
+  await blocked.getByRole("button", { name: /^环境：/ }).click();
+  await blocked
+    .getByRole("button", { name: "切换到夜晚", exact: true })
+    .click();
   await expect(blocked.locator("#viewport canvas")).toHaveAttribute(
     "data-lighting-preset",
     "night",
@@ -231,7 +235,7 @@ try {
     .first()
     .click();
   await expect(
-    blocked.getByRole("heading", { name: "把户型图，变成你的设计。" }),
+    blocked.getByRole("heading", { level: 1, name: /^新建设计/ }),
   ).toBeVisible();
   await expect(blocked.getByLabel("生成模型", { exact: true })).toHaveValue(
     "test-default",

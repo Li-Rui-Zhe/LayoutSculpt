@@ -3,6 +3,11 @@ import { useEffect, useState } from "react";
 import { Check, PencilRuler } from "lucide-react";
 import { api } from "../api.js";
 import { toDraft, openingPoints } from "../editor/geometry.js";
+import {
+  balconyNames,
+  boundaryNames,
+  isGlassBoundary,
+} from "../editor/balcony.js";
 
 export function StructurePlan({ layout }) {
   const points = layout.outline;
@@ -56,10 +61,21 @@ export function StructurePlan({ layout }) {
           y1={w.start.y}
           x2={w.end.x}
           y2={w.end.y}
-          stroke="#314642"
+          stroke={
+            isGlassBoundary(w)
+              ? "#2382a0"
+              : w.boundary_type === "parapet"
+                ? "#728b7b"
+                : "#314642"
+          }
           strokeWidth={w.thickness}
           strokeLinecap="square"
-        />
+        >
+          <title>
+            {w.id} · {boundaryNames[w.boundary_type || "wall"]} ·{" "}
+            {w.height.toFixed(2)} m
+          </title>
+        </line>
       ))}
       {layout.openings.map((opening, i) => {
         const wall = walls.get(opening.wall_id);
@@ -179,6 +195,36 @@ export default function StructureReview({ job, projects, onEdit }) {
             </figure>
           </div>
           <div className="review-notes">
+            {data.rooms.some((room) => room.kind === "balcony") && (
+              <details open>
+                <summary>阳台围护与高度核对</summary>
+                <p>
+                  {data.rooms
+                    .filter((room) => room.kind === "balcony")
+                    .map(
+                      (room) =>
+                        `${room.name}：${balconyNames[room.balcony_type || "unknown"]}`,
+                    )
+                    .join("；")}
+                  。请对照原图核对外侧栏板、封窗及两端实墙；蓝色墙线表示玻璃围护，可在结构图上查看各段类型和高度，有偏差时进入“调整识别结构”。
+                </p>
+                <ul>
+                  {data.walls
+                    .filter(
+                      (wall) =>
+                        wall.boundary_type && wall.boundary_type !== "wall",
+                    )
+                    .map((wall) => (
+                      <li key={wall.id}>
+                        {wall.id} · {boundaryNames[wall.boundary_type]} · 总高{" "}
+                        {wall.height.toFixed(2)} m
+                        {isGlassBoundary(wall) &&
+                          ` · 基座 ${(wall.sill_height || 0).toFixed(2)} m`}
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            )}
             <p>{data.scale_note}</p>
             {job.result.warnings?.length > 0 && (
               <details open>
