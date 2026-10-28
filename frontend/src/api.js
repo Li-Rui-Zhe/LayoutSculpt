@@ -27,7 +27,7 @@ export async function api(path, options = {}) {
       throw new Error("请求等待超时或已取消，请先刷新任务列表确认状态。");
     if (error instanceof TypeError)
       throw new Error(
-        "无法连接本地服务，请检查服务是否运行。任务数据仍保留在本机。",
+        "无法连接工作台服务，请启动工作台后重试。任务数据仍保留在本机。",
       );
     throw error;
   } finally {

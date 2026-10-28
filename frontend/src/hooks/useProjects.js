@@ -24,6 +24,7 @@ export function useProjects() {
   const [timeline, setTimeline] = useState({ id: null, items: [] });
   const [metadata, setMetadata] = useState([]);
   const healthTime = useRef(0);
+  const healthSnapshot = useRef(null);
   const [health, setHealth] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -33,6 +34,7 @@ export function useProjects() {
   const selection = useRef(selectedId);
   useEffect(() => writeContext({ project: selectedId }), [selectedId]);
   const listRequest = useRef(0);
+  const activeRefresh = useRef(0);
   const changesCursor = useRef("");
   const initialized = useRef(false);
   const [historyBefore, setHistoryBefore] = useState(null);
@@ -75,43 +77,81 @@ export function useProjects() {
   }, []);
   const refresh = useCallback(async () => {
     const token = ++listRequest.current;
+    activeRefresh.current = token;
     try {
-      const [h, j, m] = await Promise.all([
-        Date.now() - healthTime.current > 30000
-          ? api("/health")
-          : Promise.resolve(null),
+      const checkedHealth =
+        !healthSnapshot.current || Date.now() - healthTime.current > 30000;
+      let [h, j, m] = await Promise.allSettled([
+        checkedHealth ? api("/health") : Promise.resolve(null),
         changes(),
         api("/project-metadata"),
       ]);
       if (token !== listRequest.current) return;
-      if (h) {
+      // A failed task read is not proof that the whole workbench is offline.
+      // Recheck cached health on a read failure so a real outage is still detected.
+      if (
+        !checkedHealth &&
+        (j.status === "rejected" || m.status === "rejected")
+      ) {
+        [h] = await Promise.allSettled([api("/health")]);
+        if (token !== listRequest.current) return;
+      }
+      if (h.status === "fulfilled" && h.value) {
+        healthSnapshot.current = h.value;
         setHealth((old) =>
-          JSON.stringify(old) === JSON.stringify(h) ? old : h,
+          JSON.stringify(old) === JSON.stringify(h.value) ? old : h.value,
         );
         healthTime.current = Date.now();
+      } else if (h.status === "rejected") {
+        healthSnapshot.current = null;
+        healthTime.current = 0;
+        setHealth(null);
       }
-      setMetadata((old) =>
-        JSON.stringify(old) === JSON.stringify(m.items) ? old : m.items,
+      if (m.status === "fulfilled") {
+        setMetadata((old) =>
+          JSON.stringify(old) === JSON.stringify(m.value.items)
+            ? old
+            : m.value.items,
+        );
+      }
+      if (j.status === "fulfilled") {
+        if (j.value.initial) {
+          initialized.current = true;
+          setHistoryBefore(j.value.before);
+        }
+        changesCursor.current = j.value.cursor;
+        merge(j.value.items);
+      }
+      const failed = [
+        j.status === "rejected" && "任务记录",
+        m.status === "rejected" && "项目信息",
+      ].filter(Boolean);
+      setError(
+        !healthSnapshot.current
+          ? "工作台未连接，任务记录将在连接恢复后同步。"
+          : failed.length
+            ? `${failed.join("和")}暂时无法同步，请重试。当前页面内容仍保留。`
+            : "",
       );
-      if (j.initial) {
-        initialized.current = true;
-        setHistoryBefore(j.before);
-      }
-      changesCursor.current = j.cursor;
-      merge(j.items);
-      setError("");
     } catch {
       if (token !== listRequest.current) return;
-      setHealth(null);
-      setError("本地服务未连接，任务记录将在连接恢复后同步。");
+      healthTime.current = 0;
+      setError("任务同步出现异常，请重试。当前页面内容仍保留。");
     } finally {
-      if (token === listRequest.current) setLoading(false);
+      if (token === listRequest.current) {
+        activeRefresh.current = 0;
+        setLoading(false);
+      }
     }
   }, [merge]);
+  const recheck = useCallback(() => {
+    healthTime.current = 0;
+    return refresh();
+  }, [refresh]);
   useEffect(() => {
     refresh();
     const timer = setInterval(() => {
-      if (!document.hidden) refresh();
+      if (!document.hidden && !activeRefresh.current) refresh();
     }, 12000);
     return () => {
       clearInterval(timer);
@@ -120,16 +160,21 @@ export function useProjects() {
   }, [refresh]);
   useEffect(() => {
     const changed = () => {
-      healthTime.current = 0;
-      void refresh();
+      if (!document.hidden) void recheck();
     };
     window.addEventListener("habitat:ai-changed", changed);
     window.addEventListener("habitat:runtime-changed", changed);
+    window.addEventListener("focus", changed);
+    window.addEventListener("online", changed);
+    document.addEventListener("visibilitychange", changed);
     return () => {
       window.removeEventListener("habitat:ai-changed", changed);
       window.removeEventListener("habitat:runtime-changed", changed);
+      window.removeEventListener("focus", changed);
+      window.removeEventListener("online", changed);
+      document.removeEventListener("visibilitychange", changed);
     };
-  }, [refresh]);
+  }, [recheck]);
   const select = useCallback((item) => {
     const id = item?.id || "sample";
     selection.current = id;
@@ -302,6 +347,7 @@ export function useProjects() {
     create,
     importProject: (form) => create(form, true),
     refresh,
+    recheck,
     cancel: (id) => action(id, "cancel"),
     continue: (id, changes) => action(id, "continue", changes),
     retry: (id, changes) => action(id, "retry", changes),
@@ -313,6 +359,13 @@ export function useProjects() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(document),
+      });
+      merge([item]);
+      return item;
+    },
+    reviewRecognition: async (id) => {
+      const item = await api(`/jobs/${id}/recognition-review`, {
+        method: "POST",
       });
       merge([item]);
       return item;

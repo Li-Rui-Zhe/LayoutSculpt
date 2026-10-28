@@ -137,6 +137,40 @@ class FakeCodex:
         title = kwargs["schema"]["title"]
         if title == "Furnishing":
             output = furniture_data()
+        elif title in {"SourceEvidence", "PixelLayoutExtraction"}:
+            size = (120, 90)
+            if kwargs.get("image"):
+                with Image.open(kwargs["image"]) as image:
+                    size = image.size
+            factor = min(size[0] / 8, size[1] / 6) * 0.8
+            origin = [(size[0] - 8 * factor) / 2, (size[1] - 6 * factor) / 2]
+
+            def px(point):
+                return [point[0] * factor + origin[0], point[1] * factor + origin[1]]
+
+            data = pack_layout(Layout.model_validate(layout_data()))
+            check = {"status": "usable", "reason": "none", "evidence": "完整住宅边界与内部墙线可辨认"}
+            if title == "SourceEvidence":
+                output = {"input_check": check, "outline_px": [px(p) for p in data["outline"]],
+                          "walls_px": [{"a": px(w["a"]), "b": px(w["b"])} for w in data["walls"]],
+                          "labels": [{"name": "客厅", "kind": "living", "point": px([4, 3]), "certainty": "clear"}],
+                          "dimensions": [{"a": px([0, 0]), "b": px([8, 0]), "meters": 8, "evidence": "上方总宽标注 8 米"}],
+                          "regions": [], "warnings": []}
+            else:
+                from backend.app.source_evidence import PixelRoom, PixelOpening
+                data.pop("lights", None)
+                data["outline"] = [px(p) for p in data["outline"]]
+                for room in data["rooms"]:
+                    room["polygon"] = [px(p) for p in room["polygon"]]
+                data["rooms"] = [{k: v for k, v in r.items() if k in PixelRoom.model_fields} for r in data["rooms"]]
+                for wall in data["walls"]:
+                    wall["a"], wall["b"] = px(wall["a"]), px(wall["b"])
+                    wall["t"] *= factor
+                for opening in data["openings"]:
+                    opening["offset"] *= factor
+                    opening["width"] *= factor
+                data["openings"] = [{k: v for k, v in o.items() if k in PixelOpening.model_fields} for o in data["openings"]]
+                output = {**data, "input_check": check}
         elif title == "LayoutExtraction":
             output = pack_layout(Layout.model_validate(layout_data()))
             output["input_check"] = {"status": "usable", "reason": "none", "evidence": "完整住宅边界与内部墙线可辨认"}

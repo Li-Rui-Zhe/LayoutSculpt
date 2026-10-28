@@ -8,6 +8,7 @@
 | [设计工作流](design-workflows.md) | 上传、三维初稿、人工设计、素材库与 DIY |
 | [AI 接入](ai-connections.md) | DeepSeek API、本机或独立 Codex、登录、更新与恢复 |
 | [生成链路](ai-pipeline-design.md) | 识别、复核、初稿、家具、校验与同任务继续 |
+| [精细识别与原图对照](source-evidence-recognition.md) | 原图像素定位、按疑点细读、独立复核、叠加图及质量边界 |
 | [三维编辑](live-3d-editing.md) | 家具、门扇与灯具实时变换、重建边界、参数调整与保存 |
 | [建筑构件与阳台围护](balcony-boundaries.md) | 五类 17 种构件、门窗安装与替换、三维样板、阳台围护高度与玻璃 |
 | [墙地面创作](surface-creation.md) | AI 配方、手绘、图片上传与材质保存 |

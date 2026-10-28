@@ -18,8 +18,12 @@ try {
     .first()
     .click();
   await expect(page.getByLabel("家具方案")).not.toBeVisible();
+  await page.getByRole("radio", { name: /快速识别/ }).check();
   await expect(
-    page.locator('.model-advanced input[type="checkbox"]').last(),
+    page.getByRole("checkbox", {
+      name: "先看平面图，确认后再生成 3D",
+      exact: true,
+    }),
   ).not.toBeChecked();
   await page.getByRole("button", { name: /使用示例户型/ }).click();
   await page.getByLabel("任务名称").fill("渐进生成验收");

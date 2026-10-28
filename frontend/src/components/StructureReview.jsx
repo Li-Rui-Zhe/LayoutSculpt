@@ -2,6 +2,7 @@ import { InlineProgress } from "./LoadingProgress.jsx";
 import { useEffect, useState } from "react";
 import { Check, PencilRuler } from "lucide-react";
 import { api } from "../api.js";
+import SourceOverlay from "./SourceOverlay.jsx";
 import { toDraft, openingPoints } from "../editor/geometry.js";
 import {
   balconyNames,
@@ -107,12 +108,15 @@ export function StructurePlan({ layout }) {
 }
 
 export default function StructureReview({ job, projects, onEdit }) {
+  const checkpoint = job.result?.recognition_review;
+  const [comparisonView, setComparisonView] = useState("side");
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [revision, setRevision] = useState(0);
   useEffect(() => {
     let alive = true;
+    setComparisonView("side");
     api(`/jobs/${job.id}/artifacts/structure.json`)
       .then((value) => {
         if (alive) {
@@ -158,8 +162,12 @@ export default function StructureReview({ job, projects, onEdit }) {
     <section className="structure-review" aria-labelledby="structure-title">
       <div className="review-heading">
         <span className="eyebrow">02 · 核对户型</span>
-        <h2 id="structure-title">先确认结构，再生成三维</h2>
-        <p>逐项对照房间、墙体、入口和门窗。蓝色是窗，金色是门或通道。</p>
+        <h2 id="structure-title">
+          {checkpoint
+            ? "识别遇到卡点，请先看看平面图"
+            : "先确认结构，再生成三维"}
+        </h2>
+        <p>对照原图检查平面图，满意后再生成 3D。蓝色是窗，金色是门或通道。</p>
         {job.result?.ai_review?.status === "completed" &&
           job.result.ai_review.summary && (
             <p className="review-ai-summary">
@@ -167,15 +175,72 @@ export default function StructureReview({ job, projects, onEdit }) {
             </p>
           )}
       </div>
-      {["timed_out", "incomplete"].includes(job.result?.ai_review?.status) && (
+      {checkpoint && (
         <div className="review-status-warning" role="status">
-          <strong>AI 复核未完成，请人工核对</strong>
+          <strong>{checkpoint.message}</strong>
+          <ol>
+            {checkpoint.attempts.map((attempt) => (
+              <li key={attempt.attempt}>
+                第 {attempt.attempt} 次：{attempt.issues.join("；")}
+              </li>
+            ))}
+          </ol>
+          {checkpoint.candidate_note && <p>{checkpoint.candidate_note}</p>}
+          {!!checkpoint.adjustments.length && (
+            <>
+              <p>下方平面图包含以下微调，接受后才会用于建模：</p>
+              <ul>
+                {checkpoint.adjustments.map((text, i) => (
+                  <li key={i}>{text}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {!checkpoint.can_continue && (
+            <p>
+              暂时无法建模：{checkpoint.blocking_issues.join("；")}
+              。请先调整平面图，或点击“重新识别”。
+            </p>
+          )}
+        </div>
+      )}
+      {["timed_out", "incomplete", "needs_review"].includes(
+        job.result?.ai_review?.status,
+      ) && (
+        <div className="review-status-warning" role="status">
+          <strong>
+            {job.result?.ai_review?.status === "needs_review"
+              ? "原图对照发现差异，请先检查平面图"
+              : "AI 复核未完成，请人工核对"}
+          </strong>
           <p>{job.result.ai_review.message}</p>
         </div>
       )}
       {data ? (
         <>
-          <div className="structure-pair">
+          {job.result?.source_alignment_url && (
+            <div
+              className="review-view-tabs"
+              role="group"
+              aria-label="户型对照方式"
+            >
+              <button
+                type="button"
+                aria-pressed={comparisonView === "side"}
+                onClick={() => setComparisonView("side")}
+              >
+                并排对照
+              </button>
+              <button
+                type="button"
+                aria-pressed={comparisonView === "overlay"}
+                onClick={() => setComparisonView("overlay")}
+              >
+                原图叠加
+              </button>
+            </div>
+          )}
+          <div className="structure-pair" hidden={comparisonView !== "side"}>
             <figure>
               <figcaption>原始户型图</figcaption>
               <a
@@ -194,6 +259,9 @@ export default function StructureReview({ job, projects, onEdit }) {
               <StructurePlan layout={data} />
             </figure>
           </div>
+          {comparisonView === "overlay" && (
+            <SourceOverlay job={job} layout={data} />
+          )}
           <div className="review-notes">
             {data.rooms.some((room) => room.kind === "balcony") && (
               <details open>
@@ -243,6 +311,51 @@ export default function StructureReview({ job, projects, onEdit }) {
             核对墙体、房间和门窗后，点击“已核对，继续生成”；有偏差可先调整结构。
           </p>
           <div className="review-actions">
+            {!checkpoint &&
+              job.options?.recognition_mode !== "precise" &&
+              projects.health?.capabilities?.includes(
+                "evidence_recognition",
+              ) && (
+                <button
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    setError("");
+                    try {
+                      await projects.retry(job.id, {
+                        recognition_mode: "precise",
+                        reidentify: true,
+                      });
+                    } catch (e) {
+                      setError(e.message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  用精细识别重新读取
+                </button>
+              )}
+            {(checkpoint || job.options?.recognition_mode === "precise") && (
+              <button
+                className="secondary-button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError("");
+                  try {
+                    await projects.retry(job.id, { reidentify: true });
+                  } catch (e) {
+                    setError(e.message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                重新识别
+              </button>
+            )}
             <button
               className="text-button review-cancel"
               disabled={busy}
@@ -256,11 +369,13 @@ export default function StructureReview({ job, projects, onEdit }) {
               onClick={onEdit}
             >
               <PencilRuler size={16} />
-              调整识别结构
+              {checkpoint ? "调整平面图" : "调整识别结构"}
             </button>
             <button
               className="primary-button"
-              disabled={!data || busy}
+              disabled={
+                !data || busy || (checkpoint && !checkpoint.can_continue)
+              }
               onClick={confirm}
             >
               <InlineProgress
@@ -269,7 +384,7 @@ export default function StructureReview({ job, projects, onEdit }) {
                 cancelled={job.status === "cancelled"}
                 fallback={<Check size={16} />}
               />
-              已核对，继续生成
+              {checkpoint ? "接受平面图，继续生成 3D" : "已核对，继续生成"}
             </button>
           </div>
         </>

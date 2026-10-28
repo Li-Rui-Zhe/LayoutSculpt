@@ -24,8 +24,9 @@ try {
   await page.getByRole("button", { name: /使用示例户型/ }).click();
   await expect(page.locator(".upload-drop img")).toBeVisible();
   await page.getByLabel("任务名称").fill("浏览器验收 · 独立测试数据");
-  await page.getByText("高级设置 · 默认已配置", { exact: true }).click();
-  await page.getByRole("checkbox", { name: /先人工核对，再生成三维/ }).check();
+  await page
+    .getByRole("checkbox", { name: "先看平面图，确认后再生成 3D", exact: true })
+    .check();
   await expect(
     page.getByRole("button", { name: "创建并开始生成" }),
   ).toBeEnabled({ timeout: 30000 });

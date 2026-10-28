@@ -29,7 +29,7 @@ export default function ConnectionNotice({ serviceError = "", onRetry }) {
             code: error.code || "unavailable",
             message: error.code
               ? error.message
-              : "暂时无法连接本项目服务，请检查服务后重新检测。",
+              : "暂时无法连接工作台服务，请启动工作台后重新检测。",
           });
       } finally {
         clearTimeout(timeout);
@@ -69,7 +69,8 @@ export default function ConnectionNotice({ serviceError = "", onRetry }) {
         ) : (
           issue.code !== "tasks" && (
             <p>
-              请双击项目里的「启动工作台」后重试。当前页面的编辑内容不会因检测而清空，请勿直接刷新。
+              请双击项目里的「启动工作台」后重试。使用 DeepSeek API
+              也需要工作台运行，以保存任务和生成三维。当前页面的编辑内容会保留，请勿直接刷新。
             </p>
           )
         )}

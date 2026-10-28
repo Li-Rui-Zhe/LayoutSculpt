@@ -537,6 +537,7 @@ class CodexClient:
         *,
         workspace: Path,
         image: Path | None,
+        reference_images: list[Path] | None = None,
         prompt: str,
         instructions: str,
         schema: dict,
@@ -598,11 +599,7 @@ class CodexClient:
                         "threadId": tid,
                         "input": [
                             {"type": "text", "text": prompt},
-                            *(
-                                [{"type": "localImage", "path": str(image)}]
-                                if image
-                                else []
-                            ),
+                            *[{"type": "localImage", "path": str(path)} for path in ([image] if image else []) + list(reference_images or [])],
                         ],
                         **({"effort": reasoning_effort} if reasoning_effort else {}),
                         "outputSchema": strict_output_schema(schema),
@@ -707,6 +704,7 @@ class CodexChatModel(BaseChatModel):
     client: Any = Field(exclude=True)
     workspace: Path
     image: Path | None = None
+    reference_images: list[Path] = Field(default_factory=list)
     instructions: str
     response_schema: dict
     model_name: str | None = None
@@ -727,6 +725,7 @@ class CodexChatModel(BaseChatModel):
         result = await self.client.generate(
             workspace=self.workspace,
             image=self.image,
+            **({"reference_images": self.reference_images} if self.reference_images else {}),
             prompt=prompt,
             instructions=self.instructions,
             schema=self.response_schema,

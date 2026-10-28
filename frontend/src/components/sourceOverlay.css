@@ -1,0 +1,91 @@
+.source-overlay {
+  margin: 24px 0;
+  padding: 18px;
+  border: 1px solid #d8e1d3;
+  border-radius: 12px;
+  background: #fbfcf9;
+  color: #304d3b;
+}
+.structure-pair[hidden] {
+  display: none;
+}
+.review-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+.review-view-tabs button {
+  padding: 9px 15px;
+  border: 1px solid #d4dfcf;
+  border-radius: 7px;
+  color: #405b43;
+  background: #fff;
+}
+.review-view-tabs button[aria-pressed="true"] {
+  background: #eaf2e4;
+  border-color: #63865e;
+  color: #315b37;
+}
+.source-overlay > header {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.source-overlay h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.source-overlay p,
+.source-overlay li {
+  font-size: 13px;
+  line-height: 1.8;
+}
+.source-overlay p {
+  margin: 0;
+}
+.source-overlay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  font-size: 12px;
+}
+.source-overlay-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.source-overlay-controls input[type="range"] {
+  width: 120px;
+  accent-color: #008766;
+}
+.source-overlay-stage {
+  position: relative;
+  margin: 0 auto 14px;
+  max-width: 900px;
+  background: #fff;
+}
+.source-overlay-stage img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.source-overlay-stage svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+@media (max-width: 600px) {
+  .source-overlay {
+    padding: 12px;
+  }
+  .source-overlay-controls {
+    width: 100%;
+  }
+}

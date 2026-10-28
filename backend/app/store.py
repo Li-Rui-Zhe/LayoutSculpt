@@ -245,6 +245,28 @@ class Store:
         finally:
             await db.close()
 
+    async def open_recognition_review(self, job_id, revision, result):
+        db = await self.connect()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            stamp = now()
+            stage = "识别结果需要你确认"
+            cursor = await db.execute(
+                "UPDATE jobs SET status='awaiting_review',stage=?,progress=12,error=NULL,result=?,updated_at=? WHERE id=? AND status='failed' AND updated_at=?",
+                (stage, json.dumps(result, ensure_ascii=False), stamp, job_id, revision),
+            )
+            if not cursor.rowcount:
+                await db.rollback()
+                return False
+            await db.execute("INSERT INTO events(job_id,payload,created_at) VALUES(?,?,?)", (
+                job_id, json.dumps({"job_id": job_id, "status": "awaiting_review", "stage": stage,
+                    "progress": 12, "result": result, "error": None, "agent": None,
+                    "message": result["recognition_review"]["message"]}, ensure_ascii=False), stamp))
+            await db.commit()
+            return True
+        finally:
+            await db.close()
+
     async def recover(self):
         """Requeue interrupted work; the runner verifies and resumes checkpoints."""
         db = await self.connect()

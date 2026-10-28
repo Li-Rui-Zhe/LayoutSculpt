@@ -10,6 +10,7 @@ from typing import Annotated, TypedDict
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, StateGraph
+from PIL import Image
 
 from .ai_cache import StageCache, compact_json, read_metrics, record_metric
 from .ai_contracts import (
@@ -26,6 +27,13 @@ from .modeling import build_model
 from .public_errors import public_message
 from .input_quality import SourceImageRejected
 from .recognition_contract import RecognitionExtraction, validate_recognition
+from .recognition_checkpoint import (
+    RecognitionCheckpoint, checkpoint_candidate, save_checkpoint, validation_summary,
+)
+from .source_evidence import (
+    PixelLayoutExtraction, SourceEvidence, alignment_from_evidence, compare_source,
+    detail_views, image_wall_findings, pixel_wire, update_comparison, validate_evidence,
+)
 from .quality import finish_design, prepare_generated_furnishing
 from .recovery import REVIEW_TIMEOUT_WARNING
 from .resilience import transient_ai_error
@@ -60,6 +68,10 @@ class State(TypedDict, total=False):
     furnishing_status: str
     style_scheme: dict
     render_style: str
+    recognition_review: dict
+    source_alignment: dict
+    source_evidence: dict
+    reidentify_of: str
 
 
 def create_graph(
@@ -82,6 +94,7 @@ def create_graph(
         post_validate=None,
         artifact=None,
         transform=None,
+        reference_images=None,
     ):
         job_id = state["job_id"]
         workspace = settings.workspace(job_id)
@@ -101,6 +114,7 @@ def create_graph(
             "status": "running",
         }
         started_at = time.perf_counter()
+        agent_name = {"source_evidence": "原图定位", "recognition_pixels": "户型识别", "source_audit": "独立复核"}.get(role, role)
         if role == "recognition":
             from .recognition_contract import RecognitionContract
 
@@ -126,7 +140,7 @@ def create_graph(
             elif event["type"] == "analysis_started":
                 await store.update(
                     job_id,
-                    agent=role,
+                    agent=agent_name,
                     message="AI 已接收图片和本阶段要求，正在分析；进度将在阶段校验完成后更新",
                 )
             elif event["type"] == "output_started":
@@ -134,7 +148,7 @@ def create_graph(
                     "first_output_seconds", round(time.perf_counter() - started_at, 3)
                 )
                 await store.update(
-                    job_id, agent=role, message="AI 正在返回分析结果，完成后将自动校验"
+                    job_id, agent=agent_name, message="AI 正在返回分析结果，完成后将自动校验"
                 )
             elif event["type"] == "service_error":
                 diagnostic = {
@@ -149,7 +163,7 @@ def create_graph(
                     notified_recovery.add(notice_key)
                     await store.update(
                         job_id,
-                        agent=role,
+                        agent=agent_name,
                         message="AI 服务正在恢复本次响应，请稍候；已完成步骤保留",
                     )
 
@@ -157,6 +171,7 @@ def create_graph(
             client=client,
             workspace=workspace,
             image=workspace / "source.png",
+            reference_images=reference_images or [],
             instructions=instructions,
             response_schema=response_schema,
             event_callback=on_event,
@@ -173,11 +188,16 @@ def create_graph(
         )
         variables = {
             "task": f"执行项目技能 {skill}，用中文返回符合约定的结构化结果。",
-            "notes": state["options"].get("notes", ""),
+            "notes": "" if role in {"source_evidence", "source_audit"} else state["options"].get("notes", ""),
             "payload": compact_json(payload),
             "repair": "",
         }
         trace["input_chars"] = len(instructions) + len(prompt.format(**variables))
+        cache_runtime = getattr(client, "cache_identity", None)
+        if state.get("reidentify_of") and role in {"recognition", "recognition_pixels", "source_evidence", "source_audit", "review"}:
+            # New user-requested reads get their own cache namespace. A later
+            # continuation of this same job can still reuse its valid stages.
+            cache_runtime = [cache_runtime, state["job_id"]]
         key = cache.key(
             source_sha256=input_digest,
             instructions=instructions,
@@ -186,7 +206,7 @@ def create_graph(
             model=trace["model"],
             effort=trace["reasoning_effort"],
             role=role,
-            runtime=getattr(client, "cache_identity", None),
+            runtime=cache_runtime,
         )
         enabled = (
             settings.ai_cache_enabled
@@ -214,6 +234,8 @@ def create_graph(
             trace.update(status="validated", output_chars=len(output.model_dump_json()))
             return output.model_dump(), trace
 
+        recognition_attempts = []
+        recognition_candidate = None
         try:
             async with (
                 asyncio.timeout(settings.codex_timeout),
@@ -229,7 +251,7 @@ def create_graph(
                         trace["cache_hit"] = True
                         await store.update(
                             job_id,
-                            agent=role,
+                            agent=agent_name,
                             message="复用相同输入的已校验结果，正在完成本次校验",
                         )
                         return save(output)
@@ -259,7 +281,7 @@ def create_graph(
                             delay = 5 if failure["code"] == "rate_limited" else 1
                             await store.update(
                                 job_id,
-                                agent=role,
+                                agent=agent_name,
                                 message=(
                                     "AI 未返回有效结果，正在重新请求一次；已完成步骤保留"
                                     if failure["code"] == "empty_response"
@@ -285,6 +307,12 @@ def create_graph(
                     except Exception as exc:
                         from langchain_core.exceptions import OutputParserException
 
+                        if role in {"recognition", "recognition_pixels"} and isinstance(exc, (ValueError, OutputParserException)) and not isinstance(exc, SourceImageRejected):
+                            recognition_attempts.append({"attempt": attempt + 1, "issues": validation_summary(exc)})
+                            if output is not None:
+                                recognition_candidate = output.model_dump()
+                            if attempt and recognition_candidate is not None:
+                                raise RecognitionCheckpoint(recognition_candidate, recognition_attempts, trace) from exc
                         if (
                             not isinstance(exc, (ValueError, OutputParserException))
                             or attempt
@@ -312,12 +340,24 @@ def create_graph(
                                 "\n待修正结果：\n" + output.model_dump_json()
                             )
                         await store.update(
-                            job_id, message="校验发现问题，正在修正一次", agent=role
+                            job_id, message="校验发现问题，正在修正一次", agent=agent_name
                         )
         except asyncio.CancelledError:
             trace["status"] = "cancelled"
             raise
         except Exception as exc:
+            if (role in {"recognition", "recognition_pixels"} and recognition_candidate is not None
+                    and isinstance(exc, (TimeoutError, CodexError, ConnectionError))
+                    and source_hash(workspace / "source.png") == input_digest):
+                recognition_attempts.append({"attempt": len(recognition_attempts) + 1,
+                    "issues": ["修正请求未能完成，已保留上一次可显示的平面图；请检查连接后重试，或先查看并调整。"]})
+                trace["status"] = "needs_review"
+                trace["failure"] = classify_ai_error(exc)
+                raise RecognitionCheckpoint(recognition_candidate, recognition_attempts, trace) from exc
+            if isinstance(exc, RecognitionCheckpoint):
+                trace["status"] = "needs_review"
+                trace["failure"] = {"code": "invalid_result", "retryable": False}
+                raise
             trace["status"] = "timed_out" if isinstance(exc, TimeoutError) else "failed"
             if isinstance(exc, SourceImageRejected):
                 trace["status"] = "input_rejected"
@@ -329,6 +369,9 @@ def create_graph(
 
                 label = {
                     "recognition": "户型识别",
+                    "recognition_pixels": "房间与门窗识别",
+                    "source_evidence": "原图轮廓定位",
+                    "source_audit": "原图独立复核",
                     "review": "结构复核",
                     "furnishing": "家具规划",
                 }.get(role, "AI 生成")
@@ -341,6 +384,8 @@ def create_graph(
             record_metric(workspace, {k: v for k, v in trace.items() if k != "skills"})
 
     async def recognize(state):
+        if state["options"].get("recognition_mode") == "precise":
+            return await recognize_precise(state)
         await store.update(
             state["job_id"],
             stage="识别户型结构",
@@ -348,15 +393,16 @@ def create_graph(
             agent="户型识别",
             message="正在检查原图可用性，并读取房间、墙体及门窗",
         )
-        extracted, trace = await run_agent(
-            state,
-            "recognition",
-            "floorplan-recognition",
-            RecognitionExtraction,
-            {"task": "依据原图识别实际结构，保持原图朝向、比例和全部可辨认墙体门窗"},
-            validate_recognition,
-            artifact="recognition-wire",
-        )
+        try:
+            extracted, trace = await run_agent(
+                state, "recognition", "floorplan-recognition", RecognitionExtraction,
+                {"task": "依据原图识别实际结构，保持原图朝向、比例和全部可辨认墙体门窗"},
+                validate_recognition, artifact="recognition-wire",
+            )
+        except RecognitionCheckpoint as checkpoint:
+            layout, review = checkpoint_candidate(checkpoint.candidate, checkpoint.attempts)
+            await store.update(state["job_id"], message=review["message"], agent="户型识别")
+            return {"layout": layout, "recognition_review": review, "agents": [checkpoint.trace]}
         workspace = settings.workspace(state["job_id"])
         layout = validate_recognition(RecognitionExtraction.model_validate(extracted)).model_dump()
         (workspace / "recognition.json").write_text(
@@ -373,7 +419,61 @@ def create_graph(
         )
         return {"layout": layout, "agents": [trace]}
 
+    async def recognize_precise(state):
+        workspace = settings.workspace(state["job_id"])
+        source = workspace / "source.png"
+        with Image.open(source) as image:
+            size = image.size
+        await store.update(state["job_id"], stage="定位原图轮廓与墙线", progress=8,
+                           message="先沿真实墙线读取外轮廓、凹口与尺寸，不根据房间名称补墙", agent="原图定位")
+        evidence_data, evidence_trace = await run_agent(
+            state, "source_evidence", "floorplan-source-evidence", SourceEvidence,
+            {"image_size": list(size), "task": "独立读取原图像素证据；当前没有任何候选结构"},
+            lambda output: validate_evidence(output, size),
+        )
+        evidence = SourceEvidence.model_validate(evidence_data)
+        alignment = alignment_from_evidence(evidence, size)
+        alignment["source_sha256"] = source_hash(source)
+        images, views = await asyncio.to_thread(detail_views, source, workspace, evidence)
+        alignment["views"] = views
+        await store.update(state["job_id"], stage="细读房间与门窗", progress=12,
+            message=f"已定位建筑轮廓，结合整图{'和 ' + str(len(images)) + ' 张局部图' if images else ''}读取房间与门窗，再由程序统一换算尺寸", agent="户型识别")
+
+        def meters(output):
+            return validate_recognition(RecognitionExtraction.model_validate(pixel_wire(output, alignment)))
+
+        checkpoint = None
+        try:
+            pixels, trace = await run_agent(
+                state, "recognition_pixels", "floorplan-pixel-recognition", PixelLayoutExtraction,
+                {"image_size": list(size), "source_evidence": evidence_data, "image_views": views,
+                 "meters_per_pixel": alignment["meters_per_pixel"], "task": "固定建筑骨架，再划分净空房间和安装门窗；所有二维点使用整图像素坐标"},
+                meters, artifact="recognition-pixels", reference_images=images,
+            )
+            layout = meters(PixelLayoutExtraction.model_validate(pixels)).model_dump()
+        except RecognitionCheckpoint as failure:
+            wire = pixel_wire(PixelLayoutExtraction.model_validate(failure.candidate), alignment)
+            layout, checkpoint = checkpoint_candidate(wire, failure.attempts)
+            trace = failure.trace
+        if not checkpoint or checkpoint["can_continue"]:
+            alignment = update_comparison(alignment, compare_source(layout, evidence, alignment))
+            alignment["image_findings"] = await asyncio.to_thread(image_wall_findings, source, layout, alignment)
+            alignment["findings"].extend(alignment["image_findings"])
+            (workspace / "recognition.json").write_text(json.dumps(layout, ensure_ascii=False), encoding="utf-8")
+            (workspace / "recognition-meta.json").write_text(json.dumps({"source_sha256": source_hash(source), "structure_hash": structure_hash(layout)}), encoding="utf-8")
+        layout["warnings"] = list(dict.fromkeys(layout["warnings"] + alignment["warnings"]))[:30]
+        (workspace / "source-alignment.json").write_text(json.dumps(alignment, ensure_ascii=False), encoding="utf-8")
+        result = {"layout": layout, "source_alignment": alignment, "source_evidence": evidence_data,
+                  "agents": [evidence_trace, trace]}
+        if checkpoint:
+            result["recognition_review"] = checkpoint
+        elif any(f["blocking"] for f in alignment["findings"]):
+            result["ai_review"] = {"status": "needs_review", "message": "原图证据与当前识别存在差异，请先检查平面图。"}
+        return result
+
     async def review(state):
+        if state.get("source_alignment") and state["options"].get("recognition_mode") == "precise":
+            return await independent_review(state)
         await store.update(
             state["job_id"],
             stage="复核空间关系",
@@ -438,6 +538,43 @@ def create_graph(
                 "summary": patch["summary"],
             },
         }
+
+    async def independent_review(state):
+        workspace = settings.workspace(state["job_id"])
+        size = (state["source_alignment"]["image_width"], state["source_alignment"]["image_height"])
+        await store.update(state["job_id"], stage="独立对照原图", progress=40,
+            message="复核先独立读图，再比较外轮廓、卧室数量与房间位置；不会把几何通过当作还原准确", agent="原图复核")
+        try:
+            views = state["source_alignment"].get("views", [])
+            images = [workspace / f"recognition-detail-{i + 1}.png" for i in range(len(views))]
+            if not all(path.is_file() for path in images):
+                views, images = [], []
+            async with asyncio.timeout(min(settings.review_timeout, settings.codex_timeout)):
+                audit_data, trace = await run_agent(
+                    state, "source_audit", "floorplan-source-evidence", SourceEvidence,
+                    {"image_size": list(size), "image_views": views, "task": "独立读取原图像素证据；不参考之前的识别结果或结论。第一张是整图，局部图按 image_views 对应裁切矩形，局部点需加左上角回到整图。所有输出仍用整图像素坐标。"},
+                    lambda output: validate_evidence(output, size), reference_images=images,
+                )
+            audit = SourceEvidence.model_validate(audit_data)
+            alignment = update_comparison(state["source_alignment"], compare_source(state["layout"], audit, state["source_alignment"]), independent=True)
+            alignment["findings"].extend(alignment.get("image_findings", []))
+            audit_scale = alignment_from_evidence(audit, size)
+            if audit.dimensions and abs(audit_scale["meters_per_pixel"] / alignment["meters_per_pixel"] - 1) > 0.12:
+                alignment["findings"].append({"code": "dimension_disagreement", "message": "两次独立读图得到的尺寸比例不一致，请先核对尺寸。", "blocking": True})
+            alignment["audit_outline"] = audit.outline_px
+            issues = [f["message"] for f in alignment["findings"]]
+            needs_confirmation = any(f["blocking"] for f in alignment["findings"])
+            report = {"status": "needs_review" if needs_confirmation else "completed", "method": "independent_source_comparison",
+                      "summary": "；".join(issues) if issues else "已完成独立读图对照，未发现达到提示阈值的结构差异；仍建议查看原图叠加结果。"}
+            if needs_confirmation:
+                report["message"] = "独立读图与当前结果存在差异，请先检查平面图，再决定是否继续。"
+            agents = [trace]
+        except (TimeoutError, ValueError, CodexError, ConnectionError, SourceImageRejected):
+            alignment = state["source_alignment"]
+            report = {"status": "incomplete", "method": "independent_source_comparison", "message": "独立读图复核未完成，识别结果已保留，请先查看平面图后继续。"}
+            agents = []
+        (workspace / "source-alignment.json").write_text(json.dumps(alignment, ensure_ascii=False), encoding="utf-8")
+        return {"source_alignment": alignment, "ai_review": report, "agents": agents}
 
     async def furnish(state):
         await store.update(
@@ -587,6 +724,8 @@ def create_graph(
             workspace / "source.png"
         ):
             raise CodexError("原图在处理期间发生变化，请重新识别")
+        if state.get("recognition_review"):
+            return save_checkpoint(state, workspace, read_metrics(workspace))
         layout = Layout.model_validate(state["layout"])
         validate_generated_structure(layout)
         document = {**layout.model_dump(), "furniture": [], "furniture_notes": []}
@@ -617,6 +756,7 @@ def create_graph(
                 ),
                 "revision": structure_hash(layout),
                 "ai_review": state.get("ai_review", {"status": "not_requested"}),
+                **({"source_alignment_url": f"/api/jobs/{state['job_id']}/artifacts/source-alignment.json"} if state.get("source_alignment") else {}),
                 "pipeline_metrics": read_metrics(workspace),
                 "recovered_structure_of": state.get("recovered_structure_of"),
                 "layout_url": f"/api/jobs/{state['job_id']}/artifacts/structure.json",
@@ -733,6 +873,8 @@ def create_graph(
             "model_url": base + "/model.glb",
             "layout_url": base + "/layout.json",
             "source_url": base + "/source.png",
+            **({"source_alignment_url": base + "/source-alignment.json"} if state.get("source_alignment") else {}),
+            "recognition_mode": state["options"].get("recognition_mode", "fast"),
             "agents": state.get("agents", []),
             "ai_review": state.get("ai_review", {"status": "not_requested"}),
             "pipeline_metrics": read_metrics(workspace),
@@ -743,6 +885,7 @@ def create_graph(
             "edited_of": state.get("edited_of"),
             "refine_of": state.get("refine_of"),
             "restructure_of": state.get("restructure_of"),
+            "reidentify_of": state.get("reidentify_of"),
             "design_mode": "manual"
             if state.get("edited_of") or state.get("preserve_design")
             else "automatic",
@@ -832,6 +975,7 @@ def create_graph(
     graph.add_conditional_edges(
         "recognize",
         lambda state: (
+            "prepare_review" if state.get("recognition_review") else
             "review" if state["options"]["collaboration"] else "prepare_review"
         ),
     )
@@ -839,7 +983,8 @@ def create_graph(
     graph.add_conditional_edges("prepare_review", lambda state: (
         "preview" if state["options"].get("review_mode") == "preview"
         and not state.get("recovered_structure_of")
-        and state.get("ai_review", {}).get("status") not in {"timed_out", "incomplete"}
+        and not state.get("recognition_review")
+        and state.get("ai_review", {}).get("status") not in {"timed_out", "incomplete", "needs_review"}
         else END
     ))
     graph.add_edge("preview", "furnish")
@@ -891,6 +1036,8 @@ class JobRunner:
                     if seed.get("edited_of")
                     else "对照原图复核结构"
                     if seed.get("restructure_of")
+                    else "重新读取原图"
+                    if seed.get("reidentify_of")
                     else "复用原布局，准备更新家具"
                     if seed
                     else "准备识别",
@@ -951,12 +1098,12 @@ class JobRunner:
                     status="awaiting_review"
                     if result.get("awaiting_review")
                     else "succeeded",
-                    stage="等待确认户型结构"
+                    stage="识别结果需要你确认" if result.get("recognition_review") and result.get("awaiting_review") else "等待确认户型结构"
                     if result.get("awaiting_review")
                     else "生成完成",
-                    progress=45 if result.get("awaiting_review") else 100,
+                    progress=(12 if result.get("recognition_review") else 45) if result.get("awaiting_review") else 100,
                     result=result["result"],
-                    message="请对照原图确认墙体、门窗与空间，再继续生成三维"
+                    message=result["recognition_review"]["message"] if result.get("recognition_review") and result.get("awaiting_review") else "请对照原图确认墙体、门窗与空间，再继续生成三维"
                     if result.get("awaiting_review")
                     else "三维户型已生成，可以在工作台中查看",
                 )

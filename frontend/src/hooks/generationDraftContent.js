@@ -13,6 +13,7 @@ export function generationDraftContent(value = {}) {
     },
     collaboration: value.collaboration !== false,
     manualReview: value.manualReview === true,
+    recognitionMode: value.recognitionMode === "fast" ? "fast" : "precise",
     furnitureMode: text(value.furnitureMode) || "library",
   };
 }
@@ -29,6 +30,7 @@ export function hasGenerationDraft(value) {
     d.finishes.floor ||
     !d.collaboration ||
     d.manualReview ||
+    d.recognitionMode !== "precise" ||
     d.furnitureMode !== "library",
   );
 }

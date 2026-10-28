@@ -39,6 +39,7 @@ from .library import LibraryService, install_library_routes
 from .local_review import install_local_review_routes
 from .project_transfer import install_transfer_routes
 from .recovery import REVIEW_TIMEOUT_WARNING, recoverable_recognition
+from .recognition_checkpoint import checkpoint_candidate, has_saved_candidate, readable_issue, save_checkpoint, saved_candidate
 from .request_limits import RequestLimits
 from .schemas import (
     ContinueRequest,
@@ -62,6 +63,7 @@ ALLOWED_ORIGINS = {
     "http://localhost:8000",
 }
 ARTIFACTS = {
+    "source-alignment.json",
     "pipeline-metrics.json",
     "source.png",
     "model.glb",
@@ -249,7 +251,9 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "edited_of": origin.get("edited_of"),
             "refine_of": origin.get("refine_of"),
             "restructure_of": origin.get("restructure_of"),
+            "reidentify_of": origin.get("reidentify_of"),
             "can_recover_structure": recoverable_recognition(settings, job) is not None,
+            "can_review_recognition": job["status"] == "failed" and has_saved_candidate(settings.workspace(job["id"])),
         }
 
     def read_furniture_catalog():
@@ -294,7 +298,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         return {
             "status": "ok",
             "api_version": "2.1.0",
-            "capabilities": ["custom_style", "project_restore", "atomic_creation", "surface_model_selection", "ai_provider_selection", "architecture_openings"],
+            "capabilities": ["custom_style", "project_restore", "atomic_creation", "surface_model_selection", "ai_provider_selection", "architecture_openings", "evidence_recognition"],
             "codex": {
                 "available": bool(
                     shutil.which(getattr(codex.local, "command", settings.codex_command))
@@ -414,6 +418,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         notes: str = Form(""),
         collaboration: bool = Form(True),
         review_mode: str = Form("manual"),
+        recognition_mode: str = Form("fast"),
         model: str = Form(""),
         reasoning_effort: str = Form(""),
         furniture_mode: str = Form("library"),
@@ -427,6 +432,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 notes=notes,
                 collaboration=collaboration,
                 review_mode=review_mode,
+                recognition_mode=recognition_mode,
                 model=model.strip() or None,
                 reasoning_effort=reasoning_effort.strip() or None,
                 furniture_mode=furniture_mode,
@@ -514,6 +520,9 @@ def create_app(settings=None, *, client=None, model_builder=None):
             seed = json.loads(
                 (workspace / "review-seed.json").read_text(encoding="utf-8")
             )
+            if seed.get("source_sha256") and seed["source_sha256"] != source_hash(workspace / "source.png"):
+                raise HTTPException(409, "原图已变化，请重新识别后再确认")
+            seed.pop("recognition_review", None)
             seed.update(
                 layout=document.layout.model_dump(),
                 awaiting_review=False,
@@ -542,6 +551,40 @@ def create_app(settings=None, *, client=None, model_builder=None):
             if pending:
                 await asyncio.gather(pending, return_exceptions=True)
             request.app.state.runner.schedule(job_id.hex)
+            return public(await store.get(job_id.hex))
+
+    @app.post("/api/jobs/{job_id}/recognition-review")
+    async def open_recognition_review(job_id: UUID):
+        async with confirmation_lock:
+            job = await require_job(job_id.hex)
+            if job["status"] == "awaiting_review":
+                return public(job)
+            if job["status"] != "failed":
+                raise HTTPException(409, "此任务当前无需恢复识别平面图")
+            workspace = settings.workspace(job_id.hex)
+            try:
+                detail, wire = saved_candidate(workspace)
+                # Old records only retain the first attempt's typed candidate.
+                import re
+                match = re.search(r"Value error, (.*?) \[type=", detail)
+                issue = readable_issue(public_message(match.group(1) if match else "识别结构未通过校验"))
+                attempts = [{"attempt": 1, "issues": [issue]}]
+                from .ai_cache import read_metrics
+                metrics = read_metrics(workspace)
+                recognition = next((m for m in reversed(metrics.get("stages", [])) if m.get("role") == "recognition"), {})
+                if recognition.get("attempts", 1) >= 2:
+                    attempts.append({"attempt": 2, "issues": ["后续修正未得到可用结果；旧任务未保存详细原因"]})
+                layout, review = checkpoint_candidate(wire, attempts)
+                review["candidate_note"] = "这是该任务保存的第 1 次识别结果，供你对照原图检查。"
+                state = {"job_id": job_id.hex, "options": job["options"], "layout": layout,
+                         "recognition_review": review, "agents": [],
+                         "source_sha256": source_hash(workspace / "source.png")}
+                checkpoint = save_checkpoint(state, workspace, metrics)
+            except (OSError, ValueError, TypeError, KeyError):
+                raise HTTPException(409, "没有可显示的完整识别结果，请重新识别；原图仍保留") from None
+            claimed = await store.open_recognition_review(job_id.hex, job["updated_at"], checkpoint["result"])
+            if not claimed:
+                raise HTTPException(409, "任务状态已变化，请刷新后重试")
             return public(await store.get(job_id.hex))
 
     @app.post("/api/jobs/{job_id}/continue")
@@ -573,7 +616,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         changes: RetryRequest | None = Body(default=None),
     ):
         previous = await require_job(job_id.hex)
-        if previous["status"] not in {"failed", "cancelled"}:
+        if previous["status"] not in {"failed", "cancelled", "awaiting_review"}:
             raise HTTPException(409, "仅失败或取消的任务可以重试")
         source = settings.workspace(job_id.hex) / "source.png"
         if not source.exists():
@@ -616,7 +659,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             return public(await store.get(new_id))
         if changes:
             overrides = changes.model_dump(
-                exclude_unset=True, exclude={"reuse_structure"}
+                exclude_unset=True, exclude={"reuse_structure", "reidentify"}
             )
             if (
                 "model" in overrides
@@ -643,7 +686,9 @@ def create_app(settings=None, *, client=None, model_builder=None):
         workspace = settings.workspace(new_id)
         workspace.mkdir(parents=True)
         await asyncio.to_thread(shutil.copyfile, source, workspace / "source.png")
-        if seed_path.exists():
+        if changes and changes.reidentify:
+            (workspace / "rebuild-seed.json").write_text(json.dumps({"reidentify_of": previous["id"]}), encoding="utf-8")
+        elif seed_path.exists():
             await asyncio.to_thread(
                 shutil.copyfile, seed_path, workspace / "rebuild-seed.json"
             )

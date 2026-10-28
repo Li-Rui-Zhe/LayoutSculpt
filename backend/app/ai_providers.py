@@ -181,6 +181,7 @@ class DeepSeekClient:
         self,
         *,
         image,
+        reference_images=None,
         prompt,
         instructions,
         schema,
@@ -200,20 +201,21 @@ class DeepSeekClient:
         if reasoning_effort and reasoning_effort not in item["efforts"]:
             raise CodexError("所选 DeepSeek 模型不支持该推理强度，请重新选择。")
         content = prompt
-        if image:
-            data = await asyncio.to_thread(image.read_bytes)
-            if len(data) > 20 * 1024 * 1024:
-                raise CodexError("参考图片过大，请缩小后重试。")
-            content = [
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": "data:image/png;base64,"
-                        + base64.b64encode(data).decode("ascii")
-                    },
-                },
-            ]
+        images = ([image] if image else []) + list(reference_images or [])
+        if images:
+            if len(images) > 4 or not item["supports_image"]:
+                raise CodexError("本阶段需要支持图片的模型，且最多使用整图与三张局部图。")
+            content = [{"type": "text", "text": prompt}]
+            total = 0
+            for path in images:
+                data = await asyncio.to_thread(path.read_bytes)
+                total += len(data)
+                if len(data) > 20 * 1024 * 1024 or total > 24 * 1024 * 1024:
+                    raise CodexError("参考图片合计过大，请缩小后重试。")
+                content.append({"type": "image_url", "image_url": {
+                    "url": "data:image/png;base64," + base64.b64encode(data).decode("ascii"),
+                    "detail": "original",
+                }})
         body = {
             "model": model[len(DEEPSEEK_PREFIX) :],
             "messages": [

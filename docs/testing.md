@@ -24,6 +24,8 @@ pnpm test:prelaunch
 
 ## 专项浏览器检查
 
+精细识别专项运行 `node scripts/prelaunch.mjs --source-evidence`，覆盖独立读图分歧、统一坐标叠加、透明度与房间名称、移动端和刷新恢复、人工确认后的真实 GLB，以及旧服务的能力提示。坐标、图像证据和传输顺序专项见 `backend/tests/test_source_evidence.py` 与 `frontend/tests/source-alignment.test.js`。固定响应测试和单张真实图对照均不能代替多样本准确率评估。
+
 保留在 `scripts/review/`，避免与日常启动脚本混放。完整验收使用 `pnpm test:prelaunch`；只复验渐进生成与同任务继续可运行 `node scripts/prelaunch.mjs --progressive`，同样使用隔离服务和空闲端口。
 
 部分旧专项脚本需要已有任务及运行中的本机服务，默认端口可能为 5173、8000 或 8011，请先核对脚本参数及 `REVIEW_URL` 支持情况；不要为运行测试结束其他项目的进程。
@@ -41,6 +43,10 @@ node scripts/review/verify_delivery_notice.mjs <成功任务ID>
 `pnpm test:visual <model-url> [output-dir]` 直接加载开发模块拍摄白天、夜晚、俯视和完整墙体，需要 `pnpm dev`，不能仅用构建后的静态页面代替。
 
 截图、报告、数据库及模型输出全部保存在被忽略的 `data/`，不加入公开仓库。
+
+工作台连接专项运行 `node scripts/review/verify_workbench_connection.mjs`：覆盖加载与离线状态、DeepSeek/Codex 来源更新、单个任务或项目信息接口失败、慢请求超时、重新检测、网络恢复与页面聚焦。全部 API 使用隔离响应，检查表单内容保留、无 Codex 运行时请求和无真实写入。`backend/tests/test_ai_connections.py` 同时验证选择 DeepSeek 后，健康检查、设置读取与运行时检查不会启动或读取本机 Codex 模型。
+
+识别卡点专项运行 `node scripts/prelaunch.mjs --recognition-checkpoint`：使用隔离数据、确定性 AI 响应和真实 GLB 建模，检查显眼的平面图开关、连续两次失败后的原因与候选展示、手机布局、刷新恢复、平面编辑入口、主动重试保留原版本，以及用户接受后的实际建模。`backend/tests/test_recognition_checkpoint.py` 另覆盖小幅修正、凹角墙体平移、不可建模结果不绕过校验、旧任务恢复不调用 AI 与确认版本冲突。
 
 建筑构件专项运行 `node scripts/review/verify_architecture_library.mjs`：覆盖五类 17 个样板、分类与搜索、墙段适配、门窗新增与替换、撤销、重叠拦截、旧后端提示、手机布局及墙面立体材质预览。脚本模拟任务和草稿接口，使用正式 GLB 建模器生成并校验隔离模型，不修改真实任务。`backend/tests/test_opening_variants.py` 另校验门窗样式导出、实际截面及前后端部件几何的一致性。
 

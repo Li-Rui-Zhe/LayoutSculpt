@@ -386,6 +386,7 @@ class JobOptions(StrictModel):
     notes: str = Field(default="", max_length=3000)
     collaboration: bool = True
     review_mode: Literal["manual", "preview"] = "manual"
+    recognition_mode: Literal["fast", "precise"] = "fast"
     model: str | None = Field(default=None, min_length=1, max_length=160)
     reasoning_effort: str | None = Field(default=None, min_length=1, max_length=40)
     furniture_mode: Literal["library", "basic"] = "library"
@@ -407,14 +408,18 @@ class ContinueRequest(StrictModel):
 
 
 class RetryRequest(StrictModel):
+    reidentify: bool = False
+    recognition_mode: Literal["fast", "precise"] = "fast"
     model: str | None = Field(default=None, min_length=1, max_length=160)
     reasoning_effort: str | None = Field(default=None, min_length=1, max_length=40)
     reuse_structure: bool = False
 
     @model_validator(mode="after")
     def recovery_keeps_original_model(self):
+        if self.reuse_structure and self.reidentify:
+            raise ValueError("重新识别与复用原结构不能同时选择")
         if self.reuse_structure and (
-            {"model", "reasoning_effort"} & self.model_fields_set
+            {"model", "reasoning_effort", "recognition_mode"} & self.model_fields_set
         ):
             raise ValueError("恢复识别结构无需更换模型；如需重新识别，请使用普通重试")
         return self

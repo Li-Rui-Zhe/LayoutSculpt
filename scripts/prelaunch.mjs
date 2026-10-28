@@ -19,12 +19,18 @@ const port = socket.address().port;
 await new Promise((resolve) => socket.close(resolve));
 const base = `http://127.0.0.1:${port}`;
 const testData = path.join(root, "data", "prelaunch-tests", randomUUID());
+const recognitionCheckpoint = process.argv.includes("--recognition-checkpoint");
+const sourceEvidence = process.argv.includes("--source-evidence");
 const child = spawn(
   findPython(root),
   [
     "-m",
     "uvicorn",
-    "backend.tests.prelaunch_app:app",
+    sourceEvidence
+      ? "backend.tests.source_evidence_app:app"
+      : recognitionCheckpoint
+        ? "backend.tests.recognition_checkpoint_app:app"
+        : "backend.tests.prelaunch_app:app",
     "--host",
     "127.0.0.1",
     "--port",
@@ -62,11 +68,17 @@ try {
   }
   if (!ready) throw new Error(`验收服务启动超时：${serverLog}`);
   process.env.REVIEW_URL = base;
-  if (!process.argv.includes("--progressive")) {
-    await import("./review/prelaunch_review.mjs");
-    await import("./review/resilience_review.mjs");
+  if (sourceEvidence) {
+    await import("./review/verify_source_evidence.mjs");
+  } else if (recognitionCheckpoint) {
+    await import("./review/verify_recognition_checkpoint.mjs");
+  } else {
+    if (!process.argv.includes("--progressive")) {
+      await import("./review/prelaunch_review.mjs");
+      await import("./review/resilience_review.mjs");
+    }
+    await import("./review/progressive_review.mjs");
   }
-  await import("./review/progressive_review.mjs");
 } finally {
   if (process.platform === "win32") {
     try {

@@ -75,6 +75,7 @@ export default function GenerationForm({
   const [notes, setNotes] = useState("");
   const [collaboration, setCollaboration] = useState(true);
   const [manualReview, setManualReview] = useState(false);
+  const [recognitionMode, setRecognitionMode] = useState("precise");
   const [furnitureMode, setFurnitureMode] = useState("library");
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -96,6 +97,7 @@ export default function GenerationForm({
     setFinishes(d.finishes);
     setCollaboration(d.collaboration);
     setManualReview(d.manualReview);
+    setRecognitionMode(d.recognitionMode);
     setFurnitureMode(d.furnitureMode);
   };
   const currentDraft = {
@@ -107,6 +109,7 @@ export default function GenerationForm({
     finishes,
     collaboration,
     manualReview,
+    recognitionMode,
     furnitureMode,
   };
   const hasDraft = hasGenerationDraft(currentDraft);
@@ -157,6 +160,7 @@ export default function GenerationForm({
             finishes: { walls: o.wall_material, floor: o.floor_material },
             collaboration: o.collaboration,
             manualReview: o.review_mode === "manual",
+            recognitionMode: o.recognition_mode || "fast",
             furnitureMode: o.furniture_mode,
           });
         }
@@ -181,6 +185,7 @@ export default function GenerationForm({
         finishes,
         collaboration,
         manualReview,
+        recognitionMode,
         furnitureMode,
       });
       return (
@@ -212,6 +217,7 @@ export default function GenerationForm({
     finishes,
     collaboration,
     manualReview,
+    recognitionMode,
     furnitureMode,
   ]);
   useEffect(
@@ -224,6 +230,10 @@ export default function GenerationForm({
     style === "custom" &&
     projects.health &&
     !projects.health.capabilities?.includes("custom_style");
+  const preciseUnsupported =
+    recognitionMode === "precise" &&
+    projects.health &&
+    !projects.health.capabilities?.includes("evidence_recognition");
   useEffect(() => {
     if (!file) {
       setImage("");
@@ -250,6 +260,12 @@ export default function GenerationForm({
   const submit = async (event) => {
     event.preventDefault();
     if (!file || !models.ready || busy || submitLock.current) return;
+    if (preciseUnsupported) {
+      setError(
+        "精细识别需要更新并重启工作台服务。填写内容已保留，也可以选择快速识别继续。",
+      );
+      return;
+    }
     if (styleUnsupported) {
       setError(
         "当前后端尚未更新，请重启本项目服务后再使用自定义风格；填写内容已保留。",
@@ -274,6 +290,7 @@ export default function GenerationForm({
         notes,
         collaboration: String(collaboration),
         review_mode: manualReview ? "manual" : "preview",
+        recognition_mode: recognitionMode,
         model: models.model,
         reasoning_effort: models.effort,
         furniture_mode: furnitureMode,
@@ -299,14 +316,16 @@ export default function GenerationForm({
       ? "正在检查 AI 接入，请稍候"
       : !models.ready
         ? "请在高级设置中选择可用的识图模型"
-        : styleUnsupported
-          ? "当前服务暂不支持自定义风格，请更新服务"
-          : style === "custom" && !styleDescription.trim()
-            ? "描述一下你想要的空间风格"
-            : furnitureMode === "library" &&
-                !projects.health?.furniture_library?.available
-              ? "精细家具库尚未就绪，请检查服务或在高级设置中更换方案"
-              : "准备就绪，生成后可继续调整设计";
+        : preciseUnsupported
+          ? "精细识别需要更新工作台，暂可选择快速识别"
+          : styleUnsupported
+            ? "当前服务暂不支持自定义风格，请更新服务"
+            : style === "custom" && !styleDescription.trim()
+              ? "描述一下你想要的空间风格"
+              : furnitureMode === "library" &&
+                  !projects.health?.furniture_library?.available
+                ? "精细家具库尚未就绪，请检查服务或在高级设置中更换方案"
+                : "准备就绪，生成后可继续调整设计";
   return (
     <div className="new-task-page">
       {draftError && <p role="alert">{draftError}</p>}
@@ -802,17 +821,6 @@ export default function GenerationForm({
                 </span>
                 <ShieldCheck size={18} />
               </label>
-              <label className="review-option">
-                <input
-                  type="checkbox"
-                  checked={manualReview}
-                  onChange={(e) => setManualReview(e.target.checked)}
-                />
-                <span>
-                  <b>先人工核对，再生成三维</b>
-                  <small>默认先展示三维初稿；初稿不代表已人工核对。</small>
-                </span>
-              </label>
             </details>
             <div
               className="model-capability"
@@ -838,6 +846,58 @@ export default function GenerationForm({
               >
                 {models.ready ? "更改" : "设置接入"}
               </button>
+            </div>
+            <fieldset className="recognition-mode-options">
+              <legend>识别方式</legend>
+              {[
+                ["fast", "快速识别", "整图识别，优先减少等待。"],
+                ["precise", "精细识别", "先定位墙线，再按疑点细读，耗时较长。"],
+              ].map(([id, title, description]) => (
+                <label key={id} data-selected={recognitionMode === id}>
+                  <input
+                    type="radio"
+                    name="recognition-mode"
+                    value={id}
+                    checked={recognitionMode === id}
+                    onChange={() => setRecognitionMode(id)}
+                  />
+                  <span>
+                    <b>{title}</b>
+                    <small>{description}</small>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            {preciseUnsupported && (
+              <p className="field-note" role="status">
+                当前运行的工作台尚未支持精细识别，请更新并重启服务，或先选择快速识别。
+              </p>
+            )}
+            <div
+              className="generation-review-choice"
+              data-selected={manualReview}
+            >
+              <label>
+                <input
+                  type="checkbox"
+                  checked={manualReview}
+                  onChange={(e) => setManualReview(e.target.checked)}
+                  aria-labelledby="review-before-3d-title"
+                  aria-describedby="review-before-3d-help"
+                />
+                <span>
+                  <b id="review-before-3d-title">先看平面图，确认后再生成 3D</b>
+                  <small id="review-before-3d-help">
+                    AI
+                    识别后先停下来，你可以对照原图检查、调整墙体、门窗和房间，确认满意后再继续。
+                  </small>
+                </span>
+              </label>
+              <p aria-live="polite">
+                {manualReview
+                  ? "已开启：先检查平面图，由你决定何时生成 3D。"
+                  : "不勾选则自动生成 3D，无需中途确认。"}
+              </p>
             </div>
           </section>
         </fieldset>
@@ -878,6 +938,7 @@ export default function GenerationForm({
               type="submit"
               disabled={
                 busy ||
+                preciseUnsupported ||
                 styleUnsupported ||
                 !file ||
                 !models.ready ||

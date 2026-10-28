@@ -125,7 +125,7 @@ export default function App() {
       <BuildNotice />
       <ConnectionNotice
         serviceError={projects.error}
-        onRetry={projects.refresh}
+        onRetry={projects.recheck}
       />
       <header className="factory-header">
         <a
@@ -158,17 +158,22 @@ export default function App() {
           <button className="text-button" onClick={() => setHelpOpen(true)}>
             使用帮助
           </button>
-          <span className={`connection ${projects.health ? "online" : ""}`}>
+          <span
+            className={`connection ${projects.health ? "online" : ""}`}
+            title="工作台负责保存任务和生成三维，使用 DeepSeek API 也需要工作台运行。"
+          >
             <i />
             {projects.health
               ? projects.health.ai?.provider === "deepseek"
                 ? projects.health.ai.deepseek_configured
-                  ? "服务在线 · DeepSeek 已配置"
-                  : "服务在线 · DeepSeek 待配置"
+                  ? "工作台在线 · DeepSeek 已配置"
+                  : "工作台在线 · DeepSeek 待配置"
                 : projects.health.codex?.connected
-                  ? "服务在线 · AI 已连接"
-                  : "服务在线 · AI 待连接"
-              : "正在连接本机服务"}
+                  ? "工作台在线 · Codex 已连接"
+                  : "工作台在线 · Codex 待连接"
+              : projects.error
+                ? "工作台未连接"
+                : "正在连接工作台"}
           </span>
           {!!(activeCount || reviewCount) && (
             <span className="local-tag">

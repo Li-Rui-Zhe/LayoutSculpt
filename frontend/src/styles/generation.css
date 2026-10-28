@@ -443,6 +443,104 @@
   border-radius: 0;
   box-shadow: none;
 }
+.result-first .new-task-page .generation-review-choice {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #bdcdb9;
+  border-radius: 10px;
+  background: #f3f7ef;
+}
+.result-first .new-task-page .recognition-mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  border: 0;
+  margin: 18px 0 0;
+  padding: 0;
+  min-width: 0;
+}
+.result-first .new-task-page .recognition-mode-options legend {
+  margin-bottom: 10px;
+  color: #344f40;
+  font-size: 13px;
+}
+.result-first .new-task-page .recognition-mode-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid #dce3d8;
+  border-radius: 9px;
+  cursor: pointer;
+  background: #fafbf8;
+}
+.result-first
+  .new-task-page
+  .recognition-mode-options
+  label[data-selected="true"] {
+  border-color: #60835c;
+  background: #edf4e8;
+}
+.result-first .new-task-page .recognition-mode-options input {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: #315c45;
+}
+.result-first .new-task-page .recognition-mode-options b {
+  display: block;
+  color: #31513b;
+  font-size: 13px;
+}
+.result-first .new-task-page .recognition-mode-options small {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #66785f;
+}
+.result-first .new-task-page .generation-review-choice[data-selected="true"] {
+  border-color: #60835c;
+  background: #eaf2e5;
+}
+.result-first .new-task-page .generation-review-choice:focus-within {
+  outline: 2px solid #60835c;
+  outline-offset: 3px;
+}
+.result-first .new-task-page .generation-review-choice label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+}
+.result-first .new-task-page .generation-review-choice input {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: #315c45;
+}
+.result-first .new-task-page .generation-review-choice b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: #31513b;
+}
+.result-first .new-task-page .generation-review-choice small {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #66785f;
+}
+.result-first .new-task-page .generation-review-choice p {
+  margin: 10px 0 0 30px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #52694d;
+}
 .result-first .new-task-page .creation-readiness {
   display: flex;
   align-items: center;

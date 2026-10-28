@@ -1013,18 +1013,25 @@ export default function TaskWorkspace({
                 <p>仅展示当前任务的输入原图，作为结构识别与复核依据。</p>
               </div>
             )}
-            {tab === "activity" && job && (
-              job.result?.failure?.code === "input_image_rejected" ? (
+            {tab === "activity" &&
+              job &&
+              (job.result?.failure?.code === "input_image_rejected" ? (
                 <section className="input-rejected" aria-label="请更换户型图">
                   <img src={job.source_url} alt="本次上传的原图" />
                   <h2>换一张更合适的户型图</h2>
                   <p>{job.error}</p>
                   <p>{job.result.input_check?.evidence}</p>
-                  <button className="primary-button" onClick={() => onCreate(job)}>更换图片</button>
+                  <button
+                    className="primary-button"
+                    onClick={() => onCreate(job)}
+                  >
+                    更换图片
+                  </button>
                   <small>风格与设计要求会保留，无需重新填写。</small>
                 </section>
-              ) : <Activity job={job} events={projects.events} />
-            )}
+              ) : (
+                <Activity job={job} events={projects.events} />
+              ))}
             {tab === "assets" && (
               <Deliverables
                 job={job}
@@ -1541,6 +1548,25 @@ export default function TaskWorkspace({
           </div>
           {job && job.status !== "succeeded" && (
             <div className="inspector-footer">
+              {job.can_review_recognition && (
+                <button
+                  className="primary-button full-width"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    setActionError("");
+                    try {
+                      await projects.reviewRecognition(job.id);
+                    } catch (error) {
+                      setActionError(error.message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  查看已识别的平面图
+                </button>
+              )}
               {job.can_recover_structure && (
                 <>
                   <p className="field-note">
@@ -1562,7 +1588,9 @@ export default function TaskWorkspace({
                 </p>
               )}
               {job.result?.failure?.code === "input_image_rejected" ? (
-                <p className="field-note">原图已保留。请在左侧更换图片后继续，当前图片不会继续建模。</p>
+                <p className="field-note">
+                  原图已保留。请在左侧更换图片后继续，当前图片不会继续建模。
+                </p>
               ) : !terminal(job.status) ? (
                 <button
                   className="secondary-button full-width"

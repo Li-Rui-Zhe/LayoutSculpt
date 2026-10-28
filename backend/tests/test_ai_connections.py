@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 from dataclasses import replace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -149,6 +150,26 @@ def test_settings_reopen_shows_saved_model_and_masked_key_without_network(tmp_pa
         state = client.get("/api/ai/settings").json()
         assert state["deepseek"]["default_model"] == "text-only"
         assert state["deepseek"]["key_hint"] == "•••• " + KEY[-4:]
+
+
+def test_deepseek_workbench_checks_never_start_or_query_local_codex(tmp_path):
+    app, local, calls = connection_app(tmp_path)
+    local.alive = False
+    local.ensure_started = AsyncMock(side_effect=AssertionError("unexpected Codex startup"))
+    local.list_models = AsyncMock(side_effect=AssertionError("unexpected Codex models"))
+    with TestClient(app) as client:
+        enable(client)
+        before = len(calls)
+        assert client.get("/api/client-access").status_code == 200
+        health = client.get("/api/health").json()
+        assert health["ai"] == {"provider": "deepseek", "deepseek_configured": True}
+        assert health["codex"]["connected"] is False
+        assert client.get("/api/ai/settings").json()["default_provider"] == "deepseek"
+        assert len(calls) == before
+        assert client.post("/api/runtime/check").status_code == 200
+        assert client.get("/api/models").json()["provider"] == "deepseek"
+        local.ensure_started.assert_not_awaited()
+        local.list_models.assert_not_awaited()
 
 
 def test_masked_key_tracks_replacement_and_removal(tmp_path):

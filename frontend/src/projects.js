@@ -5,7 +5,11 @@ export function projectGroups(jobs) {
     while (job && !visited.has(job.id)) {
       visited.add(job.id);
       const parent = byId.get(
-        job.edited_of || job.refine_of || job.restructure_of || job.rebuild_of,
+        job.edited_of ||
+          job.refine_of ||
+          job.restructure_of ||
+          job.reidentify_of ||
+          job.rebuild_of,
       );
       if (!parent) return job;
       job = parent;
