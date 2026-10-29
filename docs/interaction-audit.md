@@ -1,4 +1,10 @@
+[项目首页](../README.md) / [文档中心](README.md)
+
 # 交互与跳转检查
+
+<sub>LayoutSculpt / 更新记录</sub>
+
+> 历史记录：保留当时的实现与验收事实；当前使用方式请从文档中心开始。
 
 本轮静态盘点覆盖 `frontend/src` 中含交互控件的 50 个 JSX 文件，共 528 个控件定义：333 个按钮、18 个链接、49 个折叠入口、59 个输入框、64 个选择框、5 个文本框。数量按源码定义统计，不等同于动态列表实际渲染的数量。静态检查用于发现缺少处理器、提交类型和空链接等问题，不能替代浏览器行为验证。
 
@@ -26,3 +32,7 @@
 - 未执行真实付费 AI 生成、CLI 安装、归档删除或其他会改变用户环境的操作。
 
 后续检查可运行 `pnpm review:interactions`。传入 JSON 输出路径可保留完整控件清单，例如 `node scripts/review/interaction_audit.mjs D:/codex-temp/interaction-inventory.json`。此命令只做源码检查，不点击控件、不执行后台操作。
+
+---
+
+[← 文档中心](README.md) · [返回项目首页](../README.md)

@@ -1,4 +1,23 @@
+[项目首页](../README.md) / [文档中心](README.md)
+
 # 公开仓库内容
+
+<sub>LayoutSculpt / 开发与维护</sub>
+
+<details>
+<summary>本页导航</summary>
+
+- [项目简介](#项目简介)
+- [保留](#保留)
+- [不分发](#不分发)
+- [本地备份](#本地备份)
+- [Git 历史](#git-历史)
+- [参赛展示](#参赛展示)
+- [提交配置](#提交配置)
+- [仓库地址与上游](#仓库地址与上游)
+- [源码布局](#源码布局)
+
+</details>
 
 仓库用于展示、运行和复现“LayoutSculpt”，保留产品代码、必要资产、测试及使用说明。
 
@@ -31,7 +50,9 @@
 
 ### README 展示素材
 
-README 使用品牌横幅 `header.svg`、当前「林间光庭」操作演示 `showcase.gif`、墙地面搭配 `materials.gif`、家具模板编辑 `diy.gif` 和接入页面 `ai-connections.gif`。`showcase-garden.webp`、`workbench.webp` 保留静态展示。GIF 从当前页面录制，家具使用内置玄关柜，AI 接入只展示未连接的设置入口，不输入凭据或调用 AI。录制隔离用户任务、连接状态和草稿，不包含私人户型或上传原图。原始帧与制作中间文件保留在被忽略的 `data/` 中。
+README 使用轻量 SVG 横幅、四段重新录制的 GIF 与对应 WebP 静态封面。主线为「空间预览 → 材质搭配 → 家具创作 → 模型接入」，统一宽度、章节编号与字幕；接入页保留更高画幅，完整展示模型和保存按钮。浏览器偏好减少动态效果时展示静态封面；图片与动画都可单独打开。
+
+空间采用当前「林间光庭」；家具采用内置玄关柜模板。AI 接入页使用明确标注的示例模型、`DEMO` 密钥标识和浏览器内存中的演示设置，展示保存与未保存状态；不会读取真实凭据、保存本机 AI 设置或发起 AI 推理。用户任务、素材和草稿在录制上下文中隔离。原始帧、中间文件与检查报告保留在被忽略的 `data/readme-recording/`。
 
 更新演示时，先构建并启动当前项目，再从根目录执行：
 
@@ -41,7 +62,7 @@ node scripts/review/record_readme.mjs
 python scripts/build_readme_gifs.py
 ```
 
-Python 使用项目 `.venv`；Windows 可执行 `.venv\Scripts\python.exe scripts/build_readme_gifs.py`。录制默认连接 `http://127.0.0.1:8000`，可用 `STUDIO_BASE_URL` 指定已有项目服务。单独重录可在录制命令末尾加 `showcase`、`materials`、`diy` 或 `ai-connections`。每帧写入清单方便续录；录制报错时应修复并完成对应组，再编码和检查首、中、末帧，不发布不完整演示。字体优先使用 Windows 微软雅黑或 macOS 苹方。
+Python 使用项目 `.venv`；Windows 可执行 `.venv\Scripts\python.exe scripts/build_readme_gifs.py`。录制默认连接 `http://127.0.0.1:8000`，可用 `STUDIO_BASE_URL` 指定已有项目服务。单独重录可在录制命令末尾加 `showcase`、`materials`、`diy` 或 `ai-connections`。每帧写入清单；整组通过后标记为 `complete`。编码器拒绝失败或不完整录制，并输出首、中、末帧及体积、时长报告。修复失败组后可单独重录；不发布不完整演示。字体优先使用 Windows 微软雅黑或 macOS 苹方。
 
 详细用法移至 [设计工作流](design-workflows.md)，相关功能截图放在 `docs/images/` 并由文档引用。日常反馈与可选的私密报告入口见根目录 [SECURITY.md](../SECURITY.md)。
 
@@ -66,3 +87,19 @@ Python 使用项目 `.venv`；Windows 可执行 `.venv\Scripts\python.exe script
 项目维护在 [Li-Rui-Zhe/LayoutSculpt](https://github.com/Li-Rui-Zhe/LayoutSculpt) 与 [L-rui-zhe/LayoutSculpt](https://github.com/L-rui-zhe/LayoutSculpt)。文档与代码可以在两处使用，`origin`、`upstream` 只是各自本地配置的名称，不表示固定账号。普通克隆通常将所克隆仓库命名为 `origin`；提交前用 `git remote -v` 核对目标，只推送约定的仓库，不自动同步另一账号或强制覆盖远端。
 
 GitHub About / Description 是仓库设置，推送 `package.json` 不会自动更新它。已登录 GitHub CLI 的维护者可运行 `gh repo edit <账号>/LayoutSculpt --description "<上方项目简介>"`，或在仓库首页 About 旁的设置中更新。不要将 GitHub 令牌写入项目配置。
+
+## 源码布局
+
+| 目录 | 作用 |
+| --- | --- |
+| `frontend/src/` | React 界面、编辑器、Three.js 预览与 AI 接入 |
+| `backend/app/` | API、AI 适配、校验、GLB 构建、任务与数据 |
+| `assets/` / `public/` | 公共模型、材质、示例和图标 |
+| `skills/` | AI 角色契约与提示 |
+| `scripts/` | 启动、资产制作、录制与验证 |
+| `docs/` | 使用、实现与历史记录 |
+| `data/` | 本机任务、草稿、缓存与报告；不分发 |
+
+---
+
+[← 文档中心](README.md) · [返回项目首页](../README.md)

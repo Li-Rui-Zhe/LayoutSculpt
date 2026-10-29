@@ -1,4 +1,10 @@
+[项目首页](../README.md) / [文档中心](README.md)
+
 # 2026-10-26 使用体验与数据保障优化
+
+<sub>LayoutSculpt / 更新记录</sub>
+
+> 历史记录：保留当时的实现与验收事实；当前使用方式请从文档中心开始。
 
 本轮保留 React、FastAPI、SQLite 与 LangGraph 架构，不增加日常登录或审批步骤。
 
@@ -28,3 +34,7 @@
 - 未重新调用真实付费 AI 进行质量对比；端到端验收使用模拟 AI 响应和真实三维建模器。
 
 本地验收产物在被 Git 忽略的 `data/visual-review/prelaunch/` 与 `data/visual-review/interaction-quality/`。
+
+---
+
+[← 文档中心](README.md) · [返回项目首页](../README.md)

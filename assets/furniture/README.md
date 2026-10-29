@@ -1,4 +1,20 @@
+[项目首页](../../README.md) / [文档中心](../../docs/README.md)
+
 # LayoutSculpt 家具资产库
+
+<sub>LayoutSculpt / 使用指南</sub>
+
+<details>
+<summary>本页导航</summary>
+
+- [当前目录](#当前目录)
+- [工作方式](#工作方式)
+- [本地构建](#本地构建)
+- [替换家具资产](#替换家具资产)
+- [基础资产历史与制作规范](#基础资产历史与制作规范)
+- [几何验证](#几何验证)
+
+</details>
 
 本目录提供可直接复用的 `glb/` 家具资产及运行时索引 `catalog.json`。普通户型生成只读取 GLB，不需要 Blender。可选源工程 `habitat-furniture.blend` 不随仓库分发，使用下方脚本可在本地生成。
 
@@ -75,3 +91,7 @@ television 包含完整落地支架，独立放置；wall_television 是薄机�
 ## 几何验证
 
 运行 `pnpm test:backend` 验证实际家具 GLB 的几何、贴图及模型构建。旧版 Blender 户型建模器已移除；`tools/` 只保留可选的家具资产制作代码，普通生成由 `backend/app/glb_builder.py` 完成。
+
+---
+
+[← 文档中心](../../docs/README.md) · [返回项目首页](../../README.md)

@@ -1,130 +1,363 @@
-// 录制公开示例与模板；拦截私人数据、凭据和写请求，不调用 AI。
+// Public demonstration capture. Uses authored assets and synthetic settings only.
 import { expect as baseExpect } from "@playwright/test";
 import { launchReviewBrowser } from "./browser.mjs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
-const expect = baseExpect.configure({ timeout: 120000 });
+const expect = baseExpect.configure({ timeout: 60000 });
 const base = process.env.STUDIO_BASE_URL || "http://127.0.0.1:8000";
-const output = path.resolve("data/readme-recording");
+const output = path.resolve(
+  process.env.README_RECORDING_DIR || "data/readme-recording",
+);
+const requested = process.argv[2];
+const groups = ["showcase", "materials", "diy", "ai-connections"];
+if (requested && !groups.includes(requested))
+  throw Error("请选择 showcase / materials / diy / ai-connections");
 await mkdir(output, { recursive: true });
+const showcase = JSON.parse(
+  await readFile("frontend/src/showcase.json", "utf8"),
+);
 const browser = await launchReviewBrowser();
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
-page.setDefaultTimeout(90000);
-const errors = [], writes = [], drafts = new Map(), manifest = [];
-page.on("pageerror", (error) => errors.push(error.message));
-await page.route("**/api/**", async (route) => {
-  const request = route.request(), url = new URL(request.url()), p = url.pathname;
-  const json = (value) => route.fulfill({ json: value });
-  if (p === "/api/health") return json({ status: "ok", ai: { provider: "deepseek", deepseek_configured: false }, codex: { connected: false }, furniture_library: { available: true } });
-  if (p === "/api/client-access") return json({ application: "layoutsculpt", protocol: 1, origin: new URL(base).origin, write_allowed: true });
-  if (p === "/api/jobs" || p === "/api/jobs/page" || p === "/api/jobs/changes") return json({ items: [], cursor: "recording", more: false });
-  if (p === "/api/diy/assets" || p === "/api/materials") return json({ items: [] });
-  if (p.startsWith("/api/drafts/")) {
-    if (request.method() === "POST") drafts.set(p, { document: request.postDataJSON().document, revision: (drafts.get(p)?.revision || 0) + 1 });
-    return json(drafts.get(p) || { document: null, revision: 0 });
+const results = [];
+
+async function record(name) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: name === "ai-connections" ? 1240 : 900 },
+    deviceScaleFactor: 1,
+  });
+  const page = await context.newPage();
+  const errors = [],
+    blockedWrites = [],
+    drafts = new Map(),
+    frames = [];
+  let state = {
+    revision: 1,
+    default_provider: "deepseek",
+    warning: null,
+    deepseek: {
+      configured: true,
+      default_model: "demo-fast",
+      key_hint: "•••• DEMO",
+      key_storage: "本机加密存储",
+    },
+    codex: {
+      available: true,
+      system_available: true,
+      connected: false,
+      managed: false,
+      environment: "shared",
+      default_model: "demo-local",
+      runtime: null,
+    },
+  };
+  const catalog = (provider) => ({
+    provider,
+    configured_default: true,
+    default_model:
+      provider === "deepseek"
+        ? `deepseek::${state.deepseek.default_model}`
+        : "demo-local",
+    items:
+      provider === "deepseek"
+        ? [
+            {
+              id: "deepseek::demo-fast",
+              name: "示例模型 · 快速",
+              available: true,
+              supports_image: false,
+              efforts: [],
+            },
+            {
+              id: "deepseek::demo-detail",
+              name: "示例模型 · 精细",
+              available: true,
+              supports_image: false,
+              efforts: [],
+            },
+          ]
+        : [
+            {
+              id: "demo-local",
+              name: "本机模型 · 演示",
+              available: true,
+              supports_image: true,
+              efforts: [],
+            },
+          ],
+  });
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("dialog", (dialog) => dialog.accept());
+  await context.addInitScript(() => {
+    localStorage.setItem("habitat-job", "sample");
+    document.addEventListener("DOMContentLoaded", () => {
+      const cursor = document.createElement("div");
+      cursor.style.cssText =
+        "position:fixed;left:-50px;top:-50px;width:11px;height:11px;border:2px solid #204e3d;border-radius:50%;background:#e8eee1;box-shadow:0 0 0 4px #ffffff77;pointer-events:none;z-index:2147483647;transform:translate(-50%,-50%)";
+      document.body.append(cursor);
+      document.addEventListener("pointermove", (e) => {
+        cursor.style.left = e.clientX + "px";
+        cursor.style.top = e.clientY + "px";
+      });
+    });
+  });
+  await page.route("**/api/**", async (route) => {
+    const req = route.request(),
+      url = new URL(req.url()),
+      p = url.pathname;
+    const json = (value) => route.fulfill({ json: value });
+    if (p === "/api/health")
+      return json({
+        status: "ok",
+        ai: {
+          provider: "deepseek",
+          deepseek_configured: name === "ai-connections",
+        },
+        codex: { connected: false },
+        furniture_library: { available: true },
+      });
+    if (p === "/api/client-access")
+      return json({
+        application: "layoutsculpt",
+        protocol: 1,
+        origin: new URL(base).origin,
+        write_allowed: true,
+      });
+    if (["/api/jobs", "/api/jobs/page", "/api/jobs/changes"].includes(p))
+      return json({ items: [], cursor: "public-demo", more: false });
+    if (["/api/diy/assets", "/api/materials"].includes(p))
+      return json({ items: [] });
+    if (p.startsWith("/api/drafts/")) {
+      if (req.method() === "POST")
+        drafts.set(p, {
+          document: req.postDataJSON().document,
+          revision: (drafts.get(p)?.revision || 0) + 1,
+        });
+      return json(drafts.get(p) || { document: null, revision: 0 });
+    }
+    if (p === "/api/ai/settings") {
+      if (req.method() === "POST") {
+        const body = req.postDataJSON();
+        if (body.api_key || body.remove_key)
+          throw Error("公开演示不输入或移除凭据");
+        state = {
+          ...state,
+          revision: state.revision + 1,
+          default_provider: body.provider,
+          [body.provider]: {
+            ...state[body.provider],
+            default_model: body.model.replace(/^deepseek::/, ""),
+          },
+        };
+        return json({ ...state, catalog: catalog(body.provider) });
+      }
+      return json(state);
+    }
+    if (p === "/api/models")
+      return json(
+        catalog(url.searchParams.get("provider") || state.default_provider),
+      );
+    if (p === "/api/ai/codex/login") return json({ status: "idle" });
+    if (!["GET", "HEAD", "OPTIONS"].includes(req.method())) {
+      blockedWrites.push(p);
+      return route.fulfill({
+        status: 409,
+        json: { detail: "录制不提交真实任务" },
+      });
+    }
+    return route.continue();
+  });
+  const manifest = {
+    schema: 2,
+    name,
+    status: "recording",
+    model_revision: showcase.revision,
+    viewport: page.viewportSize(),
+    privacy:
+      "authored sample; template editing; synthetic connection settings; no real AI calls",
+    frames,
+  };
+  const saveManifest = () =>
+    writeFile(
+      path.join(output, `${name}.json`),
+      JSON.stringify(manifest, null, 2),
+    );
+  await saveManifest();
+  async function shot(label, duration = 1200) {
+    const file = path.join(
+      output,
+      `${name}-${String(frames.length).padStart(3, "0")}.png`,
+    );
+    await page.screenshot({ path: file, animations: "disabled" });
+    frames.push({ file, label, duration });
+    await saveManifest();
   }
-  if (p === "/api/ai/settings") return json({ revision: 0, default_provider: "deepseek", warning: null,
-    deepseek: { configured: false, default_model: null, key_hint: null },
-    codex: { available: false, system_available: false, managed: false, environment: "shared", connected: false, default_model: null, runtime: null } });
-  if (p === "/api/models") return json({ provider: "deepseek", items: [], default_model: null, configured_default: false });
-  if (p === "/api/ai/codex/login") return json({ status: "idle" });
-  if (!["GET", "HEAD", "OPTIONS"].includes(request.method())) {
-    writes.push(p); return route.fulfill({ status: 409, json: { detail: "演示录制不提交真实任务" } });
+  async function sample() {
+    await page.goto(`${base}/?project=sample&tab=design`);
+    const canvas = page.locator("#viewport canvas");
+    await expect(canvas).toBeVisible();
+    await expect(canvas).toHaveAttribute(
+      "data-model-url",
+      new RegExp(showcase.model_url.replaceAll(".", "\\.")),
+    );
+    await expect(page.locator(".canvas-loading")).toHaveCount(0);
+    await page.waitForTimeout(1500);
   }
-  return route.continue();
-});
-async function capture(name, label, frames, duration = 1400) {
-  const file = path.join(output, `${name}-${String(frames.length).padStart(3, "0")}.png`);
-  await page.screenshot({ path: file });
-  frames.push({ file, duration, label });
-  await writeFile(path.join(output, `${name}.json`), JSON.stringify({ name, frames }, null, 2));
+  async function environment(label) {
+    await page.locator(".environment-trigger").click();
+    await page
+      .getByRole("button", { name: `切换到${label}`, exact: true })
+      .click();
+    await page.waitForTimeout(700);
+  }
+  async function applyMaterial(name) {
+    const swatch = page
+      .locator("#dock-materials")
+      .getByRole("button", { name: `应用${name}`, exact: true });
+    await swatch.click();
+    await expect(swatch).toHaveAttribute("aria-pressed", "true");
+    await page.waitForTimeout(400);
+  }
+  async function orbit(label, steps = 24, distance = 60) {
+    const box = await page
+      .locator(name === "diy" ? ".diy-preview-wrap canvas" : "#viewport canvas")
+      .boundingBox();
+    const x = box.x + box.width * 0.52,
+      y = box.y + box.height * 0.53;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= steps; i++) {
+      await page.mouse.move(x + (i * distance) / steps, y, { steps: 2 });
+      await page.waitForTimeout(45);
+      await shot(label, 80);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+  }
+  try {
+    if (name === "showcase") {
+      await sample();
+      await shot("林间光庭 · 日光下的全屋布局", 1000);
+      await page
+        .locator("#viewport canvas")
+        .screenshot({ path: path.join(output, "showcase-canvas.png") });
+      await orbit("轻拖旋转 · 从不同角度理解空间");
+      await environment("日落");
+      await shot("日落 · 更温暖的空间层次", 1100);
+      await environment("夜晚");
+      await shot("夜晚 · 查看分区照明与家具关系", 1500);
+      await environment("晴天");
+      await page
+        .getByRole("combobox", { name: "定位房间" })
+        .selectOption("terrace");
+      await page.waitForTimeout(900);
+      await shot("走近花园露台 · 细看家具与围护", 1500);
+      await page.getByRole("combobox", { name: "定位房间" }).selectOption("");
+      await page.getByRole("button", { name: "俯视", exact: true }).click();
+      await page.waitForTimeout(700);
+      await shot("切换俯视 · 看清房间与动线", 1300);
+      await page.getByRole("button", { name: "三维", exact: true }).click();
+      await page.waitForTimeout(600);
+      await shot("回到全屋 · 继续探索你的空间", 700);
+    }
+    if (name === "materials") {
+      await sample();
+      await page.getByRole("button", { name: "外观设置", exact: true }).click();
+      await expect(page.locator(".material-dock")).toBeVisible();
+      await shot("保留布局 · 从原始材质开始", 1100);
+      await applyMaterial("浅橡木饰面");
+      await shot("浅橡木饰面 · 空间更温润", 1400);
+      await applyMaterial("米灰艺术漆");
+      await shot("米灰艺术漆 · 换一种墙面表情", 1400);
+      await page.getByRole("tab", { name: "地板", exact: true }).click();
+      await page.getByLabel("地板应用区域").selectOption("living");
+      await applyMaterial("胡桃直铺");
+      await shot("选中客厅 · 单独铺设胡桃木地板", 1600);
+      await applyMaterial("米色洞石");
+      await shot("仍是同一间客厅 · 比较洞石效果", 1600);
+      await page.getByRole("button", { name: "还原材质", exact: true }).click();
+      await page.waitForTimeout(350);
+      await shot("随时还原 · 其他房间保持各自搭配", 1000);
+    }
+    if (name === "diy") {
+      await page.goto(`${base}/#diy`);
+      await page
+        .locator(".diy-templates")
+        .getByRole("button", { name: "玄关柜", exact: true })
+        .click();
+      await expect(page.locator(".diy-preview-wrap canvas")).toBeVisible();
+      await page.waitForTimeout(1300);
+      await shot("从玄关柜模板开始 · 部件保持可编辑", 1100);
+      await page.locator(".diy-finish-panel summary").click();
+      await page.getByLabel("饰面应用范围").selectOption("all");
+      await page
+        .locator(".diy-finish-grid")
+        .getByRole("button", { name: "应用浅橡木", exact: true })
+        .click();
+      await page.waitForTimeout(400);
+      await shot("浅橡木饰面 · 直接预览新的材质", 1400);
+      await orbit("旋转查看 · 检查正面、侧面和细节", 18, 70);
+      await page.getByRole("button", { name: "正面", exact: true }).click();
+      await page.waitForTimeout(500);
+      await shot("正面查看 · 检查家具比例", 1100);
+      await page.getByRole("button", { name: "三维", exact: true }).click();
+      await page
+        .getByRole("button", { name: "撤销 DIY 修改", exact: true })
+        .click();
+      await page.waitForTimeout(450);
+      await shot("撤销修改 · 回到上一个设计状态", 1200);
+    }
+    if (name === "ai-connections") {
+      await page.goto(`${base}/#ai`);
+      const summary = page.getByRole("region", { name: "已保存的 AI 配置" });
+      const picker = page.getByRole("combobox", {
+        name: "新任务默认模型",
+        exact: true,
+      });
+      await expect(summary).toBeVisible();
+      await expect(picker).toHaveValue("deepseek::demo-fast");
+      await page.waitForTimeout(1800);
+      await shot("示例配置 · 来源、模型与已保存状态一目了然", 1700);
+      await picker.selectOption("deepseek::demo-detail");
+      await page.waitForTimeout(300);
+      await shot("选择新模型 · 明确提示尚未保存", 1700);
+      await page
+        .getByRole("button", { name: "保存并使用 DeepSeek API", exact: true })
+        .click();
+      await expect(summary.locator(".ai-saved-model")).toHaveText(
+        "示例模型 · 精细",
+      );
+      await page.waitForTimeout(1800);
+      await shot("保存后的示例状态 · 当前模型与选择保持一致", 1900);
+      await page
+        .locator(".ai-provider-card")
+        .filter({ hasText: "Codex" })
+        .click();
+      await page.waitForTimeout(600);
+      await shot("Codex 入口 · 按需复用本机或管理独立环境", 1800);
+    }
+    expect(errors).toEqual([]);
+    expect(blockedWrites).toEqual([]);
+    manifest.status = "complete";
+    manifest.errors = errors;
+    manifest.blocked_writes = blockedWrites;
+    await saveManifest();
+    results.push({ name, frames: frames.length });
+    console.log(
+      JSON.stringify({ name, frames: frames.length, errors, blockedWrites }),
+    );
+  } catch (error) {
+    manifest.status = "failed";
+    manifest.errors = [...errors, error.message];
+    await saveManifest();
+    await page
+      .screenshot({ path: path.join(output, `${name}-failure.png`) })
+      .catch(() => {});
+    throw error;
+  } finally {
+    await context.close();
+  }
 }
-async function sample() {
-  await page.goto(`${base}/?project=sample&tab=design`);
-  await expect(page.locator("#viewport canvas")).toBeVisible({ timeout: 120000 });
-  await expect(page.locator(".canvas-loading")).toHaveCount(0, { timeout: 120000 });
-  await page.waitForTimeout(800);
-}
-async function environment(name) {
-  await page.locator(".environment-trigger").click();
-  await page.getByRole("button", { name: `切换到${name}`, exact: true }).click();
-  await page.waitForTimeout(900);
-}
-const selected = process.argv[2];
 try {
-  if (!selected || selected === "showcase") {
-    await sample(); const frames = [];
-    await capture("showcase", "林间光庭 · 真实三维空间", frames);
-    const box = await page.locator("#viewport canvas").boundingBox();
-    const x = box.x + box.width * .5, y = box.y + box.height * .52;
-    await page.mouse.move(x, y); await page.mouse.down();
-    for (let i = 1; i <= 18; i++) {
-      await page.mouse.move(x + i * 3, y, { steps: 2 });
-      await capture("showcase", "拖动旋转 · 自由查看空间", frames, 100);
-    }
-    await page.mouse.up();
-    await capture("showcase", "拖动旋转 · 自由查看空间", frames, 1200);
-    await environment("日落"); await capture("showcase", "日落 · 温暖斜阳", frames, 1800);
-    await environment("夜晚"); await capture("showcase", "夜晚 · 查看灯光与空间氛围", frames, 2000);
-    await environment("晴天");
-    await page.getByRole("button", { name: "俯视", exact: true }).click();
-    await page.waitForTimeout(800); await capture("showcase", "俯视 · 一览房间与动线", frames, 1800);
-    manifest.push({ name: "showcase", frames });
-  }
-  if (!selected || selected === "materials") {
-    await sample(); const frames = [];
-    await page.getByRole("button", { name: "外观设置", exact: true }).click();
-    await expect(page.locator(".material-dock")).toBeVisible();
-    await capture("materials", "墙面与地板 · 点击样板预览", frames);
-    const walls = page.locator("#dock-materials .swatch");
-    for (const index of [1, 3]) {
-      await walls.nth(index).click(); await page.waitForTimeout(700);
-      await capture("materials", "更换墙面饰面 · 保留原有空间布局", frames, 1700);
-    }
-    await page.getByRole("tab", { name: "地板", exact: true }).click();
-    await page.getByLabel("地板应用区域").selectOption("living");
-    await page.locator("#dock-materials .swatch").nth(1).click();
-    await page.waitForTimeout(700); await capture("materials", "只更换客厅地板 · 各房间独立铺设", frames, 2000);
-    await page.getByRole("button", { name: "还原材质", exact: true }).click();
-    await capture("materials", "随时还原 · 方案仍可继续调整", frames, 1500);
-    manifest.push({ name: "materials", frames });
-  }
-  if (!selected || selected === "diy") {
-    await page.goto(`${base}/#diy`); const frames = [];
-    await page.locator(".diy-templates").getByRole("button", { name: "玄关柜", exact: true }).click();
-    await expect(page.locator(".diy-preview-wrap canvas")).toBeVisible();
-    await page.waitForTimeout(800);
-    await capture("diy", "家具 DIY · 从玄关柜模板开始", frames);
-    await page.locator(".diy-finish-panel summary").click();
-    await page.getByLabel("饰面应用范围").selectOption("all");
-    await page.locator(".diy-finish-grid button").nth(2).click();
-    await capture("diy", "整件家具换饰面 · 保留可编辑部件", frames, 1800);
-    const box = await page.locator(".diy-preview-wrap canvas").boundingBox();
-    const x = box.x + box.width * .5, y = box.y + box.height * .5;
-    await page.mouse.move(x, y); await page.mouse.down();
-    for (let i = 1; i <= 14; i++) {
-      await page.mouse.move(x + i * 4, y, { steps: 2 });
-      await capture("diy", "旋转查看 · 调整部件与尺寸", frames, 100);
-    }
-    await page.mouse.up();
-    await page.getByRole("button", { name: "撤销 DIY 修改", exact: true }).click();
-    await capture("diy", "撤销饰面修改 · 不调用 AI 的模板编辑", frames, 1700);
-    manifest.push({ name: "diy", frames });
-  }
-  if (!selected || selected === "ai-connections") {
-    await page.goto(`${base}/#ai`); const frames = [];
-    await expect(page.getByLabel("DeepSeek API Key", { exact: true })).toBeVisible();
-    await capture("ai-connections", "DeepSeek API · 填写密钥即可检测并接入", frames, 2400);
-    await page.locator(".ai-provider-card").filter({ hasText: "Codex" }).click();
-    await capture("ai-connections", "Codex · 复用本机，或准备项目独立环境", frames, 2400);
-    await page.locator(".ai-provider-card").filter({ hasText: "DeepSeek" }).click();
-    await capture("ai-connections", "按模型能力使用 · 此演示不输入密钥、不发起生成", frames, 2000);
-    manifest.push({ name: "ai-connections", frames });
-  }
-  expect(errors).toEqual([]); expect(writes).toEqual([]);
-  for (const entry of manifest) await writeFile(path.join(output, `${entry.name}.json`), JSON.stringify(entry, null, 2));
-  console.log(JSON.stringify({ recorded: manifest.map((entry) => [entry.name, entry.frames.length]), errors, writes }));
-} catch (error) {
-  await page.screenshot({ path: path.join(output, "failure.png"), fullPage: true });
-  throw error;
-} finally { await browser.close(); }
+  for (const name of requested ? [requested] : groups) await record(name);
+} finally {
+  await browser.close();
+}

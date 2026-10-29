@@ -1,36 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
-  <title id="title">LayoutSculpt · 户型设计工厂</title>
-  <desc id="desc">支持 Codex 与 API 接入的开源 AI 空间设计工作台，集户型识别、可交互 3D 编辑、家具与墙地面 DIY、素材管理和成果导出于一体。</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">LayoutSculpt · 从平面，到空间</title>
+  <desc id="desc">开源 AI 空间设计工作台。识别户型，设计空间，创作家具。右侧为原创样板间七个功能分区的示意。</desc>
   <defs>
-    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#18392f"/><stop offset="1" stop-color="#10251f"/></linearGradient>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#bcd3bb" stroke-opacity=".07"/></pattern>
-    <linearGradient id="floor" x2="0" y2="1"><stop stop-color="#d5d9b8" stop-opacity=".24"/><stop offset="1" stop-color="#a4c3a4" stop-opacity=".05"/></linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#315b46"/><stop offset="1" stop-color="#1e3c2f"/>
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#d8e5c5" stroke-opacity=".06"/>
+    </pattern>
+    <clipPath id="clip"><rect x="708" y="12" width="480" height="336" rx="18"/></clipPath>
   </defs>
-  <rect width="1200" height="330" rx="20" fill="url(#bg)"/>
-  <rect width="1200" height="330" rx="20" fill="url(#grid)"/>
+  <rect x=".5" y=".5" width="1199" height="359" rx="24" fill="#f5f3ec" stroke="#d9dfd2"/>
   <g font-family="Segoe UI, Microsoft YaHei, PingFang SC, sans-serif">
-    <g transform="translate(52 44)">
-      <rect width="43" height="43" rx="12" fill="#bbd5b8"/>
-      <path d="m21.5 7 13.4 8v14.7l-13.4 8-13.4-8V15Zm-13.4 8 13.4 8 13.4-8M21.5 23v14.7m-6.7-26.4 13.4 8v9.4l-6.7 4" fill="none" stroke="#233d35" stroke-width="2.4" stroke-linejoin="round"/>
+    <rect x="40" y="35" width="39" height="39" rx="12" fill="#dce6d3"/>
+    <path d="m59.5 42 12 7v14l-12 7-12-7V49Zm-12 7 12 7 12-7m-12 7v14m-6-24 12 7v7l-6 3" fill="none" stroke="#294d3c" stroke-width="1.9" stroke-linejoin="round"/>
+    <text x="94" y="60" font-size="12" letter-spacing="2.5" fill="#65735f">OPEN SOURCE / AI SPATIAL STUDIO</text>
+    <text x="39" y="156" font-size="67" font-weight="650" letter-spacing="-2.5" fill="#203f31">LayoutSculpt</text>
+    <text x="44" y="206" font-size="27" font-weight="500" letter-spacing="2" fill="#315b46">从平面，到空间。</text>
+    <text x="44" y="244" font-size="16" fill="#697562">识别户型 · 设计空间 · 创作家具</text>
+    <path d="M44 278H658" stroke="#d3dbcd"/>
+    <circle cx="49" cy="311" r="4" fill="#6d8c66"/>
+    <text x="65" y="316" font-size="12" letter-spacing=".8" fill="#65735f">LOCAL WORKSPACE</text>
+    <text x="275" y="316" font-size="12" letter-spacing=".8" fill="#65735f">EDITABLE 3D</text>
+    <text x="457" y="316" font-size="12" letter-spacing=".8" fill="#65735f">GLB EXPORT</text>
+    <g clip-path="url(#clip)">
+      <rect x="708" y="12" width="480" height="336" fill="url(#panel)"/>
+      <rect x="708" y="12" width="480" height="336" fill="url(#grid)"/>
+      <ellipse cx="936" cy="255" rx="169" ry="30" fill="#142f26" opacity=".32"/>
+      <polygon points="934.0,99.1 1101.3,185.7 951.0,263.5 889.8,231.8 872.8,240.6 766.7,185.7" fill="#142f26"/>
+      <polygon points="934.0,91.9 1101.3,178.5 951.0,256.3 889.8,224.6 872.8,233.4 766.7,178.5" fill="#d9ddc6" stroke="#e2e8d4" stroke-width="1.5"/>
+      <polygon points="934.0,96.1 983.0,121.5 944.2,141.5 895.2,116.2" fill="#dcd8bd" stroke="#294d3c" stroke-width=".8"/>
+      <polygon points="983.0,121.5 1031.9,146.8 993.2,166.9 944.2,141.5" fill="#cab88e" stroke="#294d3c" stroke-width=".8"/>
+      <polygon points="895.2,116.2 993.2,166.9 913.6,208.0 815.7,157.4" fill="#c1cdb3" stroke="#294d3c" stroke-width=".8"/>
+      <polygon points="812.3,159.1 910.2,209.8 872.8,229.2 774.9,178.5" fill="#8ba88a" stroke="#294d3c" stroke-width=".8"/>
+      <polygon points="1036.0,148.9 1093.1,178.5 1025.8,213.3 968.7,183.8" fill="#dec9a5" stroke="#294d3c" stroke-width=".8"/>
+      <polygon points="965.3,185.5 1022.4,215.1 985.0,234.4 927.9,204.9" fill="#a6b8a0" stroke="#294d3c" stroke-width=".8"/>
+      <polygon points="924.5,206.6 981.6,236.2 951.0,252.0 893.9,222.5" fill="#c3d1c9" stroke="#294d3c" stroke-width=".8"/>
+      <polygon points="934.0,94.0 1097.2,178.5 1097.2,155.1 934.0,70.6" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="934.0,94.0 811.9,157.2 811.9,133.8 934.0,70.6" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="811.9,157.2 770.8,178.5 770.8,169.5 811.9,148.2" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="889.8,222.5 872.8,231.3 872.8,222.3 889.8,213.5" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="1097.2,178.5 951.0,254.2 951.0,230.8 1097.2,155.1" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="889.8,222.5 951.0,254.2 951.0,245.2 889.8,213.5" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="770.8,178.5 872.8,231.3 872.8,222.3 770.8,169.5" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="1036.0,146.8 889.8,222.5 889.8,213.5 1036.0,137.8" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="964.9,183.6 1026.1,215.3 1026.1,206.3 964.9,174.6" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="924.1,204.7 985.3,236.4 985.3,227.4 924.1,195.7" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <polygon points="811.9,157.2 913.9,210.0 913.9,201.0 811.9,148.2" fill="#e6e5d4" stroke="#9bb09a" stroke-width="1"/>
+      <circle cx="738" cy="42" r="3" fill="#d3c28d"/>
+      <text x="750" y="46" font-size="10" letter-spacing="2" fill="#d2ddc7">PLAN / SPACE / OBJECT</text>
+      <path d="M738 297H1158" stroke="#9db699" stroke-opacity=".24"/>
+      <text x="738" y="325" font-size="11" letter-spacing="1.5" fill="#c0d0b6">AUTHORED SHOWCASE / 07 ZONES</text>
+      <text x="1127" y="325" font-size="11" fill="#c0d0b6">01</text>
     </g>
-    <text x="112" y="73" fill="#b5ceb7" font-size="17" letter-spacing="3">LAYOUTSCULPT</text>
-    <text x="50" y="165" fill="#f5f2e7" font-size="67" font-weight="700" letter-spacing="6">LayoutSculpt</text>
-    <text x="54" y="209" fill="#c9d5c5" font-size="23">从户型识别，到空间设计与素材创作。</text>
-    <g font-size="13" text-anchor="middle" fill="#d9e4d4">
-      <rect x="54" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="97" y="271">React 19</text>
-      <rect x="150" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="193" y="271">Three.js</text>
-      <rect x="246" y="251" width="86" height="29" rx="14.5" fill="#2b4c3e"/><text x="289" y="271">FastAPI</text>
-      <rect x="342" y="251" width="116" height="29" rx="14.5" fill="#2b4c3e"/><text x="400" y="271">Apache 2.0</text>
-    </g>
-  </g>
-  <g transform="translate(720 48)" stroke-linejoin="round">
-    <path d="m0 158 177 87 224-109-177-87Z" fill="url(#floor)" stroke="#9ab89e" stroke-opacity=".4"/>
-    <path d="m0 158 177 87 224-109M177 245V154L0 67v91M177 154l224-109v91M0 67 224-42 401 45" fill="none" stroke="#bad0b3" stroke-opacity=".65" stroke-width="1.6" transform="translate(0 24)"/>
-    <g transform="translate(0 24)" fill="none" stroke="#bad0b3" stroke-opacity=".35" stroke-width="1.3">
-      <path d="m119 9 177 87v91M82 107 305-1M82 107v91M224-42v91M119 100 296 13"/>
-      <path d="m36 124 47-23 52 26-47 23Zm0 0v20l52 26v-20m0 20 47-23v-20M226 143l68-33 58 29-68 33Zm0 0v16l58 29v-16m0 16 68-33v-16"/>
-    </g>
-    <circle cx="177" cy="269" r="4" fill="#dbbe84"/><circle cx="401" cy="160" r="3" fill="#dbbe84"/>
-    <path d="M370 263h32m-16-16v32" stroke="#b5ceb7" stroke-opacity=".4"/>
   </g>
 </svg>

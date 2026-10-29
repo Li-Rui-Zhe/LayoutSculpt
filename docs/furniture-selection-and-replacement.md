@@ -1,4 +1,18 @@
+[项目首页](../README.md) / [文档中心](README.md)
+
 # 家具风格与单件换款
+
+<sub>LayoutSculpt / 使用指南</sub>
+
+<details>
+<summary>本页导航</summary>
+
+- [用户操作](#用户操作)
+- [AI 如何选择](#ai-如何选择)
+- [保存与兼容](#保存与兼容)
+- [验证](#验证)
+
+</details>
 
 本轮复用现有 83 款模型，增加风格适配、AI 候选筛选、单件换款和个人素材的 AI 使用开关。没有新增 AI 节点或在线模型调用。
 
@@ -33,3 +47,7 @@ node scripts/review/verify_furniture_replacement.mjs
 ```
 
 浏览器脚本使用独立端口和 `data/visual-review/furniture-replacement` 下的独立数据库，固定 AI 响应并构建真实 GLB，不调用在线 AI、不改用户任务。
+
+---
+
+[← 文档中心](README.md) · [返回项目首页](../README.md)

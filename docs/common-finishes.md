@@ -1,4 +1,8 @@
+[项目首页](../README.md) / [文档中心](README.md)
+
 # 常用装修材质
+
+<sub>LayoutSculpt / 使用指南</sub>
 
 官方墙面、地板各保留 10 款代表性材质，使用项目内色彩与法线贴图，共用于素材库、三维预览、DIY 和 GLB 导出。
 
@@ -12,3 +16,7 @@
 ```powershell
 .\.venv\Scripts\python.exe scripts/build_surface_library.py --common-only
 ```
+
+---
+
+[← 文档中心](README.md) · [返回项目首页](../README.md)

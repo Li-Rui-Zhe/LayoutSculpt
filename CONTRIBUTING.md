@@ -1,4 +1,8 @@
+[项目首页](README.md) / [文档中心](docs/README.md)
+
 # 开发与提交说明
+
+<sub>LayoutSculpt / 开发与维护</sub>
 
 安装、AI 接入和启动方式见 [README](README.md)，功能说明见 [文档索引](docs/README.md)。本项目使用 pnpm，Python 优先使用项目内 `.venv`。
 
@@ -35,3 +39,7 @@ git ls-files -ci --exclude-standard
 改变用户入口、默认流程、接口或环境变量时，同时更新 README 和对应功能文档。历史验收记录保留日期和实际结果，不把旧测试数量当成当前版本的通过证据。
 
 提交日志使用中文，写清需求或问题、实现思路；必要时附复现方式和验证结果。推送前检查远端是否有新提交，推送后核对远程分支提交号；CI 结果以 GitHub 实际运行状态为准。
+
+---
+
+[← 文档中心](docs/README.md) · [返回项目首页](README.md)
