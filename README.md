@@ -8,6 +8,12 @@
 </p>
 
 <p align="center">
+  <a href="https://hub.xerj.org/contributors/Li-Rui-Zhe">
+    <img src="https://hub.xerj.org/contributors/Li-Rui-Zhe/badge.svg" alt="XERJ Corpus Hub contributor" />
+  </a>
+</p>
+
+<p align="center">
   <a href="#preview">空间演示</a> ·
   <a href="#materials">材质搭配</a> ·
   <a href="#diy">家具 DIY</a> ·
