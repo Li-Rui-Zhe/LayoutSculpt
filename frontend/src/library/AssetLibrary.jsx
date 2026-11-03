@@ -1,3 +1,4 @@
+import ProjectTargetSelect from "./ProjectTargetSelect.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
@@ -128,6 +129,7 @@ export default function AssetLibrary({
     floorOnly ? "floor" : readContext("materialCategory", "walls"),
   );
   const [targetId, setTargetId] = useState(currentJobId);
+  useEffect(() => { setTargetId(currentJobId); }, [currentJobId]);
   const [placing, setPlacing] = useState(false),
     [placeError, setPlaceError] = useState("");
   const [opening, setOpening] = useState(false),
@@ -931,21 +933,9 @@ export default function AssetLibrary({
                         ) : (
                           <label>
                             目标方案
-                            <select
-                              aria-label="放入目标方案"
-                              value={targetId}
-                              disabled={placing}
-                              onChange={(e) => setTargetId(e.target.value)}
-                            >
-                              <option value="">请选择已完成的户型</option>
-                              {jobs
-                                .filter((j) => j.status === "succeeded")
-                                .map((j) => (
-                                  <option key={j.id} value={j.id}>
-                                    {j.name}
-                                  </option>
-                                ))}
-                            </select>
+                            <ProjectTargetSelect jobs={jobs} value={targetId}
+                              currentId={currentJobId} label="放入目标方案"
+                              disabled={placing} onChange={setTargetId} />
                           </label>
                         )}
                         <label>

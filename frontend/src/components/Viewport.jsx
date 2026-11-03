@@ -21,6 +21,7 @@ export default forwardRef(function Viewport(
     onThumbnails,
     onView,
     onRooms,
+    onTour,
   },
   ref,
 ) {
@@ -36,6 +37,7 @@ export default forwardRef(function Viewport(
     onThumbnails,
     onView,
     onRooms,
+    onTour,
   };
   useLayoutEffect(() => {
     try {
@@ -74,12 +76,45 @@ export default forwardRef(function Viewport(
     ref,
     () => ({
       cameraState: () => engine.current?.cameraState(),
+      startTour: (room) => engine.current?.startTour(room),
+      stopTour: () => engine.current?.stopTour(),
+      tourRoom: (id) => engine.current?.tourRoom(id),
+      recommendedRoom: (id) => engine.current?.recommendedRoom(id),
+      tourMove: (direction, pressed) =>
+        engine.current?.tourMove(direction, pressed),
+      tourStep: (direction) => engine.current?.tourStep(direction),
       restoreCamera: (value) => engine.current?.restoreCamera(value),
       focusRoom: (id, inside) => engine.current?.focusRoom(id, inside),
       isolateRoom: (id) => engine.current?.isolateRoom(id),
       reset: (top) => engine.current?.reset(top),
       zoom: (factor) => engine.current?.zoom(factor),
       snapshot: () => engine.current?.snapshot(),
+      // 导出持有当前场景，页面切换后不可操作复用给其他项目的渲染器。
+      captureSession: () => {
+        const scene = engine.current,
+          revision = scene?.revision;
+        if (!scene) return null;
+        const isCurrent = () =>
+          engine.current === scene &&
+          scene.revision === revision &&
+          !scene.disposed;
+        return {
+          isCurrent,
+          cameraState: () => (isCurrent() ? scene.cameraState() : null),
+          restoreCamera: (value) => isCurrent() && scene.restoreCamera(value),
+          isolateRoom: (id) => isCurrent() && scene.isolateRoom(id),
+          reset: (top) => isCurrent() && scene.reset(top),
+          focusRoom: (id, inside) => isCurrent() && scene.focusRoom(id, inside),
+          snapshot: () =>
+            isCurrent()
+              ? scene.snapshot({
+                  maxDimension: 1800,
+                  type: "image/jpeg",
+                  quality: 0.94,
+                })
+              : null,
+        };
+      },
     }),
     [],
   );

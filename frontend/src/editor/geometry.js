@@ -353,6 +353,7 @@ export function bounds(layout) {
   };
 }
 export function toDraft(data) {
+  if (restorableDraft(data)) return clone(data);
   return {
     layout: Object.fromEntries(
       [
@@ -365,9 +366,14 @@ export function toDraft(data) {
         "walls",
         "openings",
         "lights",
+        "presentation_layers",
       ].map((key) => [
         key,
-        clone(key === "lights" ? data.lights || [] : data[key]),
+        clone(
+          ["lights", "presentation_layers"].includes(key)
+            ? data[key] || []
+            : data[key],
+        ),
       ]),
     ),
     furniture: {

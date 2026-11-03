@@ -1,6 +1,75 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { api } from "../api.js";
 import Modal from "./Modal.jsx";
+import Viewport from "./Viewport.jsx";
+import { ViewportProvider } from "../viewer/ViewportRuntime.jsx";
+import { initialStudio } from "../hooks/useStudio.js";
+import { toDraft } from "../editor/geometry.js";
+import { versionChanges } from "./versionDiff.js";
+
+const compareState = structuredClone(initialStudio);
+const compareSettings = {
+  shadows: true,
+  rotate: false,
+  grid: false,
+  cutaway: true,
+};
+function ComparisonScene({ job, other }) {
+  const viewer = useRef(null),
+    camera = useRef(null);
+  const [side, setSide] = useState(0),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
+  const change = (next) => {
+    camera.current = viewer.current?.cameraState();
+    setLoading(true);
+    setError("");
+    setSide(next);
+  };
+  return (
+    <div className="version-scene">
+      <div className="compare-switch">
+        <button disabled={loading || side === 0} onClick={() => change(0)}>
+          当前版本
+        </button>
+        <button disabled={loading || side === 1} onClick={() => change(1)}>
+          对比版本
+        </button>
+        <button
+          disabled={loading}
+          onClick={() => {
+            camera.current = null;
+            viewer.current?.reset(false);
+          }}
+        >
+          适配全屋
+        </button>
+      </div>
+      <Viewport
+        ref={viewer}
+        url={(side === 0 ? job : other).result.model_url}
+        state={compareState}
+        settings={compareSettings}
+        onLoading={(busy) => {
+          setLoading(busy);
+          if (!busy && camera.current)
+            viewer.current?.restoreCamera(camera.current);
+        }}
+        onError={(message) => {
+          setError(message);
+          setLoading(false);
+        }}
+      />
+      {loading && (
+        <p className="compare-loading">
+          正在载入{side === 0 ? "当前" : "对比"}版本…
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+      <small>保持同一镜头切换，拖动画面可换角度；两版使用相同日光环境。</small>
+    </div>
+  );
+}
 
 const categories = [
   ["rooms", "空间"],
@@ -54,13 +123,18 @@ function Plan({ data }) {
     </svg>
   );
 }
-export default function VersionCompare({ job, versions, onClose }) {
-  const others = versions.filter(
-    (v) => v.status === "succeeded" && v.id !== job.id,
-  );
+export default function VersionCompare({ job, versions, onClose, onRestore }) {
+  const others = versions
+    .filter((v) => v.status === "succeeded" && v.id !== job.id)
+    .sort((a, b) => (b.version || 0) - (a.version || 0));
   const [other, setOther] = useState(others[0]?.id || ""),
     [data, setData] = useState(null),
     [error, setError] = useState("");
+  const [restoring, setRestoring] = useState(false),
+    [show3d, setShow3d] = useState(false);
+  const restoreLock = useRef(false);
+  const otherJob = others.find((v) => v.id === other);
+  const changes = data ? versionChanges(data[1], data[0]) : [];
   useEffect(() => {
     let alive = true;
     setData(null);
@@ -103,6 +177,19 @@ export default function VersionCompare({ job, versions, onClose }) {
       {error && <p role="alert">{error}</p>}
       {data && (
         <>
+          {job.result?.model_url && otherJob?.result?.model_url && (
+            <button
+              className="secondary-button"
+              onClick={() => setShow3d((v) => !v)}
+            >
+              {show3d ? "收起三维对比" : "同镜头三维对比"}
+            </button>
+          )}
+          {show3d && otherJob && (
+            <ViewportProvider>
+              <ComparisonScene key={other} job={job} other={otherJob} />
+            </ViewportProvider>
+          )}
           <div className="compare-plans">
             {data.map((d, i) => (
               <div key={i}>
@@ -111,32 +198,75 @@ export default function VersionCompare({ job, versions, onClose }) {
               </div>
             ))}
           </div>
-          <table>
-            <thead>
-              <tr>
-                <th>对象</th>
-                <th>当前</th>
-                <th>对比</th>
-                <th>变化</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map(([key, label]) => (
-                <tr key={key}>
-                  <td>{label}</td>
-                  <td>{data[0][key]?.length || 0}</td>
-                  <td>{data[1][key]?.length || 0}</td>
-                  <td>
-                    {JSON.stringify(data[0][key] || []) ===
-                    JSON.stringify(data[1][key] || [])
-                      ? "一致"
-                      : "有修改"}
-                  </td>
+          <details>
+            <summary>查看各类对象数量</summary>
+            <table>
+              <thead>
+                <tr>
+                  <th>对象</th>
+                  <th>当前</th>
+                  <th>对比</th>
+                  <th>变化</th>
                 </tr>
+              </thead>
+              <tbody>
+                {categories.map(([key, label]) => (
+                  <tr key={key}>
+                    <td>{label}</td>
+                    <td>{data[0][key]?.length || 0}</td>
+                    <td>{data[1][key]?.length || 0}</td>
+                    <td>
+                      {changes.some((change) => change.category === label)
+                        ? "有修改"
+                        : "一致"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+          <details open className="version-change-list">
+            <summary>
+              从对比版本到当前版本 · {changes.length} 处对象变化
+            </summary>
+            <ul>
+              {changes.map((change, i) => (
+                <li key={i}>
+                  <strong>
+                    {change.action} · {change.name}
+                  </strong>{" "}
+                  <span>{change.fields.join("、") || change.category}</span>
+                </li>
               ))}
-            </tbody>
-          </table>
-          <p>“有修改”包含位置、尺寸、材质及对象属性变化；版本始终独立保存。</p>
+            </ul>
+          </details>
+          {onRestore && (
+            <button
+              className="primary-button"
+              disabled={restoring}
+              onClick={async () => {
+                if (restoreLock.current) return;
+                restoreLock.current = true;
+                setRestoring(true);
+                setError("");
+                try {
+                  await onRestore({
+                    ...toDraft(data[1]),
+                    name: `${job.name.slice(0, 90)} · 恢复 V${otherJob?.version || "历史"}`,
+                  });
+                  onClose();
+                } catch (e) {
+                  setError(e.message);
+                } finally {
+                  restoreLock.current = false;
+                  setRestoring(false);
+                }
+              }}
+            >
+              {restoring ? "正在创建恢复版本…" : "恢复对比版本为新版本"}
+            </button>
+          )}
+          <small>恢复会新建一个版本，当前版本和草稿继续保留。</small>
         </>
       )}
     </Modal>

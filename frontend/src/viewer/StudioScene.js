@@ -1,3 +1,5 @@
+import { frameMetrics } from "./frameMetrics.js";
+import { RoomTour } from "./RoomTour.js";
 import {
   estimatedModelBytes,
   cameraState,
@@ -80,9 +82,16 @@ export class StudioScene {
       antialias: true,
       preserveDrawingBuffer: true,
     });
+    this.frameMetrics = frameMetrics(
+      this.renderer.domElement,
+      new URLSearchParams(location.search).get("diagnostics") === "1",
+    );
     this.renderer.domElement.dataset.rendererId = crypto.randomUUID();
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
+    // Camera-only gestures do not change world-space shadows.
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     host.appendChild(this.renderer.domElement);
@@ -131,10 +140,6 @@ export class StudioScene {
       this.interactionQuality?.end();
     });
     this.controls.addEventListener("change", () => {
-      updateCutaway(this.model, this.camera, {
-        enabled: this.cutaway !== false,
-        top: this.topView,
-      });
       this.dirty = true;
       const zoom = this.zoomPercent();
       if (zoom !== this.lastZoom) {
@@ -226,7 +231,9 @@ export class StudioScene {
         this.lastFrame = now;
         return;
       }
-      this.controls.update(Math.min((now - this.lastFrame) / 1000, 0.05));
+      if (!this.tour?.active)
+        this.controls.update(Math.min((now - this.lastFrame) / 1000, 0.05));
+      this.tour?.update(now);
       this.lastFrame = now;
       if (this.environmentTransition) {
         const { from, to, started } = this.environmentTransition;
@@ -236,7 +243,9 @@ export class StudioScene {
         this.dirty = true;
       }
       if (this.dirty) {
+        const started = performance.now();
         this.composer.render();
+        this.frameMetrics.record(started, performance.now(), this.interacting);
         this.dirty = false;
       }
       if (
@@ -279,6 +288,7 @@ export class StudioScene {
   }
 
   detach() {
+    this.tour?.stop();
     this.setActive(false);
     this.callbacks = {};
     this.observer.disconnect();
@@ -287,9 +297,10 @@ export class StudioScene {
   }
 
   setActive(active) {
+    if (!active) this.tour?.stop();
     this.active = active;
     this.interactionQuality?.restore();
-    this.controls.enabled = active && !!this.model;
+    this.controls.enabled = active && !!this.model && !this.tour?.active;
     if (active) {
       this.lastFrame = performance.now();
       this.resize();
@@ -307,6 +318,14 @@ export class StudioScene {
       this.composer.setSize(w, h);
     }
     const aspect = w / h;
+    if (this.tour?.active) {
+      this.camera.aspect = aspect;
+      this.camera.updateProjectionMatrix();
+      this.tour.needsProjection = true;
+      this.dirty = true;
+      if (this.active && this.model) this.composer.render();
+      return;
+    }
     const direction = this.camera.position
       .clone()
       .sub(this.controls.target)
@@ -414,7 +433,9 @@ export class StudioScene {
         // Clear glazing transmits the sample's daylight; an opaque shadow here
         // would black out the rooms despite the visible transparent windows.
         if (
-          (isShowcase(url) || obj.userData.boundary_glass || obj.userData.opening_glass) &&
+          (isShowcase(url) ||
+            obj.userData.boundary_glass ||
+            obj.userData.opening_glass) &&
           [obj.material].flat().some((m) => m.transparent && m.opacity < 1)
         )
           obj.castShadow = false;
@@ -462,7 +483,7 @@ export class StudioScene {
       this.orthographicCamera,
       this.perspectiveCamera,
     ].filter(Boolean))
-      camera.far = Math.max(200, this.modelSize.length() * 6);
+      camera.far = Math.max(80, this.modelSize.length() * 6);
     this.scene.add(this.model);
     const shadowSize = Math.hypot(this.modelSize.x, this.modelSize.z) * 0.6 + 1;
     Object.assign(this.sun.shadow.camera, {
@@ -510,6 +531,7 @@ export class StudioScene {
   }
 
   async load(url) {
+    this.tour?.stop();
     const revision = ++this.revision;
     if (this.modelUrl === url && this.model) {
       setRoomIsolation(this, null);
@@ -546,6 +568,7 @@ export class StudioScene {
   }
 
   writeEnvironment(value) {
+    this.renderer.shadowMap.needsUpdate = true;
     this.currentEnvironment = value;
     this.sun.color.copy(value.sunColor);
     this.sun.position.copy(value.position);
@@ -707,6 +730,14 @@ export class StudioScene {
   }
 
   settings({ shadows = true, rotate = false, grid = true, cutaway = true }) {
+    this.viewSettings = { shadows, rotate, grid, cutaway };
+    if (this.tour?.active) {
+      rotate = false;
+      grid = false;
+      cutaway = false;
+    }
+    if (this.cutaway !== cutaway || this.renderer.shadowMap.enabled !== shadows)
+      this.renderer.shadowMap.needsUpdate = true;
     if (this.model?.userData.roomIsolation?.enabled.value) {
       this.model.userData.roomIsolation.renderRestore.shadows = shadows;
       shadows = false;
@@ -732,6 +763,25 @@ export class StudioScene {
   cameraState() {
     return cameraState(this);
   }
+  startTour(room) {
+    this.tour ||= new RoomTour(this);
+    return this.tour.start(room);
+  }
+  stopTour() {
+    this.tour?.stop();
+  }
+  tourRoom(id) {
+    return this.tour?.move(id);
+  }
+  recommendedRoom(id) {
+    return this.tour?.move(id, null, true, true);
+  }
+  tourMove(direction, pressed) {
+    this.tour?.setMoveInput(`pad:${direction}`, direction, pressed);
+  }
+  tourStep(direction) {
+    this.tour?.stepMove(direction);
+  }
   restoreCamera(value) {
     return restoreCamera(this, value);
   }
@@ -739,9 +789,11 @@ export class StudioScene {
     return focusRoom(this, id, inside);
   }
   isolateRoom(id) {
-    return setRoomIsolation(this, id);
+    const result = setRoomIsolation(this, id);
+    return result;
   }
   reset(top = false) {
+    this.tour?.stop();
     if (this.perspectiveCamera) {
       this.perspectiveCamera.fov = 22;
       this.perspectiveCamera.near = 0.1;
@@ -782,7 +834,7 @@ export class StudioScene {
       ...(top
         ? [0, 1, 0.00001]
         : isShowcase(this.modelUrl)
-          ? [1.35, 2.75, 2.65]
+          ? [1.35, 2.45, 2.8]
           : showZAcross
             ? [1.85, 3.1, 0.55]
             : [0.55, 3.1, 1.85]),
@@ -869,12 +921,36 @@ export class StudioScene {
         : this.camera.zoom * 100,
     );
   }
-  snapshot() {
+  snapshot({ maxDimension = 0, type = "image/png", quality = 0.94 } = {}) {
     this.interactionQuality?.restore();
     // 导出所选环境的完整效果，而不是切换途中的混合帧。
     this.light(this.state?.preset);
-    this.composer.render();
-    return this.renderer.domElement.toDataURL("image/png");
+    updateCutaway(this.model, this.camera, {
+      enabled: this.cutaway !== false,
+      top: this.topView,
+    });
+    const originalRatio = this.renderer.getPixelRatio();
+    const size = this.renderer.getSize(new THREE.Vector2());
+    const ratio = maxDimension
+      ? Math.max(
+          originalRatio,
+          Math.min(3, maxDimension / Math.max(1, size.x, size.y)),
+        )
+      : originalRatio;
+    try {
+      if (ratio !== originalRatio) {
+        this.renderer.setPixelRatio(ratio);
+        this.composer.setPixelRatio(ratio);
+      }
+      this.composer.render();
+      return this.renderer.domElement.toDataURL(type, quality);
+    } finally {
+      if (ratio !== originalRatio) {
+        this.renderer.setPixelRatio(originalRatio);
+        this.composer.setPixelRatio(originalRatio);
+        this.dirty = true;
+      }
+    }
   }
   thumbnail() {
     const canvas = document.createElement("canvas");
@@ -909,6 +985,7 @@ export class StudioScene {
     this.dirty = false;
   }
   dispose() {
+    this.tour?.stop();
     this.disposed = true;
     this.interactionQuality?.close();
     this.revision++;

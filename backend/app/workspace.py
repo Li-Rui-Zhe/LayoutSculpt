@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .architecture import structure_issues
 from .quality import furnishing_issues
+from .usability import access_issues
 from .schemas import ManualEditRequest
 from .store import now
 
@@ -35,6 +36,9 @@ async def initialize_workspace(store):
     db = await store.connect()
     try:
         await db.executescript("""
+            CREATE TABLE IF NOT EXISTS furniture_presets (
+                id TEXT PRIMARY KEY, item TEXT NOT NULL, created_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS workspace_drafts (
                 key TEXT PRIMARY KEY, document TEXT NOT NULL,
                 revision INTEGER NOT NULL, updated_at TEXT NOT NULL
@@ -54,6 +58,9 @@ def install_workspace_routes(app, store, settings=None, library=None):
     import hashlib
     from time import perf_counter
     from .preview_cache import PreviewCache
+    if library is not None:
+        from .furniture_presets import install_furniture_presets
+        install_furniture_presets(app, store, library)
 
     preview_limit = asyncio.Semaphore(1)
     preview_cache = PreviewCache()
@@ -187,8 +194,12 @@ def install_workspace_routes(app, store, settings=None, library=None):
     async def check_design(body: ManualEditRequest):
         # Same checks used by the modeling workflow. Warnings never masquerade
         # as proof that a design is safe or matches the source drawing.
+        return await asyncio.to_thread(design_report, body)
+
+    def design_report(body):
         return {
             "issues": [
+                *access_issues(body.furniture, body.layout),
                 *[
                     {"severity": "warning", "text": text, "category": "furniture"}
                     for text in furnishing_issues(body.furniture, body.layout)

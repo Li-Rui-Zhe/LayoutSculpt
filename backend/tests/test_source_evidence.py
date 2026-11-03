@@ -169,7 +169,7 @@ def test_pixel_geometry_failure_preserves_registration_and_two_attempts(tmp_path
         assert len(checkpoint["attempts"]) == 2
         assert checkpoint["can_continue"]
         assert client.get(job["result"]["source_alignment_url"]).status_code == 200
-        assert len(ai.calls) == 3
+        assert len(ai.calls) == 4  # 独立审图与像素读取并行，修正仍仅有两次。
 
 
 def test_repair_timeout_keeps_first_displayable_pixel_candidate(tmp_path):
@@ -294,7 +294,7 @@ def test_continuing_a_reidentify_job_reuses_its_own_completed_evidence(tmp_path)
         assert response.status_code == 200, response.text
         recovered = wait_for(client, new_id, lambda j: j["status"] in {"awaiting_review", "failed"})
         assert recovered["status"] == "awaiting_review", recovered
-        assert sum(c["schema"]["title"] == "SourceEvidence" for c in ai.calls) == before + 1  # only the independent audit is new
+        assert sum(c["schema"]["title"] == "SourceEvidence" for c in ai.calls) == before  # 已完成的独立复核同样复用缓存。
         stages = recovered["result"]["pipeline_metrics"]["stages"]
         assert any(s["role"] == "source_evidence" and s["cache_hit"] for s in stages)
 

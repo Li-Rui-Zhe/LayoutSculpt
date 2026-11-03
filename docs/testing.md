@@ -96,7 +96,18 @@ node scripts/review/verify_delivery_notice.mjs <成功任务ID>
 
 ## 当前限制
 
-缺少尺寸时只能估算；图像识别可能误判；家具碰撞采用占地近似。尚不提供完整寻路、精确门扇扫掠或施工结构审核。公开展示应说明原图质量、人工调整与是否完成家具交付。
+缺少尺寸时只能估算；图像识别可能误判；家具碰撞采用占地近似。人工设计支持离散采样的门扇开启范围、柜前、床边和椅后空间建议，不提供完整寻路、精确碰撞求解或施工结构审核。建议可定位且不阻止保存。公开展示应说明原图质量、人工调整与是否完成家具交付。
+
+## 2026-11-02 质量与性能回归
+
+新增 `scripts/benchmark_quality.py`，在 `data/quality-benchmarks/` 隔离存储固定构造图、期望几何、真实 AI 结果及阶段耗时。使用已配置服务，会产生真实模型请求；不上传用户项目图片。检查外轮廓 IoU、面积、房间位置、卧室数及门窗数量和位置，机器检查不能替代人工确认。
+
+```sh
+python scripts/benchmark_quality.py --help
+python scripts/benchmark_delivery.py --run data/quality-benchmarks/<本轮目录>
+```
+
+浏览器打开方案预览时可临时添加 `diagnostics=1`，在画布 DOM 的 `data-frame-metrics` 读取交互采样。仅本地内存记录，不上传或长期保存；不同设备、视口、GPU 负载下不可直接比较。实测结果及测试边界见 [本轮优化记录](optimization-20261102.md)。
 
 ## 自动检查与性能记录
 

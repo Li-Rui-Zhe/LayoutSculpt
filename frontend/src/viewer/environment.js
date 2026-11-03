@@ -12,15 +12,25 @@ export function environmentTarget(id, daylight = 74, showcase = false) {
   if (showcase && preset.id === "midday")
     Object.assign(preset, {
       position: [-6, 7.5, -3],
-      intensity: 3.5,
-      ambient: 0.68,
-      fill: 0.48,
-      exposure: 0.98,
-      environment: 0.35,
+      intensity: 2.9,
+      ambient: 0.76,
+      fill: 0.52,
+      exposure: 0.96,
+      environment: 0.4,
       color: "#fff0d7",
       background: "#e9e7e0",
       ground: "#e9e7e0",
-      ao: 0.58,
+      ao: 0.44,
+    });
+  if (showcase && preset.id === "sunset")
+    Object.assign(preset, {
+      position: [-8, 4, -4],
+      intensity: 2.6,
+      color: "#ffd1a0",
+      ambient: 0.72,
+      fill: 0.44,
+      exposure: 0.96,
+      ao: 0.43,
     });
   const level = Math.min(
     100,

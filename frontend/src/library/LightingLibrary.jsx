@@ -1,3 +1,4 @@
+import ProjectTargetSelect from "./ProjectTargetSelect.jsx";
 import { useState } from "react";
 import DiyPreview from "../diy/DiyPreview.jsx";
 import catalog from "./lightingCatalog.json";
@@ -93,22 +94,9 @@ export default function LightingLibrary({
         {!!onSelectProject && (
           <label>
             放入方案
-            <select
-              aria-label="灯具目标方案"
-              value={job?.id || ""}
-              onChange={(e) => onSelectProject(e.target.value)}
-            >
-              <option value="">选择可编辑的方案</option>
-              {jobs
-                .filter((j) =>
-                  ["succeeded", "awaiting_review"].includes(j.status),
-                )
-                .map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.name}
-                  </option>
-                ))}
-            </select>
+            <ProjectTargetSelect jobs={jobs} value={job?.id || ""}
+                  currentId={job?.id} label="灯具目标方案" allowReview
+                  onChange={onSelectProject} />
           </label>
         )}
         <div className="architecture-entry-actions">

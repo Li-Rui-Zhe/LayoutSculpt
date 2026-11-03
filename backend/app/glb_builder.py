@@ -598,6 +598,8 @@ class Builder:
 
     def build(self, output):
         doc = self.document
+        from .sample_layers import add_presentation_layers
+        add_presentation_layers(self)
         self.slab(
             "建筑基座",
             doc["outline"],

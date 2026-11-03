@@ -24,6 +24,8 @@
 | [设计工作流](design-workflows.md) | 上传、三维初稿、人工调整、素材复用与成果保存 |
 | [原图定位与精细识别](source-evidence-recognition.md) | 精细读图、叠加对照、结构分歧与校对边界 |
 | [三维直接编辑](live-3d-editing.md) | 家具、门扇与灯具的变换、热更新及保存 |
+| [室内漫游](room-tour.md) | 进入空间、房间热点、站位避让与模型兼容边界 |
+| [家具联动、单件 AI 与家庭方案册](design-improvements-20261102.md) | 商品尺寸试摆、我的家具、版本恢复、离线分享与验收记录 |
 | [家具选型与单件换款](furniture-selection-and-replacement.md) | 风格、尺寸筛选与家具替换 |
 | [墙面与地板创作](surface-creation.md) | 配方、手绘、参考图与材质保存 |
 | [建筑构件与阳台围护](balcony-boundaries.md) | 门窗、通道、栏板、玻璃与尺寸适配 |
@@ -53,6 +55,8 @@
 - [交互与跳转检查](interaction-audit.md)
 - [官方家具库 3.0：家庭系列](official-furniture-v3.md)
 - [2026-10-26 使用体验与数据保障优化](optimization-20261026.md)
+- [2026-11-02 质量回归、三维性能与设计体验优化](optimization-20261102.md)
+- [2026-11-03 草稿自动恢复、保存状态与质量验收](reliability-polish-20261103.md)
 - [示例空间与交互体验更新](optimization-20261027.md)
 - [全站优化实施与验收记录](optimization-progress.md)
 - [生成体验与断点恢复优化（2026-10-26）](progressive-generation-20261026.md)

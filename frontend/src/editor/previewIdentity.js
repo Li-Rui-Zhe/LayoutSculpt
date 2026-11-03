@@ -18,6 +18,7 @@ export function previewKey(value) {
                 "edit_id",
                 "edit_locked",
                 "edit_group",
+                "parent_furniture_id",
                 "name",
                 "title",
                 "confidence",

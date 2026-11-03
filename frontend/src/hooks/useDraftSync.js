@@ -14,8 +14,13 @@ export function useDraftSync(
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const session = useRef(null);
-  const [status, setStatus] = useState({ message: "正在读取草稿", error: "" });
+  const [status, setStatus] = useState({
+    phase: "loading",
+    message: "正在读取草稿",
+    error: "",
+  });
   useEffect(() => {
+    setStatus({ phase: "loading", message: "正在读取草稿", error: "" });
     if (initialRevision == null) return;
     const current = createDraftSession(
       key,

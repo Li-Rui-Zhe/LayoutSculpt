@@ -84,11 +84,11 @@ test("未改动草稿读取完成后显示已同步；撤回待提交修改不�
     { baseDocument: base },
   );
   session.schedule(base);
-  assert.equal(states.at(-1).message, "草稿已同步本机");
+  assert.equal(states.at(-1).phase, "saved");
   session.schedule({ version: 2 });
-  assert.match(states.at(-1).message, /正在同步/);
+  assert.equal(states.at(-1).phase, "saving");
   session.schedule(base);
-  assert.equal(states.at(-1).message, "草稿已同步本机");
+  assert.equal(states.at(-1).phase, "saved");
   await session.flush();
   await session.close();
   assert.equal(writes.length, 0);

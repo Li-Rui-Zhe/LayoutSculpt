@@ -83,6 +83,12 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
               ?.versions || []
           }
           onClose={() => setComparing(null)}
+          onRestore={async (document) => {
+            const item = await projects.edit(comparing.id, document, {
+              selectResult: false,
+            });
+            onSelect(item);
+          }}
         />
       )}
       <div className="rail-top">

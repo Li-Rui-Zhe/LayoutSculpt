@@ -460,3 +460,96 @@
   color: #748078;
   font-size: 11px;
 }
+.presentation-layers {
+  padding: 10px 14px;
+  margin: 8px 0;
+}
+.presentation-layers p {
+  color: #64756b;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.presentation-layers fieldset {
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.presentation-layers fieldset details {
+  border-top: 1px solid #dce4de;
+  padding: 8px 0;
+}
+.presentation-layers .edit-number-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+/* 单件拖动时只有一条轻提示，不遮挡命中区域。 */
+.placement-advice {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: min(90%, 420px);
+  padding: 9px 16px;
+  border: 1px solid #bfdbc9;
+  border-radius: 12px;
+  background: #f5fff8f2;
+  color: #286344;
+  box-shadow: 0 4px 18px #15382712;
+  pointer-events: none;
+  text-align: center;
+  font-size: 13px;
+}
+.placement-advice[data-warning="true"] {
+  color: #8b481d;
+  background: #fff9eff2;
+  border-color: #efd3b3;
+}
+.placement-advice small {
+  display: block;
+  font-size: 11px;
+  opacity: 0.8;
+  margin-top: 3px;
+}
+.furniture-sizing p,
+.my-furniture p,
+.furniture-ai-form p {
+  font-size: 12px;
+  line-height: 1.65;
+}
+.furniture-sizing button,
+.my-furniture button,
+.furniture-ai-form button {
+  margin: 4px 4px 4px 0;
+}
+.my-furniture {
+  padding: 12px;
+  margin: 8px 0;
+  border: 1px solid #dce5dd;
+  border-radius: 12px;
+}
+.my-furniture summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.personal-furniture-item {
+  padding: 10px 0;
+  border-top: 1px solid #e5eae4;
+}
+.personal-furniture-item strong,
+.personal-furniture-item small {
+  display: block;
+  margin-bottom: 4px;
+}
+.furniture-ai-form textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 10px;
+  resize: vertical;
+  border: 1px solid #d8dfd7;
+  border-radius: 8px;
+  font: inherit;
+}

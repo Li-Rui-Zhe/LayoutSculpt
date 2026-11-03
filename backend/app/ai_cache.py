@@ -11,7 +11,7 @@ from weakref import WeakValueDictionary
 
 from .store import now
 
-PIPELINE_VERSION = "compact-structure-patch-v1"
+PIPELINE_VERSION = "independent-parallel-read-v2"
 
 
 def compact_json(value):

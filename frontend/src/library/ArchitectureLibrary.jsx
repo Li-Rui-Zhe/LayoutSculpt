@@ -1,3 +1,4 @@
+import ProjectTargetSelect from "./ProjectTargetSelect.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Check, ArrowRight } from "lucide-react";
 import { api } from "../api.js";
@@ -469,23 +470,9 @@ export default function ArchitectureLibrary({
             {!!onSelectProject && (
               <label>
                 放入方案
-                <select
-                  aria-label="建筑构件目标方案"
-                  value={job?.id || ""}
-                  onChange={(e) => onSelectProject(e.target.value)}
-                  disabled={applying}
-                >
-                  <option value="">请选择可编辑的方案</option>
-                  {jobs
-                    .filter((j) =>
-                      ["succeeded", "awaiting_review"].includes(j.status),
-                    )
-                    .map((j) => (
-                      <option key={j.id} value={j.id}>
-                        {j.name}
-                      </option>
-                    ))}
-                </select>
+                <ProjectTargetSelect jobs={jobs} value={job?.id || ""}
+                  currentId={job?.id} label="建筑构件目标方案" allowReview disabled={applying}
+                  onChange={onSelectProject} />
               </label>
             )}
             {eligible ? (

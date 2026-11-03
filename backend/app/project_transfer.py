@@ -51,7 +51,7 @@ def read_project_archive(content):
             # Validate references and dimensions before writing any project data.
             ManualEditRequest(name="导入项目", layout=layout, furniture=furniture)
             snapshots = {}
-            for f in furniture.items:
+            for f in [*furniture.items, *layout.presentation_layers]:
                 if not f.asset_id:
                     continue
                 if not re.fullmatch(r"snapshot:[a-f0-9]{64}", f.asset_id):
@@ -119,8 +119,9 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
         from PIL import Image, ImageDraw
 
         from scripts.build_showcase import document
+        from .sample_layers import preserve_sample
 
-        data = document()
+        data = await asyncio.to_thread(preserve_sample, document(), ROOT / "public/models/forest-home-v3.glb", settings.data_dir / "library")
         layout = Layout.model_validate(
             {k: v for k, v in data.items() if k in Layout.model_fields}
         )
@@ -148,7 +149,7 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
             json.dumps(
                 {
                     "source": "authored_sample",
-                    "note": "示例副本的原图是示意平面图，保存人工设计版本会按可编辑对象重新建模。",
+                    "note": "示例副本保留原家具网格与独立展示陈设层；陈设层可在人工设计中调整、隐藏或删除。原图为示意平面图。",
                 },
                 ensure_ascii=False,
             ),

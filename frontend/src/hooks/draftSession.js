@@ -25,7 +25,7 @@ export function createDraftSession(
           const encoded = pending;
           pending = null;
           if (encoded === saved) {
-            report({ message: "草稿已同步本机", error: "" });
+            report({ phase: "saved", message: "草稿已保存到本机", error: "" });
             continue;
           }
           try {
@@ -37,6 +37,7 @@ export function createDraftSession(
             saved = encoded;
             failures = 0;
             report({
+              phase: "saved",
               message: `已同步本机 · ${new Date(result.updated_at).toLocaleTimeString("zh-CN")}`,
               error: "",
               syncedDocument: JSON.parse(encoded),
@@ -62,6 +63,7 @@ export function createDraftSession(
                     saved = JSON.stringify(remote.document);
                     pending = JSON.stringify(merged.document);
                     report({
+                      phase: "saving",
                       message: "已自动合并其他页面的独立修改",
                       error: "",
                       document: merged.document,
@@ -79,6 +81,7 @@ export function createDraftSession(
             pending ||= encoded;
             blocked = !retryable;
             report({
+              phase: retryable ? "offline" : "conflict",
               message: retryable ? "连接恢复后自动同步" : "尚未同步后端",
               error: error.message,
             });
@@ -111,11 +114,11 @@ export function createDraftSession(
       if (encoded === saved && !running) {
         clearTimeout(timer);
         pending = null;
-        report({ message: "草稿已同步本机", error: "" });
+        report({ phase: "saved", message: "草稿已保存到本机", error: "" });
         return;
       }
       pending = encoded;
-      report({ message: "正在同步草稿…", error: "" });
+      report({ phase: "saving", message: "正在保存草稿…", error: "" });
       clearTimeout(timer);
       timer = setTimeout(flush, delay);
     },

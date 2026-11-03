@@ -1,3 +1,11 @@
+import { useEditorValidation } from "./useEditorValidation.js";
+import PresentationLayers from "./PresentationLayers.jsx";
+import FurnitureExtras from "./FurnitureExtras.jsx";
+import { followAttachments } from "./attachments.js";
+import { placementInspector } from "./placementFeedback.js";
+import { MyFurniture } from "./FurnitureSizing.jsx";
+import FurnitureAiEdit from "./FurnitureAiEdit.jsx";
+import { nextDesignName } from "../library/projectTargets.js";
 import ProgressBoundary, {
   useBoundaryLoad,
 } from "../components/ProgressBoundary.jsx";
@@ -96,14 +104,12 @@ import OpeningComposer from "./OpeningComposer.jsx";
 import { validateOpening } from "./openingPlacement.js";
 import RotationControl from "./RotationControl.jsx";
 import { showerKinds } from "./showerPlacement.js";
-import { manualDesignChecks, feedbackKey } from "./manualValidation.js";
 import PolygonFields from "./PolygonFields.jsx";
-import { useDesignCheck } from "./useDesignCheck.js";
 import { useEditDraft } from "./useEditDraft.js";
 import { applySurfaceDraft, floorColor } from "../materials/assignments.js";
 import { resolveMaterial } from "../materials/custom.js";
 import { usePlanNavigation } from "./usePlanNavigation.js";
-import { deriveOutline, fitOutline, sameArchitecture } from "./autoOutline.js";
+import { deriveOutline, fitOutline } from "./autoOutline.js";
 import {
   clone,
   normalizeRotation,
@@ -399,6 +405,7 @@ function ManualEditorContent({
   const saveLock = useRef(false);
   const [preview, setPreview] = useState(null),
     [step, setStep] = useState(0.1);
+  const [aiPreview, setAiPreview] = useState(null);
   const nameEdited = useRef(false);
   const nextVersion =
     Math.max(
@@ -407,10 +414,7 @@ function ManualEditorContent({
         projects.groups?.find((g) => g.id === job.projectId)?.versions || []
       ).map((j) => j.version || 1),
     ) + 1;
-  const suggestedName = `${job.name
-    .replace(/(?: · 设计)+$/, "")
-    .replace(/ · V\d+$/, "")
-    .replace(/\.(png|jpe?g|webp)$/i, "")} · V${nextVersion}`.slice(0, 120);
+  const suggestedName = nextDesignName(job.name, nextVersion);
   const [name, setName] = useState(suggestedName);
   useEffect(() => {
     if (!nameEdited.current) setName(suggestedName);
@@ -487,7 +491,22 @@ function ManualEditorContent({
     () => !drag.current,
   );
   const { zoom, focusPoint } = navigation;
-  const document = preview || draft.document;
+  const document = useMemo(() => {
+    if (!preview || !draft.document) return aiPreview || draft.document;
+    try {
+      return followAttachments(draft.document, preview);
+    } catch {
+      return draft.document;
+    } // 无效联动由提交入口报告，不让预览崩溃。
+  }, [preview, aiPreview, draft.document]);
+  const inspectPlacement = useMemo(
+    () => placementInspector(draft.document),
+    [draft.document],
+  );
+  const movementFeedback = useMemo(
+    () => (preview ? inspectPlacement(document, selected) : null),
+    [document, preview, selected, inspectPlacement],
+  );
   useEffect(() => {
     onEntry({ loading: !document && !draft.error, error: draft.error });
   }, [!!document, draft.error, onEntry]);
@@ -499,55 +518,26 @@ function ManualEditorContent({
     selectedObject && toolFor(selected.type, selectedObject) === tool
       ? selectedObject
       : null;
-  // 拖动中的候选位置由画布显示；全屋检查复用已提交快照，松手仍先校验再提交。
-  const checkDocument = draft.document;
-  const outlineIssue = useMemo(() => {
-    if (
-      !checkDocument ||
-      !draft.base ||
-      sameArchitecture(checkDocument.layout, draft.base.layout)
-    )
-      return null;
-    return deriveOutline(checkDocument.layout).issue;
-  }, [checkDocument, draft.base]);
-  const { errors: issues, warnings: placementWarnings } = useMemo(
-    () => manualDesignChecks(checkDocument, outlineIssue),
-    [checkDocument, outlineIssue],
-  );
-  const serverCheck = useDesignCheck(
-    draft.document,
-    isActive && !reviewing && !issues.length,
-  );
+  const {
+    issues,
+    placementWarnings,
+    serverCheck,
+    hasFeedback,
+    detailError,
+    feedbackSuggestions,
+    adviceCount,
+  } = useEditorValidation({
+    document: draft.document,
+    base: draft.base,
+    active: isActive,
+    reviewing,
+    error,
+    storageError: draft.storageError,
+  });
   const openingTool = ["openings", "passages"].includes(tool);
   const targetWallId = document?.layout.walls.some((wall) => wall.id === wallId)
     ? wallId
     : document?.layout.walls[0]?.id || "";
-  const hasFeedback = !!(
-    issues.length ||
-    placementWarnings.length ||
-    serverCheck.issues.length ||
-    error ||
-    draft.storageError
-  );
-  // 同一问题可能同时来自操作错误、前端校验和服务端检查，优先保留可定位的条目。
-  const feedbackTexts = new Set(
-    [...issues, ...placementWarnings].map((issue) => feedbackKey(issue.text)),
-  );
-  const detailError =
-    error &&
-    error !== draft.storageError &&
-    !feedbackTexts.has(feedbackKey(error))
-      ? error
-      : "";
-  if (error) feedbackTexts.add(feedbackKey(error));
-  if (draft.storageError) feedbackTexts.add(feedbackKey(draft.storageError));
-  const feedbackSuggestions = serverCheck.issues.filter((issue) => {
-    const text = feedbackKey(issue.text);
-    if (feedbackTexts.has(text)) return false;
-    feedbackTexts.add(text);
-    return true;
-  });
-  const adviceCount = placementWarnings.length + feedbackSuggestions.length;
   useEffect(() => {
     setPickingWall(false);
   }, [tool]);
@@ -665,7 +655,16 @@ function ManualEditorContent({
   };
   const commitParameter = (next) => {
     if (busy || drawing || sceneDrag.current) return false;
-    const fitted = fitOutline(draft.document, next);
+    let fitted;
+    try {
+      fitted = followAttachments(
+        draft.document,
+        fitOutline(draft.document, next),
+      );
+    } catch (e) {
+      setError(e.message);
+      return e.message;
+    }
     const previousIssues = new Set(
       problems(draft.document).map((p) => `${p.type}:${p.index}:${p.text}`),
     );
@@ -698,14 +697,27 @@ function ManualEditorContent({
       const wallId = selected.type === "walls" ? previous.id : previous.wall_id;
       const configuration = {
         preset_id: presetId,
-        ...(selected.type === "openings" ? { opening_ref: openingReference(previous), offset: previous.offset, width: previous.width, height: previous.height, bottom: previous.bottom } : {}),
+        ...(selected.type === "openings"
+          ? {
+              opening_ref: openingReference(previous),
+              offset: previous.offset,
+              width: previous.width,
+              height: previous.height,
+              bottom: previous.bottom,
+            }
+          : {}),
       };
       const next = applyArchitecture(document, wallId, configuration);
       const outcome = commitParameter(next);
-      if (outcome !== true) throw Error(typeof outcome === "string" ? outcome : "请先完成当前编辑。");
+      if (outcome !== true)
+        throw Error(
+          typeof outcome === "string" ? outcome : "请先完成当前编辑。",
+        );
       setSelected(architectureSelection(document, next, wallId, configuration));
       setError("");
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      setError(e.message);
+    }
   };
   const beginArchitecturePlacement = (request) => {
     if (request.lightPreset)
@@ -990,7 +1002,7 @@ function ManualEditorContent({
     );
   };
   const begin = (event, target, handle = null) => {
-    if (busy || drawing || event.button !== 0) return;
+    if (busy || aiPreview || drawing || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.shiftKey && target.type === "furniture" && !handle) {
@@ -1682,8 +1694,9 @@ function ManualEditorContent({
     );
   const sceneCanvas = (
     <LivePreview
+      movementFeedback={movementFeedback}
       document={document}
-      committedDocument={draft.document}
+      committedDocument={aiPreview || draft.document}
       savedModelUrl={job.result?.model_url}
       savedDocument={draft.base}
       focusRequest={focusRequest}
@@ -1693,7 +1706,9 @@ function ManualEditorContent({
         architecturePlacement
           ? {
               active: true,
-              kind: placementPreset(architecturePlacement.configuration)?.light ? "light" : "architecture",
+              kind: placementPreset(architecturePlacement.configuration)?.light
+                ? "light"
+                : "architecture",
               walls: placementPreset(architecturePlacement.configuration)
                 ?.opening
                 ? document.layout.walls
@@ -1711,7 +1726,7 @@ function ManualEditorContent({
         architecturePlacement ? confirmArchitecturePlacement : confirmPlacement
       }
       active={isActive}
-      busy={busy || !!drawing || pickingWall}
+      busy={busy || !!aiPreview || !!drawing || pickingWall}
       selected={selected}
       selectionType={tool === "rooms" ? "rooms" : null}
       onRotate={rotate}
@@ -1733,6 +1748,7 @@ function ManualEditorContent({
           const target = hitSelection || selected;
           if (
             busy ||
+            aiPreview ||
             placement ||
             architecturePlacement ||
             drawing ||
@@ -1757,10 +1773,9 @@ function ManualEditorContent({
         try {
           if (gesture.document !== draft.document)
             throw Error("设计数据已更新，本次拖动已取消，请重新操作。");
-          const next = applySceneEdit(
+          const next = followAttachments(
             gesture.document,
-            gesture.selection,
-            transform,
+            applySceneEdit(gesture.document, gesture.selection, transform),
           );
           const violation = lockedChange(gesture.document, next);
           if (violation) throw Error(violation);
@@ -2295,7 +2310,15 @@ function ManualEditorContent({
                   <Plus size={14} />
                 </div>
                 {["walls", "openings", "passages"].includes(tool) && (
-                  <ArchitecturePicker tool={tool} onChoose={(presetId) => beginArchitecturePlacement({ configuration: { preset_id: presetId }, placement: true })} />
+                  <ArchitecturePicker
+                    tool={tool}
+                    onChoose={(presetId) =>
+                      beginArchitecturePlacement({
+                        configuration: { preset_id: presetId },
+                        placement: true,
+                      })
+                    }
+                  />
                 )}
                 {tool === "lights" && (
                   <>
@@ -2378,6 +2401,9 @@ function ManualEditorContent({
                       选择位置
                     </button>
                   </div>
+                )}
+                {tool === "furniture" && (
+                  <MyFurniture onPlace={startPlacement} />
                 )}
                 {tool === "walls" && (
                   <button
@@ -2478,6 +2504,15 @@ function ManualEditorContent({
             sceneCanvas
           ) : (
             <section className="plan-editor-canvas">
+              {movementFeedback && (
+                <div
+                  className="placement-advice"
+                  data-warning={movementFeedback.warning}
+                >
+                  {movementFeedback.text}
+                  <small>摆放参考 · 松手后保留检查建议</small>
+                </div>
+              )}
               <div className="plan-sheet-head">
                 <span>
                   <i />
@@ -3282,6 +3317,17 @@ function ManualEditorContent({
                     pointerEvents="none"
                   />
                 )}
+                {movementFeedback && (
+                  <polygon
+                    points={movementFeedback.corners
+                      .map((p) => `${p.x},${p.y}`)
+                      .join(" ")}
+                    fill={movementFeedback.warning ? "#d9773622" : "#2d8b6522"}
+                    stroke={movementFeedback.warning ? "#d97736" : "#2d8b65"}
+                    strokeWidth=".035"
+                    pointerEvents="none"
+                  />
+                )}
                 {placementResult && (
                   <g pointerEvents="none">
                     <polygon
@@ -3450,6 +3496,7 @@ function ManualEditorContent({
                 className="inspector-fields"
                 disabled={
                   busy ||
+                  !!aiPreview ||
                   !!drawing ||
                   locked.includes(`${selected?.type}:${selected?.index}`)
                 }
@@ -3657,6 +3704,19 @@ function ManualEditorContent({
                               "壁挂电视建议底部离地 1.05 米，可放在低电视柜上方；安装高度保存后反映在三维模型中。"}
                           </p>
                         </details>
+                        <FurnitureExtras
+                          key={item.edit_id || selected.index}
+                          document={document}
+                          item={item}
+                          onApply={(value) =>
+                            patch((_, target) => Object.assign(target, value))
+                          }
+                          onParentChange={(id) =>
+                            patch((_, target) => {
+                              target.parent_furniture_id = id;
+                            })
+                          }
+                        />
                         <details className="edit-vertices">
                           <summary>名称、类型与所属空间</summary>
                           <label className="edit-label">
@@ -3726,7 +3786,11 @@ function ManualEditorContent({
                     )}
                     {selected.type === "walls" && (
                       <>
-                        <ArchitecturePicker tool="walls" replace onChoose={replaceArchitecture} />
+                        <ArchitecturePicker
+                          tool="walls"
+                          replace
+                          onChoose={replaceArchitecture}
+                        />
                         <label className="edit-label">
                           围护形式
                           <select
@@ -4201,7 +4265,14 @@ function ManualEditorContent({
                     )}
                     {selected.type === "openings" && (
                       <>
-                        <ArchitecturePicker tool={item.kind === "passage" ? "passages" : "openings"} kind={item.kind} replace onChoose={replaceArchitecture} />
+                        <ArchitecturePicker
+                          tool={
+                            item.kind === "passage" ? "passages" : "openings"
+                          }
+                          kind={item.kind}
+                          replace
+                          onChoose={replaceArchitecture}
+                        />
                         {item.kind === "door" && (
                           <>
                             <label className="edit-label">
@@ -4362,57 +4433,63 @@ function ManualEditorContent({
                                 <option value="off">仅保留门洞</option>
                               </select>
                             </label>
-                            {item.door_leaf !== false && item.door_style === "sliding" && (
-                              <p className="field-note">推拉门沿轨道开启，不使用旋转角度。当前展示固定轨道造型，暂不支持拖动门扇开合。</p>
-                            )}
-                            {item.door_leaf !== false && item.door_style !== "sliding" && (
-                              <>
-                                {item.door_style !== "double" && (
-                                <label className="edit-label">
-                                  铰链位置
-                                  <select
-                                    aria-label="铰链位置"
-                                    value={item.hinge || "start"}
-                                    onChange={(e) =>
+                            {item.door_leaf !== false &&
+                              item.door_style === "sliding" && (
+                                <p className="field-note">
+                                  推拉门沿轨道开启，不使用旋转角度。当前展示固定轨道造型，暂不支持拖动门扇开合。
+                                </p>
+                              )}
+                            {item.door_leaf !== false &&
+                              item.door_style !== "sliding" && (
+                                <>
+                                  {item.door_style !== "double" && (
+                                    <label className="edit-label">
+                                      铰链位置
+                                      <select
+                                        aria-label="铰链位置"
+                                        value={item.hinge || "start"}
+                                        onChange={(e) =>
+                                          patch((_, target) => {
+                                            target.hinge = e.target.value;
+                                          })
+                                        }
+                                      >
+                                        <option value="start">
+                                          靠墙起点侧
+                                        </option>
+                                        <option value="end">靠墙终点侧</option>
+                                      </select>
+                                    </label>
+                                  )}
+                                  <label className="edit-label">
+                                    开启方向
+                                    <select
+                                      aria-label="开启方向"
+                                      value={item.swing || "left"}
+                                      onChange={(e) =>
+                                        patch((_, target) => {
+                                          target.swing = e.target.value;
+                                        })
+                                      }
+                                    >
+                                      <option value="left">逆时针</option>
+                                      <option value="right">顺时针</option>
+                                    </select>
+                                  </label>
+                                  <NumberField
+                                    label="开启角度"
+                                    min={0}
+                                    max={110}
+                                    unit="°"
+                                    value={item.angle ?? 90}
+                                    onCommit={(v) =>
                                       patch((_, target) => {
-                                        target.hinge = e.target.value;
+                                        target.angle = v;
                                       })
                                     }
-                                  >
-                                    <option value="start">靠墙起点侧</option>
-                                    <option value="end">靠墙终点侧</option>
-                                  </select>
-                                </label>
-                                )}
-                                <label className="edit-label">
-                                  开启方向
-                                  <select
-                                    aria-label="开启方向"
-                                    value={item.swing || "left"}
-                                    onChange={(e) =>
-                                      patch((_, target) => {
-                                        target.swing = e.target.value;
-                                      })
-                                    }
-                                  >
-                                    <option value="left">逆时针</option>
-                                    <option value="right">顺时针</option>
-                                  </select>
-                                </label>
-                                <NumberField
-                                  label="开启角度"
-                                  min={0}
-                                  max={110}
-                                  unit="°"
-                                  value={item.angle ?? 90}
-                                  onCommit={(v) =>
-                                    patch((_, target) => {
-                                      target.angle = v;
-                                    })
-                                  }
-                                />
-                              </>
-                            )}
+                                  />
+                                </>
+                              )}
                           </details>
                         )}
                         <p className="field-note">
@@ -4522,6 +4599,25 @@ function ManualEditorContent({
                   />
                 )}
               </fieldset>
+              {item && selected?.type === "furniture" && !reviewing && (
+                <fieldset disabled={busy || !!drawing || item.edit_locked}>
+                  <FurnitureAiEdit
+                    key={item.edit_id}
+                    job={job}
+                    document={draft.document}
+                    item={item}
+                    onPreview={setAiPreview}
+                    onApply={commitParameter}
+                  />
+                </fieldset>
+              )}
+              {!placement && (
+                <PresentationLayers
+                  document={draft.document}
+                  disabled={busy || !!drawing || !!aiPreview}
+                  onChange={commitParameter}
+                />
+              )}
             </aside>
           </LiveParameterContext.Provider>
         </div>
@@ -4694,14 +4790,30 @@ function ManualEditorContent({
                 {placementWarnings.length > 5 && (
                   <p>另有 {placementWarnings.length - 5} 项淋浴布局建议。</p>
                 )}
-                {feedbackSuggestions.map((issue, index) => (
-                  <p key={`server-${index}`}>建议：{issue.text}</p>
-                ))}
+                {feedbackSuggestions.slice(0, 8).map((issue, index) =>
+                  issue.type && Number.isInteger(issue.index) ? (
+                    <button
+                      key={`server-${index}`}
+                      onClick={() => locate(issue.type, issue.index)}
+                    >
+                      建议：{issue.text} <span>定位 ↗</span>
+                    </button>
+                  ) : (
+                    <p key={`server-${index}`}>建议：{issue.text}</p>
+                  ),
+                )}
+                {feedbackSuggestions.length > 8 && (
+                  <p>
+                    另有 {feedbackSuggestions.length - 8}{" "}
+                    项建议，调整后继续检查。
+                  </p>
+                )}
               </div>
             </div>
           )}
         </div>
         <EditorSaveBar
+          proposalPreview={!!aiPreview}
           error={error}
           completion={completion}
           draft={draft}

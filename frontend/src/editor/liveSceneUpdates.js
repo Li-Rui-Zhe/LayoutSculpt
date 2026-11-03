@@ -53,6 +53,22 @@ export function liveSceneSnapshot(base, current, capabilities = {}) {
     },
     layout: {
       ...next.layout,
+      ...(next.layout.presentation_layers || current.layout.presentation_layers
+        ? {
+            presentation_layers: (next.layout.presentation_layers || []).map(
+              (layer) =>
+                (capabilities.layerIds || []).includes(layer.id)
+                  ? patchFields(
+                      layer,
+                      (current.layout.presentation_layers || []).find(
+                        (v) => v.id === layer.id,
+                      ),
+                      ["x", "y", "elevation", "rotation", "visible"],
+                    )
+                  : layer,
+            ),
+          }
+        : {}),
       lights: next.layout.lights.map((item) =>
         lightIds.has(item.id) || lightPoseIds.has(item.id)
           ? patchFields(item, lights.get(item.id), [
@@ -80,8 +96,12 @@ export const mayReuseSavedScene = (base, current) =>
     furnitureKeys: base.furniture.items.map(liveKey),
     lightIds: base.layout.lights.map((light) => light.id),
     lightPoseIds: base.layout.lights.map((light) => light.id),
+    layerIds: (base.layout.presentation_layers || [])
+      .filter((layer) => layer.visible !== false)
+      .map((layer) => layer.id),
   });
 export const liveCapabilities = (rt) => ({
+  layerIds: [...(rt.liveLayers?.keys() || [])],
   doorIndices: [...(rt.liveDoors?.keys() || [])],
   furnitureKeys: [...(rt.liveGroups?.keys() || [])],
   lightPoseIds: [...(rt.liveLights?.keys() || [])],

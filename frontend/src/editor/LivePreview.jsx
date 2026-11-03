@@ -11,6 +11,7 @@ import { previewKey, previewFeedback } from "./previewIdentity.js";
 import { canSyncLiveScene, mayReuseSavedScene } from "./liveSceneUpdates.js";
 
 export default function LivePreview({
+  movementFeedback,
   document,
   committedDocument,
   jobId,
@@ -101,7 +102,7 @@ export default function LivePreview({
           },
       );
   }, [active, savedModelUrl, savedDocument, savedKey]);
-  const signature = JSON.stringify(input);
+  const signature = useMemo(() => JSON.stringify(input), [input]);
   useEffect(() => {
     if (!active) return;
     queue.current = createPreviewQueue({
@@ -155,14 +156,29 @@ export default function LivePreview({
     if (!active) return;
     const rendered = readyModel.current;
     // 返回三维页或刷新时先载入已有模型，确认本地绑定能力后再决定是否建模。
-    if (!rendered && retry === 0 && savedModelUrl && mayReuseSavedScene(savedDocument, preview.document)) {
+    if (
+      !rendered &&
+      retry === 0 &&
+      savedModelUrl &&
+      mayReuseSavedScene(savedDocument, preview.document)
+    ) {
       queue.current?.cancel();
       setState({ phase: "loading", revision: revision.current });
       return;
     }
-    if (rendered && currentModel.current?.url === rendered.url && canSyncLiveScene(currentModel.current.document, preview.document, rendered.capabilities)) {
+    if (
+      rendered &&
+      currentModel.current?.url === rendered.url &&
+      canSyncLiveScene(
+        currentModel.current.document,
+        preview.document,
+        rendered.capabilities,
+      )
+    ) {
       queue.current?.cancel();
-      setModel((current) => current?.fallback ? { ...current, fallback: false } : current);
+      setModel((current) =>
+        current?.fallback ? { ...current, fallback: false } : current,
+      );
       setState({ phase: "ready", revision: revision.current });
       return;
     }
@@ -304,6 +320,15 @@ export default function LivePreview({
           fallback={model?.fallback}
         />
       </div>
+      {movementFeedback && (
+        <div
+          className="placement-advice"
+          data-warning={movementFeedback.warning}
+        >
+          {movementFeedback.text}
+          <small>摆放参考 · 不会自动修改位置</small>
+        </div>
+      )}
       {rotationOpen &&
         !placement &&
         selected?.type === "furniture" &&
@@ -327,6 +352,8 @@ export default function LivePreview({
         )}
       {model ? (
         <DiyPreview
+          movementFeedback={movementFeedback}
+          managedLoading
           night={false}
           cutaway={cutaway}
           modelUrl={model.url}

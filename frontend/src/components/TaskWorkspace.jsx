@@ -32,7 +32,9 @@ import {
   X,
 } from "lucide-react";
 import Deliverables from "./Deliverables.jsx";
+import ShareExport from "./ShareExport.jsx";
 import Viewport from "./Viewport.jsx";
+import RoomTourOverlay from "./RoomTourOverlay.jsx";
 import Modal from "./Modal.jsx";
 import { MaterialDock } from "./Materials.jsx";
 import { useStudio, initialStudio } from "../hooks/useStudio.js";
@@ -208,6 +210,7 @@ export default function TaskWorkspace({
   const [rooms, setRooms] = useState([]);
   const [roomView, setRoomView] = useUrlContext("room", "", active);
   const [roomIsolated, setRoomIsolated] = useState(false);
+  const [tour, setTour] = useState(null);
   const [savedCamera, setSavedCamera] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(`camera:${id}`));
@@ -282,17 +285,19 @@ export default function TaskWorkspace({
   const [mobile, setMobile] = useState(
     () => matchMedia("(max-width: 1000px)").matches,
   );
+  // 漫游只临时隐藏面板，不改用户原来的展开状态或选中页签。
+  const inspectorVisible = inspectorOpen && !tour;
   useEffect(() => {
     const media = matchMedia("(max-width: 1000px)");
     const change = () => {
       setMobile(media.matches);
-      setInspectorOpen(!media.matches);
+      if (!tour) setInspectorOpen(!media.matches);
     };
     media.addEventListener("change", change);
     return () => media.removeEventListener("change", change);
-  }, []);
+  }, [!!tour]);
   useEffect(() => {
-    if (!inspectorOpen || !active) return;
+    if (!inspectorOpen || !active || tour) return;
     const close = (event) => {
       if (event.key === "Escape") {
         setInspectorOpen(false);
@@ -303,7 +308,7 @@ export default function TaskWorkspace({
     };
     document.addEventListener("keydown", close);
     return () => document.removeEventListener("keydown", close);
-  }, [inspectorOpen, active]);
+  }, [inspectorOpen, active, tour]);
   const [loading, setLoading] = useState(true);
   const [spaceVisible, setSpaceVisible] = useState(false);
   const [modelError, setModelError] = useState("");
@@ -324,6 +329,14 @@ export default function TaskWorkspace({
   const [retrying, setRetrying] = useState(false);
   const [improvement, setImprovement] = useState("restructure");
   const [captureRequested, setCaptureRequested] = useState(false);
+  const [shareRequested, setShareRequested] = useState(false),
+    [sharing, setSharing] = useState(false);
+  useEffect(() => {
+    if (shareRequested && tab === "design" && !loading && !modelError) {
+      setSharing(true);
+      setShareRequested(false);
+    }
+  }, [shareRequested, tab, loading, modelError]);
   const actionLock = useRef(false);
   const previousStatus = useRef(job?.status);
   useEffect(() => {
@@ -520,7 +533,7 @@ export default function TaskWorkspace({
         />
       )}
       <div
-        className={`workspace-columns ${inspectorOpen ? "has-inspector" : "preview-only"}`}
+        className={`workspace-columns ${inspectorVisible ? "has-inspector" : "preview-only"} ${tour ? "tour-workspace" : ""}`}
         hidden={tab === "edit" || reviewing}
       >
         <div className="design-column">
@@ -611,7 +624,7 @@ export default function TaskWorkspace({
                     )}
                 </button>
               ))}
-            <div className="workspace-tools">
+            <div className="workspace-tools" hidden={!!tour}>
               {hasModel && (
                 <button
                   aria-label="外观设置"
@@ -664,7 +677,7 @@ export default function TaskWorkspace({
             </div>
           </nav>
           <div
-            className={`work-surface ${tab === "design" ? "canvas-surface" : ""}`}
+            className={`work-surface ${tab === "design" ? "canvas-surface" : ""} ${tour ? "tour-active" : ""}`}
           >
             <div className="design-panel" hidden={tab !== "design"}>
               <OperationStatus
@@ -711,7 +724,9 @@ export default function TaskWorkspace({
                     ref={viewer}
                     url={url}
                     active={
-                      active && tab === "design" && !(mobile && inspectorOpen)
+                      active &&
+                      tab === "design" &&
+                      !(mobile && inspectorVisible)
                     }
                     state={state}
                     settings={settings}
@@ -728,7 +743,22 @@ export default function TaskWorkspace({
                     onZoom={setZoom}
                     onThumbnails={setThumbs}
                     onRooms={setRooms}
+                    onTour={setTour}
                   />
+                  {tour && (
+                    <RoomTourOverlay
+                      tour={tour}
+                      viewer={viewer}
+                      preset={state.preset}
+                      onPreset={(preset) => update({ preset })}
+                      onExit={() => {
+                        viewer.current?.stopTour();
+                        requestAnimationFrame(() =>
+                          host.current?.querySelector(".tour-entry")?.focus(),
+                        );
+                      }}
+                    />
+                  )}
                   <div className="canvas-label">
                     <span className="live-dot" />
                     {view === "top" ? "平面俯视" : "三维空间"}
@@ -828,14 +858,21 @@ export default function TaskWorkspace({
                       ))}
                     </select>
                     <button
-                      disabled={!roomView || loading}
+                      className="tour-entry"
+                      disabled={loading || !!modelError || !rooms.length}
                       onClick={() => {
-                        update({ settings: { ...settings, cutaway: false } });
-                        viewer.current?.focusRoom(roomView, true);
+                        if (viewer.current?.startTour(roomView)) {
+                          setRoomIsolated(false);
+                        } else
+                          setNotice(
+                            "这个模型暂未找到合适的室内落脚位置。请确认有房间边界，并为家具之间留出空间；仍可使用鸟瞰查看。",
+                          );
                       }}
                     >
-                      室内视角
+                      <Focus size={14} />
+                      看看我家
                     </button>
+
                     <button
                       disabled={!roomView || loading}
                       aria-pressed={roomIsolated}
@@ -951,7 +988,9 @@ export default function TaskWorkspace({
                   <Viewport
                     url={initialModel}
                     active={
-                      active && tab === "design" && !(mobile && inspectorOpen)
+                      active &&
+                      tab === "design" &&
+                      !(mobile && inspectorVisible)
                     }
                     state={state}
                     settings={settings}
@@ -1034,6 +1073,10 @@ export default function TaskWorkspace({
               ))}
             {tab === "assets" && (
               <Deliverables
+                onShare={() => {
+                  setTab("design");
+                  setShareRequested(true);
+                }}
                 job={job}
                 projects={projects}
                 onEdit={() => setTab("edit")}
@@ -1061,7 +1104,7 @@ export default function TaskWorkspace({
         <aside
           className="inspector"
           id={`inspector-${id}`}
-          hidden={!inspectorOpen}
+          hidden={!inspectorVisible}
         >
           <div className="inspector-tabs">
             <button
@@ -1724,6 +1767,15 @@ export default function TaskWorkspace({
             保存效果图
           </a>
         </Modal>
+      )}
+      {sharing && job && (
+        <ShareExport
+          job={job}
+          viewer={viewer}
+          rooms={rooms}
+          roomId={roomIsolated ? roomView : null}
+          onClose={() => setSharing(false)}
+        />
       )}
       <input
         ref={picker}

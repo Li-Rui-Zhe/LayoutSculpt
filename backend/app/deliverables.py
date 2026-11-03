@@ -40,37 +40,11 @@ def floor_spec(room):
 
 def report_html(job, data):
     esc = lambda value: html.escape(str(value))
-    points = data["outline"]
-    xs, ys = [p["x"] for p in points], [p["y"] for p in points]
-    origin_x, origin_y = min(xs) - 0.6, min(ys) - 0.6
-    w, h = max(xs) - origin_x + 0.6, max(ys) - origin_y + 0.6
-    drawing = []
-    for room in data["rooms"]:
-        polygon = " ".join(f"{p['x']},{p['y']}" for p in room["polygon"])
-        cx = sum(p["x"] for p in room["polygon"]) / len(room["polygon"])
-        cy = sum(p["y"] for p in room["polygon"]) / len(room["polygon"])
-        drawing.append(
-            f'<polygon points="{polygon}" fill="#eee8db" stroke="#fff" stroke-width=".02"/><text x="{cx}" y="{cy}" text-anchor="middle" font-size=".17">{esc(room["name"])}</text>'
-        )
-    for wall in data["walls"]:
-        a, b = wall["start"], wall["end"]
-        length = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
-        drawing.append(
-            f'<line x1="{a["x"]}" y1="{a["y"]}" x2="{b["x"]}" y2="{b["y"]}" stroke="#334d41" stroke-width="{wall["thickness"]}"/><text x="{(a["x"] + b["x"]) / 2 + 0.12}" y="{(a["y"] + b["y"]) / 2 - 0.13}" font-size=".14">{length:.2f}m</text>'
-        )
-    for opening in data["openings"]:
-        wall = next(w for w in data["walls"] if w["id"] == opening["wall_id"])
-        a, b = wall["start"], wall["end"]
-        length = math.hypot(b["x"] - a["x"], b["y"] - a["y"])
-        x1, y1 = (a[k] + (b[k] - a[k]) * opening["offset"] / length for k in ["x", "y"])
-        x2, y2 = (
-            a[k] + (b[k] - a[k]) * (opening["offset"] + opening["width"]) / length
-            for k in ["x", "y"]
-        )
-        color = "#75aec4" if opening["kind"] == "window" else "#cfa768"
-        drawing.append(
-            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="{wall["thickness"] + 0.03}"/>'
-        )
+    visible = {**data, **{key: [item for item in data.get(key, []) if not item.get("edit_hidden")]
+                           for key in ("rooms", "walls", "openings", "furniture", "lights")}}
+    wall_ids = {item["id"] for item in visible["walls"]}
+    visible["openings"] = [item for item in visible["openings"] if item["wall_id"] in wall_ids]
+    drawing = plan_svg(visible)
     room_rows = "".join(
         f"<tr><td>{esc(r['name'])}</td><td>{abs(signed_area([Point(**p) for p in r['polygon']])):.2f} ㎡</td><td>{esc(material_name(r.get('floor_material')))}</td><td>{esc(floor_spec(r))}</td></tr>"
         for r in data["rooms"]
@@ -78,10 +52,10 @@ def report_html(job, data):
     room_names = {r["id"]: r["name"] for r in data["rooms"]}
     furniture_rows = "".join(
         f"<tr><td>{esc(i.get('name') or i['kind'])}</td><td>{esc(room_names.get(i['room_id'], i['room_id']))}</td><td>{i['width']:.2f} × {i['depth']:.2f} × {i['height']:.2f} m</td></tr>"
-        for i in data.get("furniture", [])
+        for i in visible["furniture"]
     )
     wall_rows = "".join(
-        f"<tr><td>墙体 {i + 1}</td><td>{esc(material_name(r.get('material_left') or r.get('wall_material')))}</td><td>{esc(material_name(r.get('material_right') or r.get('wall_material')))}</td></tr>"
+        f"<tr><td>墙体 {i + 1}</td><td>{math.hypot(r['end']['x'] - r['start']['x'], r['end']['y'] - r['start']['y']):.2f} m</td><td>{esc(material_name(r.get('material_left') or r.get('wall_material')))}</td><td>{esc(material_name(r.get('material_right') or r.get('wall_material')))}</td></tr>"
         for i, r in enumerate(data["walls"])
     )
     warnings = (job.get("result") or {}).get("quality", {}).get("issues", [])
@@ -92,9 +66,9 @@ def report_html(job, data):
     return f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>{esc(job["name"])} · 设计报告</title>
 <style>body{{font:15px/1.7 system-ui,sans-serif;color:#263d32;max-width:960px;margin:32px auto;padding:0 24px}}table{{border-collapse:collapse;width:100%}}td,th{{padding:10px;border-bottom:1px solid #ddd;text-align:left}}svg{{width:100%;height:420px}}small{{color:#66766b}}h2{{margin-top:32px}}@media print{{button{{display:none}}body{{margin:0}}tr{{break-inside:avoid}}}}</style>
 <button onclick="window.print()">打印 / 保存为 PDF</button><h1>{esc(job["name"])}</h1><small>版本编号 {esc(job["id"])} · {esc(job["created_at"])} · 单位：米</small>
-<h2>平面与墙长</h2><svg viewBox="{origin_x} {origin_y} {w} {h}">{"".join(drawing)}</svg>
+<h2>平面方案</h2>{drawing}<small>平面与家具清单仅列出当前显示的对象；完整设计保留在项目中。</small>
 <h2>空间面积与地板</h2><table><tr><th>空间</th><th>面积</th><th>地板</th><th>铺贴规格</th></tr>{room_rows}</table>
-<h2>墙面饰面</h2><table><tr><th>墙体</th><th>A 面</th><th>B 面</th></tr>{wall_rows}</table>
+<h2>墙长与墙面饰面</h2><table><tr><th>墙体</th><th>长度</th><th>A 面</th><th>B 面</th></tr>{wall_rows}</table>
 <h2>家具清单</h2><table><tr><th>家具</th><th>所在空间</th><th>宽 × 深 × 高</th></tr>{furniture_rows}</table>
 <h2>灯光分组</h2><table><tr><th>灯具</th><th>灯组</th><th>光通量与色温</th><th>夜晚状态</th></tr>{light_rows}</table>
 <h2>设计检查</h2>{"".join(f"<p>{esc(v)}</p>" for v in warnings) or "<p>本版本未记录家具检查问题。</p>"}<p>原图识别及尺寸估算请对照现场核实；本报告为方案记录。</p></html>'''
@@ -134,7 +108,7 @@ def install_delivery_routes(app, store, settings):
                     path = settings.workspace(job_id.hex) / filename
                     if path.is_file():
                         archive.write(path, filename)
-                for item in data.get("furniture", []):
+                for item in [*data.get("furniture", []), *data.get("presentation_layers", [])]:
                     if (item.get("asset_id") or "").startswith("snapshot:"):
                         path = snapshot_file(
                             settings.data_dir / "library", item["asset_id"]

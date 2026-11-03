@@ -14,7 +14,13 @@ import { deliveryState, deliveryFingerprint } from "./deliveryState.js";
 import { api } from "../api.js";
 import OperationStatus from "./OperationStatus.jsx";
 
-export default function Deliverables({ job, projects, onEdit, onCapture }) {
+export default function Deliverables({
+  job,
+  projects,
+  onEdit,
+  onCapture,
+  onShare,
+}) {
   const [draftState, setDraftState] = useState({ loading: true });
   const [checkRevision, setCheckRevision] = useState(0);
   const [busy, setBusy] = useState(false),
@@ -185,6 +191,20 @@ export default function Deliverables({ job, projects, onEdit, onCapture }) {
         </p>
       )}
       <div className="delivery-actions">
+        <button
+          className="secondary-button"
+          disabled={
+            busy ||
+            waiting ||
+            draftState.loading ||
+            draftState.changed ||
+            draftState.conflict ||
+            draftState.unavailable
+          }
+          onClick={onShare}
+        >
+          导出家庭方案册
+        </button>
         <a
           className="secondary-button"
           href={`/api/jobs/${job.id}/drawing/svg`}

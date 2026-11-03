@@ -31,12 +31,12 @@ from backend.app.workflow import JobRunner, create_graph
 
 async def main(args):
     directory = Path(args.run).resolve(strict=True)
-    if directory.parent != (ROOT / "data" / "ai-benchmarks").resolve():
+    if directory.parent not in {(ROOT / "data" / name).resolve() for name in ("ai-benchmarks", "quality-benchmarks")}:
         raise ValueError("只允许使用隔离性能验证目录")
     previous = json.loads((directory / "report.json").read_text(encoding="utf-8"))
-    if not previous.get("validated"):
+    if not previous.get("validated") and not (previous.get("runs") and all(r.get("quality", {}).get("passed") for r in previous["runs"])):
         raise ValueError("必须先通过识别及增量复核验证")
-    initial_id = previous["runs"][0]["id"]
+    initial_id = previous["runs"][0].get("id") or previous["runs"][0]["job"]
     settings = replace(Settings(), data_dir=directory)
     store = Store(settings.db_path)
     original = await store.get(initial_id)
@@ -47,7 +47,7 @@ async def main(args):
         {k: data[k] for k in Layout.model_fields if k in data}
     )
     source = settings.workspace(initial_id) / "source.png"
-    client = CodexClient(settings)
+    client = CodexClient(Settings())
     report = {
         "fixture_only": True,
         "human_confirmation": False,

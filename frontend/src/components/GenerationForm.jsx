@@ -821,32 +821,6 @@ export default function GenerationForm({
                 </span>
                 <ShieldCheck size={18} />
               </label>
-            </details>
-            <div
-              className="model-capability"
-              data-ready={models.ready}
-              role="status"
-            >
-              <span>
-                {models.loading
-                  ? "正在检测识图模型…"
-                  : models.ready
-                    ? models.selected?.supports_image === true
-                      ? "AI 已就绪 · 自动识别户型"
-                      : "AI 已连接 · 识图能力待确认"
-                    : "当前接入无法识别户型图，请选择可用的识图模型"}
-              </span>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => {
-                  modelOptions.current.open = true;
-                  modelOptions.current.querySelector("select")?.focus();
-                }}
-              >
-                {models.ready ? "更改" : "设置接入"}
-              </button>
-            </div>
             <fieldset className="recognition-mode-options">
               <legend>识别方式</legend>
               {[
@@ -899,6 +873,33 @@ export default function GenerationForm({
                   : "不勾选则自动生成 3D，无需中途确认。"}
               </p>
             </div>
+            </details>
+            <div
+              className="model-capability"
+              data-ready={models.ready}
+              role="status"
+            >
+              <span>
+                {models.loading
+                  ? "正在检测识图模型…"
+                  : models.ready
+                    ? models.selected?.supports_image === true
+                      ? "AI 已就绪 · 自动识别户型"
+                      : "AI 已连接 · 识图能力待确认"
+                    : "当前接入无法识别户型图，请选择可用的识图模型"}
+              </span>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  modelOptions.current.open = true;
+                  modelOptions.current.querySelector("select")?.focus();
+                }}
+              >
+                {models.ready ? "更改" : "设置接入"}
+              </button>
+            </div>
+            <p className="field-note">默认自动完成识别与三维生成；遇到无法可靠判断的结构时，会保留结果并提示核对。</p>
           </section>
         </fieldset>
         {error && (

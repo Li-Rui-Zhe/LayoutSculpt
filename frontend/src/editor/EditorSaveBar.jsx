@@ -1,6 +1,6 @@
-import { InlineProgress } from "../components/LoadingProgress.jsx";
-import { Check, Save } from "lucide-react";
+import { Check, Save, Circle, AlertCircle } from "lucide-react";
 import OperationStatus from "../components/OperationStatus.jsx";
+import { editorSaveStatus } from "./saveStatus.js";
 
 export default function EditorSaveBar({
   draft,
@@ -21,7 +21,15 @@ export default function EditorSaveBar({
   save,
   error,
   completion,
+  proposalPreview = false,
 }) {
+  const status = editorSaveStatus(draft, proposalPreview);
+  const StatusIcon =
+    status.kind === "saved"
+      ? Check
+      : status.kind === "warning"
+        ? AlertCircle
+        : Circle;
   return (
     <div className="edit-save-bar">
       <div>
@@ -33,10 +41,9 @@ export default function EditorSaveBar({
           label="正在提交设计版本"
           detail="提交后会在任务列表继续建模，当前草稿保留。"
         />
-        <span>
-          <Check size={13} />
-          {draft.storageError ? "草稿同步异常，请检查提示" : draft.syncStatus}
-          {draft.dirty ? " · 导出模型待更新" : " · 与已生成模型一致"}
+        <span role="status" data-save-state={status.kind}>
+          <StatusIcon size={13} />
+          {status.text}
         </span>
         <small>
           {reviewing
@@ -44,8 +51,8 @@ export default function EditorSaveBar({
             : adviceCount && !issues.length
               ? `有 ${adviceCount} 项布局建议，仍可保存并生成三维`
               : isScene
-                ? "三维拖动或输入尺寸 → 热更新 → 保存为独立版本"
-                : "平面绘制或输入尺寸 → 检查布局 → 保存为独立版本"}
+                ? "画布可实时调整；生成三维版本后，预览与导出才会更新。"
+                : "修改会自动保存为草稿；生成三维版本后，预览与导出才会更新。"}
         </small>
         {reviewing && (
           <a
@@ -89,6 +96,7 @@ export default function EditorSaveBar({
         className="primary-button"
         disabled={
           busy ||
+          proposalPreview ||
           (reviewing && !acknowledged) ||
           !!issues.length ||
           !name.trim() ||
@@ -99,16 +107,16 @@ export default function EditorSaveBar({
         }
         onClick={save}
       >
-        <InlineProgress
-          active={busy && !completion.completed}
-          failed={!!error}
-          fallback={<Save size={15} />}
-        />
-        {placement
-          ? "请先完成或取消放置"
-          : reviewing
-            ? "确认修改并继续生成"
-            : "保存并生成三维"}
+        <Save size={15} />
+        {proposalPreview
+          ? "请先应用或退出建议预览"
+          : busy
+            ? "正在提交…"
+            : placement
+              ? "请先完成或取消放置"
+              : reviewing
+                ? "确认修改并继续生成"
+                : "保存并生成三维"}
       </button>
     </div>
   );

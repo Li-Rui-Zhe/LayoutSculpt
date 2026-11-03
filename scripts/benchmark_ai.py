@@ -30,7 +30,7 @@ async def main(args):
     directory = ROOT / "data" / "ai-benchmarks" / uuid4().hex
     directory.mkdir(parents=True)
     settings = replace(Settings(), data_dir=directory)
-    client = CodexClient(settings)
+    client = CodexClient(Settings())
     store = Store(settings.db_path)
     await store.initialize()
     report = {

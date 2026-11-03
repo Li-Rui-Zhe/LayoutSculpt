@@ -205,6 +205,21 @@ def contains(point: Point, polygon: list[Point]) -> bool:
     return inside
 
 
+class PresentationLayer(StrictModel):
+    """Independent authored decoration, kept separate from structural evidence."""
+    id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=80)
+    asset_id: str = Field(pattern=r"^snapshot:[a-f0-9]{64}$")
+    parent_furniture_id: str | None = Field(default=None, min_length=1, max_length=100)
+    x: Number
+    y: Number
+    elevation: Number
+    rotation: float = Field(default=0, ge=-360, le=360)
+    visible: bool = True
+    cutaway_upper: bool = False
+    cutaway_only: bool = False
+
+
 class Layout(StrictModel):
     title: str = Field(min_length=1, max_length=80)
     confidence: float = Field(ge=0, le=1)
@@ -216,9 +231,12 @@ class Layout(StrictModel):
     walls: list[Wall] = Field(max_length=120)
     openings: list[Opening] = Field(max_length=80)
     lights: list[LightFixture] = Field(default_factory=list, max_length=12)
+    presentation_layers: list[PresentationLayer] = Field(default_factory=list, max_length=64)
 
     @model_validator(mode="after")
     def check_geometry(self):
+        if len({layer.id for layer in self.presentation_layers}) != len(self.presentation_layers):
+            raise ValueError("展示陈设层 ID 必须唯一")
         validate_polygon(self.outline, "外轮廓")
         if abs(signed_area(self.outline)) < 2:
             raise ValueError("户型外轮廓面积必须大于 2 平方米")
@@ -286,6 +304,7 @@ class Layout(StrictModel):
 
 
 class Furniture(EditableObject):
+    parent_furniture_id: str | None = Field(default=None, min_length=1, max_length=100)
     name: str = Field(default="", max_length=60)
     room_id: str = Field(min_length=1, max_length=40)
     kind: Literal[
@@ -433,6 +452,20 @@ class ManualEditRequest(StrictModel):
     @model_validator(mode="after")
     def check_edit(self):
         validate_furnishing(self.furniture, self.layout)
+        furniture_ids = [f.edit_id for f in self.furniture.items if f.edit_id]
+        if len(furniture_ids) != len(set(furniture_ids)):
+            raise ValueError("家具编辑 ID 不能重复")
+        furniture_by_id = {f.edit_id: f for f in self.furniture.items if f.edit_id}
+        for item in [*self.furniture.items, *self.layout.presentation_layers]:
+            parent = item.parent_furniture_id
+            seen = {item.edit_id} if isinstance(item, Furniture) and item.edit_id else set()
+            while parent:
+                if parent in seen:
+                    raise ValueError("家具联动关系不能形成循环")
+                if parent not in furniture_by_id:
+                    raise ValueError("联动家具不存在，请解除关系后重新选择")
+                seen.add(parent)
+                parent = furniture_by_id[parent].parent_furniture_id
         if not self.name.strip():
             raise ValueError("版本名称不能为空")
         outline = Polygon([(p.x, p.y) for p in self.layout.outline]).buffer(1e-6)

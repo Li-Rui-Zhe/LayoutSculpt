@@ -38,9 +38,13 @@ import { objectFocusBounds, focusCamera } from "../editor/objectFocus.js";
 import { createSceneObjectFeedback } from "../editor/sceneObjectFeedback.js";
 import "../editor/sceneObjectFeedback.css";
 import { bindLiveDoors, syncLiveDoors } from "../editor/liveDoors.js";
-import { liveSceneSnapshot, liveCapabilities } from "../editor/liveSceneUpdates.js";
+import {
+  liveSceneSnapshot,
+  liveCapabilities,
+} from "../editor/liveSceneUpdates.js";
 import { syncFixtureParameters } from "../viewer/fixtureLights.js";
 import { bindLiveLights, syncLiveLights } from "../editor/liveLights.js";
+import { bindLiveLayers, syncLiveLayers } from "../editor/liveLayers.js";
 import { createFrameRenderer } from "../viewer/frameRenderer.js";
 import {
   updateLiveArchitecture,
@@ -152,6 +156,8 @@ export default function DiyPreview({
   onPlacementConfirm,
   sceneStatus = null,
   pendingDocument = null,
+  managedLoading = false,
+  movementFeedback = null,
   retainPrevious = false,
   loadRevision = 0,
 }) {
@@ -720,8 +726,15 @@ export default function DiyPreview({
       rt.gizmo.detach();
       clearLiveArchitecture(rt);
       rt.modelDocument = modelDocument;
-      rt.liveDoors = modelDocument ? bindLiveDoors(gltf.scene, modelDocument) : new Map();
-      rt.liveLights = modelDocument ? bindLiveLights(gltf.scene, modelDocument) : new Map();
+      rt.liveLayers = modelDocument
+        ? bindLiveLayers(gltf.scene, modelDocument)
+        : new Map();
+      rt.liveDoors = modelDocument
+        ? bindLiveDoors(gltf.scene, modelDocument)
+        : new Map();
+      rt.liveLights = modelDocument
+        ? bindLiveLights(gltf.scene, modelDocument)
+        : new Map();
       rt.liveGroups = modelDocument
         ? bindLiveFurniture(gltf.scene, modelDocument)
         : null;
@@ -848,11 +861,17 @@ export default function DiyPreview({
     if (rt.liveGroups && liveDocument && rt.gizmo.object === rt.editHandle)
       syncLiveFurniture(rt.liveGroups, liveDocument);
     if (liveDocument) {
+      syncLiveLayers(rt.liveLayers, liveDocument);
       syncLiveLights(rt.liveLights, liveDocument);
-      if (rt.liveDoors && rt.modelDocument) syncLiveDoors(rt.liveDoors, rt.modelDocument, liveDocument);
+      if (rt.liveDoors && rt.modelDocument)
+        syncLiveDoors(rt.liveDoors, rt.modelDocument, liveDocument);
       updateLiveArchitecture(rt, liveDocument, cutaway, night);
       if (rt.modelDocument && !rt.architectureOverlay) {
-        const visual = liveSceneSnapshot(rt.modelDocument, liveDocument, liveCapabilities(rt));
+        const visual = liveSceneSnapshot(
+          rt.modelDocument,
+          liveDocument,
+          liveCapabilities(rt),
+        );
         syncFixtureParameters(rt.group.children[0], visual.layout.lights);
         updateFixtureLights(rt.group.children[0], night);
       }
@@ -933,6 +952,9 @@ export default function DiyPreview({
       } else rt.gizmo.detach();
     } else rt.gizmo.detach();
     rt.selection.visible = !!picked;
+    rt.selection.material.color.set(
+      movementFeedback?.warning ? 0xd97736 : 0x2d8b65,
+    );
     if (picked) rt.selection.setFromObject(picked);
     rt.grid.visible = gridVisible;
     if (
@@ -952,6 +974,7 @@ export default function DiyPreview({
     rt.render();
   }, [
     selected,
+    movementFeedback,
     solo,
     gridVisible,
     view,
@@ -1019,9 +1042,10 @@ export default function DiyPreview({
     const rt = runtime.current;
     const helper = objectOutline.current;
     if (!rt || !helper) return;
-    const box = liveDocument && liveSelection && rt.group.children.length
-      ? objectFocusBounds(liveDocument, liveSelection, rt.liveOrigin)
-      : null;
+    const box =
+      liveDocument && liveSelection && rt.group.children.length
+        ? objectFocusBounds(liveDocument, liveSelection, rt.liveOrigin)
+        : null;
     helper.visible = !!box;
     // 拖动只更新包围盒，避免每帧销毁并创建选框几何与材质。
     if (box) helper.box.copy(box);
@@ -1244,9 +1268,11 @@ export default function DiyPreview({
       </div>
       <span className="diy-preview-hint">
         {placement
-          ? placement.kind === "light" ? "点击放置灯具 · 绿色可放置 · Esc 取消" : placement.kind === "architecture" && placement.walls
-            ? "点击墙面安装 · 绿色可放置 · 红色表示冲突 · Esc 取消"
-            : "绿色可放置 · 红色表示冲突 · R 旋转 · Esc 取消"
+          ? placement.kind === "light"
+            ? "点击放置灯具 · 绿色可放置 · Esc 取消"
+            : placement.kind === "architecture" && placement.walls
+              ? "点击墙面安装 · 绿色可放置 · 红色表示冲突 · Esc 取消"
+              : "绿色可放置 · 红色表示冲突 · R 旋转 · Esc 取消"
           : modelDocument
             ? "拖动物体摆放 · 空白处拖动旋转视角 · 滚轮缩放"
             : "拖动旋转 · 滚轮缩放"}
@@ -1254,7 +1280,7 @@ export default function DiyPreview({
       </span>
       {!modelDocument && (
         <OperationStatus
-          active={loading && !(retainPrevious && hasContent)}
+          active={!managedLoading && loading && !(retainPrevious && hasContent)}
           failed={!!error}
           cancelled={!modelUrl}
           operationKey={modelUrl}

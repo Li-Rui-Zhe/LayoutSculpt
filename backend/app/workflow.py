@@ -36,6 +36,7 @@ from .source_evidence import (
 )
 from .quality import finish_design, prepare_generated_furnishing
 from .recovery import REVIEW_TIMEOUT_WARNING
+from .parallel_read import independent_reads
 from .resilience import transient_ai_error
 from .schemas import (
     CustomStyleFurnishing,
@@ -71,6 +72,7 @@ class State(TypedDict, total=False):
     recognition_review: dict
     source_alignment: dict
     source_evidence: dict
+    prepared_audit: dict
     reidentify_of: str
 
 
@@ -443,13 +445,24 @@ def create_graph(
             return validate_recognition(RecognitionExtraction.model_validate(pixel_wire(output, alignment)))
 
         checkpoint = None
+        prepared_audit = None
         try:
-            pixels, trace = await run_agent(
+            pixel_read = run_agent(
                 state, "recognition_pixels", "floorplan-pixel-recognition", PixelLayoutExtraction,
                 {"image_size": list(size), "source_evidence": evidence_data, "image_views": views,
                  "meters_per_pixel": alignment["meters_per_pixel"], "task": "固定建筑骨架，再划分净空房间和安装门窗；所有二维点使用整图像素坐标"},
                 meters, artifact="recognition-pixels", reference_images=images,
             )
+            if state["options"].get("collaboration"):
+                await store.update(state["job_id"], message="正在细读房间，同时独立核对原图；两次读取互不参考结果")
+                pixel_result, audit_result = await independent_reads(pixel_read, read_source_audit(state, size, views, images))
+                prepared_audit = ({"status": "incomplete"} if isinstance(audit_result, BaseException)
+                                  else {"status": "completed", "data": audit_result[0], "trace": audit_result[1]})
+                if isinstance(pixel_result, BaseException):
+                    raise pixel_result
+                pixels, trace = pixel_result
+            else:
+                pixels, trace = await pixel_read
             layout = meters(PixelLayoutExtraction.model_validate(pixels)).model_dump()
         except RecognitionCheckpoint as failure:
             wire = pixel_wire(PixelLayoutExtraction.model_validate(failure.candidate), alignment)
@@ -465,6 +478,8 @@ def create_graph(
         (workspace / "source-alignment.json").write_text(json.dumps(alignment, ensure_ascii=False), encoding="utf-8")
         result = {"layout": layout, "source_alignment": alignment, "source_evidence": evidence_data,
                   "agents": [evidence_trace, trace]}
+        if prepared_audit:
+            result["prepared_audit"] = prepared_audit
         if checkpoint:
             result["recognition_review"] = checkpoint
         elif any(f["blocking"] for f in alignment["findings"]):
@@ -539,6 +554,14 @@ def create_graph(
             },
         }
 
+    async def read_source_audit(state, size, views, images):
+        async with asyncio.timeout(min(settings.review_timeout, settings.codex_timeout)):
+            return await run_agent(
+                state, "source_audit", "floorplan-source-evidence", SourceEvidence,
+                {"image_size": list(size), "image_views": views, "task": "独立读取原图像素证据；不参考之前的识别结果或结论。第一张是整图，局部图按 image_views 对应裁切矩形，局部点需加左上角回到整图。所有输出仍用整图像素坐标。"},
+                lambda output: validate_evidence(output, size), reference_images=images,
+            )
+
     async def independent_review(state):
         workspace = settings.workspace(state["job_id"])
         size = (state["source_alignment"]["image_width"], state["source_alignment"]["image_height"])
@@ -549,12 +572,16 @@ def create_graph(
             images = [workspace / f"recognition-detail-{i + 1}.png" for i in range(len(views))]
             if not all(path.is_file() for path in images):
                 views, images = [], []
-            async with asyncio.timeout(min(settings.review_timeout, settings.codex_timeout)):
-                audit_data, trace = await run_agent(
-                    state, "source_audit", "floorplan-source-evidence", SourceEvidence,
-                    {"image_size": list(size), "image_views": views, "task": "独立读取原图像素证据；不参考之前的识别结果或结论。第一张是整图，局部图按 image_views 对应裁切矩形，局部点需加左上角回到整图。所有输出仍用整图像素坐标。"},
-                    lambda output: validate_evidence(output, size), reference_images=images,
-                )
+            prepared = state.get("prepared_audit")
+            if prepared:
+                if state["source_alignment"].get("source_sha256") != source_hash(workspace / "source.png"):
+                    raise ValueError("原图已变化，不能复用独立复核")
+                if prepared["status"] != "completed":
+                    raise ValueError("独立复核尚未完成")
+                audit_data, trace = prepared["data"], prepared["trace"]
+                validate_evidence(SourceEvidence.model_validate(audit_data), size)
+            else:
+                audit_data, trace = await read_source_audit(state, size, views, images)
             audit = SourceEvidence.model_validate(audit_data)
             alignment = update_comparison(state["source_alignment"], compare_source(state["layout"], audit, state["source_alignment"]), independent=True)
             alignment["findings"].extend(alignment.get("image_findings", []))

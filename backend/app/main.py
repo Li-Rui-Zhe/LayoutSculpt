@@ -369,6 +369,8 @@ def create_app(settings=None, *, client=None, model_builder=None):
 
     install_workspace_routes(app, store, settings, library)
     install_local_review_routes(app, store, settings, codex, registry, resolve_model)
+    from .furniture_local import install_furniture_local
+    install_furniture_local(app, store, settings, codex, registry, resolve_model, library)
     install_texture_routes(app, settings)
     install_surface_creation_routes(app, settings, surfaces, resolve_model)
     install_delivery_routes(app, store, settings)

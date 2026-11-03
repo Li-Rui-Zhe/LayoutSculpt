@@ -39,6 +39,7 @@ export function prepareIsolationMaterials(root) {
   replaced.forEach((m) => m.dispose());
 }
 function refreshShadowShaders(scene) {
+  if (scene.renderer) scene.renderer.shadowMap.needsUpdate = true;
   (scene.scene || scene.model)?.traverse((o) => {
     for (const material of [o.material].flat().filter(Boolean))
       material.needsUpdate = true;
