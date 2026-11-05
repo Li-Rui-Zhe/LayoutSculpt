@@ -23,6 +23,8 @@ export function previewKey(value) {
                 "title",
                 "confidence",
                 "scale_note",
+                "dimension_basis",
+                "size_reference",
                 "warnings",
                 "notes",
               ].includes(key),

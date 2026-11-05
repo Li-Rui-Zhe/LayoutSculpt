@@ -172,6 +172,8 @@ def prepare_generated_furnishing(plan, layout):
     affected item with a visible note, rather than failing the entire house.
     """
     result = plan.model_copy(deep=True)
+    for item in result.items:
+        item.size_reference = None  # AI 生成不等于用户核实过商品尺寸。
     rooms = {room.id: room for room in layout.rooms}
     shapes = {
         key: Polygon([(p.x, p.y) for p in room.polygon]).buffer(1e-6)

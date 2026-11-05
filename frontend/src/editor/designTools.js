@@ -58,39 +58,7 @@ export function wallSides(wall, rooms) {
   });
 }
 
-export function calibrate(document, measured, actual) {
-  const ratio = actual / measured;
-  if (!Number.isFinite(ratio) || ratio < 0.1 || ratio > 10)
-    throw Error("校准比例需在 0.1–10 倍之间，请核对实际长度");
-  const next = structuredClone(document);
-  const point = (p) => {
-    p.x *= ratio;
-    p.y *= ratio;
-  };
-  next.layout.outline.forEach(point);
-  next.layout.rooms.forEach((r) => r.polygon.forEach(point));
-  next.layout.walls.forEach((w) => {
-    point(w.start);
-    point(w.end);
-    w.thickness *= ratio;
-    for (const region of w.finish_regions || []) {
-      region.offset *= ratio;
-      region.width *= ratio;
-    }
-  });
-  next.layout.openings.forEach((o) => {
-    o.offset *= ratio;
-    o.width *= ratio;
-  });
-  next.layout.lights.forEach(point);
-  next.furniture.items.forEach((f) => {
-    point(f);
-    f.width *= ratio;
-    f.depth *= ratio;
-  });
-  next.layout.scale_note = `用户按已知长度校准平面：${measured.toFixed(3)} m → ${actual.toFixed(3)} m；高度未缩放。`;
-  return next;
-}
+export { calibrate } from "./dimensions.js";
 
 export function snapFurniture(document, index, threshold = 0.12) {
   const next = structuredClone(document),

@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { api } from "../api.js";
+import { dimensionStatus, furnitureSizeStatus } from "./dimensions.js";
 
-export default function FurnitureSizing({ item, onApply }) {
+export default function FurnitureSizing({ item, document, onApply }) {
+  const [source, setSource] = useState(
+    item.size_reference?.source || "product",
+  );
   const [name, setName] = useState(item.name || "我的家具");
   const [size, setSize] = useState(
     [item.width, item.depth, item.height].map((n) =>
@@ -11,6 +15,10 @@ export default function FurnitureSizing({ item, onApply }) {
   const [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  useEffect(() => {
+    setSource(item.size_reference?.source || "product");
+    setMessage("");
+  }, [item.edit_id, item.size_reference?.source]);
   useEffect(() => {
     setName(item.name || "我的家具");
     setSize(
@@ -34,12 +42,38 @@ export default function FurnitureSizing({ item, onApply }) {
     )
       throw Error("请输入有效尺寸：宽、深 10～600 cm，高 2～300 cm。");
     if (!name.trim()) throw Error("请填写家具名称。");
-    return { ...item, name: name.trim(), width, depth, height };
+    return {
+      ...item,
+      name: name.trim(),
+      width,
+      depth,
+      height,
+      size_reference: { source, width, depth, height },
+    };
   };
   return (
     <details className="property-disclosure furniture-sizing">
       <summary>按商品尺寸试摆</summary>
       <p>用相近模型试尺寸，不代表商品外形完全一致。按宽 × 深 × 高填写。</p>
+      <p className="field-note">
+        {furnitureSizeStatus(item)}。校准房屋不会改变家具尺寸。
+      </p>
+      {document && (
+        <p className="field-note">
+          房屋：{dimensionStatus(document.layout).label}。
+        </p>
+      )}
+      <label className="edit-label">
+        家具尺寸依据
+        <select
+          aria-label="家具尺寸依据"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        >
+          <option value="product">商品页面 / 规格表</option>
+          <option value="measured">自己实测</option>
+        </select>
+      </label>
       <label className="edit-label">
         家具名称
         <input
@@ -109,6 +143,10 @@ export default function FurnitureSizing({ item, onApply }) {
         {busy ? "正在保存…" : "存到我的家具"}
       </button>
       {message && <p role="status">{message}</p>}
+      <p className="field-note">
+        下单前请实测摆放处净宽、净深和高度，并核对门洞、过道与柜门 /
+        抽屉打开所需空间。模型无碰撞不代表现场一定放得下。
+      </p>
     </details>
   );
 }

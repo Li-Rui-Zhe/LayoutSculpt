@@ -91,7 +91,7 @@ def unpack_layout(wire):
 def pack_layout(layout):
     layout = Layout.model_validate(layout) if isinstance(layout, dict) else layout
     # 展示陈设不属于识别结构，也不需要发送给 AI。
-    data = layout.model_dump(exclude={"presentation_layers"})
+    data = layout.model_dump(exclude={"presentation_layers", "dimension_basis"})
     data["outline"] = [[p.x, p.y] for p in layout.outline]
     data["rooms"] = [
         {**r.model_dump(), "polygon": [[p.x, p.y] for p in r.polygon]}

@@ -220,10 +220,38 @@ class PresentationLayer(StrictModel):
     cutaway_only: bool = False
 
 
+class DimensionAnchor(StrictModel):
+    wall_id: str = Field(min_length=1, max_length=40)
+    meters: Positive
+    source: Literal["measured", "drawing"]
+
+
+class DimensionBasis(StrictModel):
+    source: Literal["unknown", "estimated", "image_dimensions", "user_reference"] = "unknown"
+    anchors: list[DimensionAnchor] = Field(default_factory=list, max_length=2)
+    inconsistent: bool = False
+
+    @model_validator(mode="after")
+    def check_anchors(self):
+        if (self.source == "user_reference") != bool(self.anchors):
+            raise ValueError("用户校准需要参考墙记录；自动估算不能携带人工校准记录")
+        if len({a.wall_id for a in self.anchors}) != len(self.anchors):
+            raise ValueError("复核参考墙不能重复")
+        return self
+
+
+class FurnitureSizeReference(StrictModel):
+    source: Literal["product", "measured"]
+    width: float = Field(ge=0.1, le=6)
+    depth: float = Field(ge=0.1, le=6)
+    height: float = Field(ge=0.02, le=3)
+
+
 class Layout(StrictModel):
     title: str = Field(min_length=1, max_length=80)
     confidence: float = Field(ge=0, le=1)
     scale_note: str = Field(max_length=800)
+    dimension_basis: DimensionBasis | None = None
     warnings: list[str] = Field(max_length=30)
     # Automatic wall/floor union retains concave corners and wall thickness.
     outline: list[Point] = Field(min_length=3, max_length=512)
@@ -304,6 +332,7 @@ class Layout(StrictModel):
 
 
 class Furniture(EditableObject):
+    size_reference: FurnitureSizeReference | None = None
     parent_furniture_id: str | None = Field(default=None, min_length=1, max_length=100)
     name: str = Field(default="", max_length=60)
     room_id: str = Field(min_length=1, max_length=40)

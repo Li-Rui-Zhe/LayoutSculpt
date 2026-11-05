@@ -346,6 +346,7 @@ export function toDraft(data) {
         "title",
         "confidence",
         "scale_note",
+        "dimension_basis",
         "warnings",
         "outline",
         "rooms",
@@ -358,7 +359,9 @@ export function toDraft(data) {
         clone(
           ["lights", "presentation_layers"].includes(key)
             ? data[key] || []
-            : data[key],
+            : key === "dimension_basis"
+              ? data[key] || null
+              : data[key],
         ),
       ]),
     ),

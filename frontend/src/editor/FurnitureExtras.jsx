@@ -11,7 +11,7 @@ export default function FurnitureExtras({
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   return (
     <>
-      <FurnitureSizing item={item} onApply={onApply} />
+      <FurnitureSizing item={item} document={document} onApply={onApply} />
       <details
         className="property-disclosure"
         onToggle={(event) => setAttachmentsOpen(event.currentTarget.open)}

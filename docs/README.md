@@ -27,6 +27,7 @@
 | [室内漫游](room-tour.md) | 进入空间、房间热点、站位避让与模型兼容边界 |
 | [家具联动、单件 AI 与家庭方案册](design-improvements-20261102.md) | 商品尺寸试摆、我的家具、版本恢复、离线分享与验收记录 |
 | [家具选型与单件换款](furniture-selection-and-replacement.md) | 风格、尺寸筛选与家具替换 |
+| [尺寸校准与商品试摆](dimension-calibration-20261105.md) | 尺寸来源、双向校准、家具尺寸保护与精度边界 |
 | [墙面与地板创作](surface-creation.md) | 配方、手绘、参考图与材质保存 |
 | [建筑构件与阳台围护](balcony-boundaries.md) | 门窗、通道、栏板、玻璃与尺寸适配 |
 | [阳台高度](balcony-wall-height.md) | 普通墙与栏板高度的区别 |

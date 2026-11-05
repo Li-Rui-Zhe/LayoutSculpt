@@ -141,11 +141,12 @@ test("批量操作保留锁定家具，组合与删除不改原文档", () => {
   );
 });
 test("尺寸校准缩放平面且保留高度；墙A面按房间归属显示", () => {
-  const source = document(),
-    next = calibrate(source, 5, 10);
+  const source = document();
+  source.furniture.items.forEach((item) => { item.edit_locked = false; });
+  const next = calibrate(source, 5, 10);
   assert.equal(next.layout.walls[0].end.x, 10);
   assert.equal(next.layout.walls[0].height, 2.8);
-  assert.equal(next.furniture.items[0].width, 1);
+  assert.equal(next.furniture.items[0].width, source.furniture.items[0].width);
   assert.equal(source.layout.walls[0].end.x, 5);
   assert.equal(
     wallSides(source.layout.walls[0], source.layout.rooms)[0].room,

@@ -468,6 +468,10 @@ def create_graph(
             wire = pixel_wire(PixelLayoutExtraction.model_validate(failure.candidate), alignment)
             layout, checkpoint = checkpoint_candidate(wire, failure.attempts)
             trace = failure.trace
+        layout["dimension_basis"] = {
+            "source": "image_dimensions" if alignment["scale_basis"]["anchor_count"] else "estimated",
+            "anchors": [], "inconsistent": alignment["scale_uncertain"],
+        }
         if not checkpoint or checkpoint["can_continue"]:
             alignment = update_comparison(alignment, compare_source(layout, evidence, alignment))
             alignment["image_findings"] = await asyncio.to_thread(image_wall_findings, source, layout, alignment)

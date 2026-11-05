@@ -18,6 +18,7 @@ from starlette.background import BackgroundTask
 from .schemas import signed_area, Point
 from .library_models import snapshot_file
 from .surface_materials import MATERIALS
+from .dimension_status import dimension_label, furniture_size_label
 
 
 def material_name(identifier):
@@ -51,7 +52,7 @@ def report_html(job, data):
     )
     room_names = {r["id"]: r["name"] for r in data["rooms"]}
     furniture_rows = "".join(
-        f"<tr><td>{esc(i.get('name') or i['kind'])}</td><td>{esc(room_names.get(i['room_id'], i['room_id']))}</td><td>{i['width']:.2f} × {i['depth']:.2f} × {i['height']:.2f} m</td></tr>"
+        f"<tr><td>{esc(i.get('name') or i['kind'])}</td><td>{esc(room_names.get(i['room_id'], i['room_id']))}</td><td>{i['width']:.2f} × {i['depth']:.2f} × {i['height']:.2f} m</td><td>{esc(furniture_size_label(i))}</td></tr>"
         for i in visible["furniture"]
     )
     wall_rows = "".join(
@@ -69,7 +70,8 @@ def report_html(job, data):
 <h2>平面方案</h2>{drawing}<small>平面与家具清单仅列出当前显示的对象；完整设计保留在项目中。</small>
 <h2>空间面积与地板</h2><table><tr><th>空间</th><th>面积</th><th>地板</th><th>铺贴规格</th></tr>{room_rows}</table>
 <h2>墙长与墙面饰面</h2><table><tr><th>墙体</th><th>长度</th><th>A 面</th><th>B 面</th></tr>{wall_rows}</table>
-<h2>家具清单</h2><table><tr><th>家具</th><th>所在空间</th><th>宽 × 深 × 高</th></tr>{furniture_rows}</table>
+<h2>尺寸依据</h2><p>{esc(dimension_label(data))}</p><p>{esc(data.get('scale_note', ''))}</p><p>购买前请实测摆放位置净宽、净深和高度，核对门洞、过道与柜门或抽屉打开所需空间。模型无碰撞不代表现场一定放得下。</p>
+<h2>家具清单</h2><table><tr><th>家具</th><th>所在空间</th><th>宽 × 深 × 高</th><th>尺寸依据</th></tr>{furniture_rows}</table>
 <h2>灯光分组</h2><table><tr><th>灯具</th><th>灯组</th><th>光通量与色温</th><th>夜晚状态</th></tr>{light_rows}</table>
 <h2>设计检查</h2>{"".join(f"<p>{esc(v)}</p>" for v in warnings) or "<p>本版本未记录家具检查问题。</p>"}<p>原图识别及尺寸估算请对照现场核实；本报告为方案记录。</p></html>'''
 

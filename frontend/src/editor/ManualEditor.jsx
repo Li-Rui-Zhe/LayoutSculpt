@@ -1,3 +1,6 @@
+import DimensionCalibration, {
+  DimensionStatus,
+} from "./DimensionCalibration.jsx";
 import { applySurface } from "./applySurface.js";
 import { useEditorValidation } from "./useEditorValidation.js";
 import PresentationLayers from "./PresentationLayers.jsx";
@@ -45,7 +48,7 @@ import {
   LockKeyhole,
   UnlockKeyhole,
 } from "lucide-react";
-import { wallSides, calibrate, snapFurniture } from "./designTools.js";
+import { wallSides, snapFurniture } from "./designTools.js";
 import { batchFurniture } from "./batch.js";
 import LivePreview from "./LivePreview.jsx";
 import {
@@ -241,8 +244,7 @@ function ManualEditorContent({
   const [boxMode, setBoxMode] = useState(false),
     [selectionBox, setSelectionBox] = useState(null);
   const marquee = useRef(null);
-  const [snap, setSnap] = useState(true),
-    [actualLength, setActualLength] = useState(1);
+  const [snap, setSnap] = useState(true);
   const [overlay, setOverlay] = useState(false),
     [opacity, setOpacity] = useState(0.35);
   const [registration, setRegistration] = useState(() => {
@@ -3998,38 +4000,17 @@ function ManualEditorContent({
                               已标记承重结构，改动前需专业人员核实。
                             </p>
                           )}
-                          <details className="edit-advanced">
-                            <summary>按此墙长度校准平面尺寸</summary>
-                            <p>
-                              当前长 {wallLength(item).toFixed(3)}{" "}
-                              m；校准会等比调整全屋平面，墙高与家具高度保持不变，可撤销。
-                            </p>
-                            <NumberField
-                              label="墙体实际长度"
-                              value={actualLength}
-                              min={0.1}
-                              max={60}
-                              onCommit={setActualLength}
-                            />
-                            <button
-                              onClick={() => {
-                                try {
-                                  draft.commit(
-                                    calibrate(
-                                      draft.document,
-                                      wallLength(item),
-                                      actualLength,
-                                    ),
-                                    false,
-                                  );
-                                } catch (e) {
-                                  setError(e.message);
-                                }
-                              }}
-                            >
-                              应用尺寸校准
-                            </button>
-                          </details>
+                          <DimensionCalibration
+                            key={item.id}
+                            document={document}
+                            wall={item}
+                            onApply={(next) => {
+                              if (busy || drawing || sceneDrag.current)
+                                return false;
+                              draft.commit(next, false);
+                              return true;
+                            }}
+                          />
                           <label className="edit-label">
                             基础墙面饰面
                             <select
@@ -4687,6 +4668,7 @@ function ManualEditorContent({
           </div>
         )}
         <div className="edit-feedback">
+          <DimensionStatus layout={document.layout} />
           <div
             className={`edit-check-summary ${hasFeedback ? "has-problems" : "is-clear"}`}
             role="status"

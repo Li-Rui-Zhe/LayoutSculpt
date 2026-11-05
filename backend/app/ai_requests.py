@@ -20,7 +20,8 @@ def layout_input(layout):
 def furnishing_schema(output_type, *, library, surface_catalog=None):
     schema = output_type.model_json_schema()
     furniture = schema["$defs"]["Furniture"]
-    omitted = {"edit_id", "edit_locked", "edit_hidden", "edit_group", "source_asset_id", "asset_family", "parent_furniture_id"}
+    omitted = {"edit_id", "edit_locked", "edit_hidden", "edit_group", "source_asset_id", "asset_family", "parent_furniture_id", "size_reference"}
+    schema["$defs"].pop("FurnitureSizeReference", None)
     if library:
         # 目录中的 DIY 通过 asset_id 选择，后端加载原始部件，无需 AI 重写。
         omitted.add("diy")
