@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
+import {
+  buildRefreshUrl,
+  cleanBuildRefreshUrl,
+} from "../hooks/buildRefresh.js";
 
 export default function BuildNotice() {
   const [version, setVersion] = useState("");
   const [dismissed, setDismissed] = useState("");
   useEffect(() => {
+    const clean = cleanBuildRefreshUrl(location.href);
+    if (clean !== location.href) history.replaceState(history.state, "", clean);
     const current = document
       .querySelector('script[type="module"][src*="/assets/index-"]')
       ?.getAttribute("src");
@@ -54,7 +60,13 @@ export default function BuildNotice() {
         <strong>新版已就绪</strong>
         <p>请先保存当前设计，再刷新使用新功能。</p>
       </div>
-      <button onClick={() => location.reload()}>我已保存，刷新</button>
+      <button
+        onClick={() =>
+          location.replace(buildRefreshUrl(location.href, version))
+        }
+      >
+        我已保存，刷新
+      </button>
       <button aria-label="稍后更新" onClick={() => setDismissed(version)}>
         ×
       </button>

@@ -6,6 +6,7 @@ from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
 from .schemas import LightFixture, validate_furnishing
+from .placement_geometry import walls_at_height
 from .architecture import structure_issues
 from .shower_layout import SHOWER_KINDS, entrance, placement_issues as shower_issues
 
@@ -29,12 +30,14 @@ def footprint(item):
 def solid_walls(layout):
     parts = []
     for wall in layout.walls:
+        if wall.edit_hidden:
+            continue
         line = LineString([(wall.start.x, wall.start.y), (wall.end.x, wall.end.y)])
         openings = sorted(
             [
                 o
                 for o in layout.openings
-                if o.wall_id == wall.id and o.kind in {"door", "passage"}
+                if o.wall_id == wall.id and not o.edit_hidden and o.kind in {"door", "passage"}
             ],
             key=lambda o: o.offset,
         )
@@ -51,47 +54,83 @@ def solid_walls(layout):
     return unary_union(parts)
 
 
-def door_clearances(layout):
+def door_clearances(layout, *, with_height=False):
     walls = {w.id: w for w in layout.walls}
     result = []
     for opening in layout.openings:
-        if opening.kind not in {"door", "passage"}:
+        if opening.edit_hidden or opening.kind not in {"door", "passage"}:
             continue
         wall = walls[opening.wall_id]
+        if wall.edit_hidden:
+            continue
         line = LineString([(wall.start.x, wall.start.y), (wall.end.x, wall.end.y)])
         a = line.interpolate(opening.offset + 0.06)
         b = line.interpolate(opening.offset + opening.width - 0.06)
         if a.distance(b) > 0.05:
-            result.append((wall.id, LineString([a, b]).buffer(0.45, cap_style=2)))
+            entry = (wall.id, LineString([a, b]).buffer(0.45, cap_style=2))
+            result.append(
+                (*entry, opening.bottom, opening.bottom + opening.height)
+                if with_height
+                else entry
+            )
     return result
 
 
 def furnishing_issues(plan, layout):
     """Return specific repair feedback, allowing intentional rugs and tucked chairs."""
+    plan = plan.model_copy(
+        update={"items": [i for i in plan.items if not i.edit_hidden]}
+    )
+    layout = layout.model_copy(
+        update={
+            "walls": [w for w in layout.walls if not w.edit_hidden],
+            "openings": [
+                o
+                for o in layout.openings
+                if not o.edit_hidden
+                and any(w.id == o.wall_id and not w.edit_hidden for w in layout.walls)
+            ],
+        }
+    )
     issues = []
-    solids, doors = solid_walls(layout), door_clearances(layout)
+    solids, doors = solid_walls(layout), door_clearances(layout, with_height=True)
     footprints = [footprint(item) for item in plan.items]
     for i, (item, shape) in enumerate(zip(plan.items, footprints)):
         label = item.name or f"{item.room_id}/{item.kind}"
         issues.extend(shower_issues(item, layout))
         if item.kind in SHOWER_KINDS:
             access = entrance(item)
-            if access.intersection(solids).area > .012 or any(
-                j != i and other.kind != "rug" and other.elevation < 1.8
-                and access.intersection(other_shape).area > .025
+            if access.intersection(solids).area > 0.012 or any(
+                j != i
+                and other.kind != "rug"
+                and other.elevation < 1.8
+                and access.intersection(other_shape).area > 0.025
                 for j, (other, other_shape) in enumerate(zip(plan.items, footprints))
             ):
                 issues.append(f"{label} 入口受阻，请在正面留出至少 0.55 米通行空间")
-        if item.kind != "rug" and shape.intersection(solids).area > 0.012:
+        if (
+            item.kind != "rug"
+            and shape.intersection(
+                walls_at_height(layout, item.elevation, item.elevation + item.height)
+            ).area
+            > 1e-6
+        ):
             issues.append(f"{label} 与实体墙体相交，请移动到室内净空区域")
         if item.kind != "rug":
-            for wall_id, door in doors:
-                if shape.intersection(door).area > 0.035:
+            for wall_id, door, bottom, top in doors:
+                if (
+                    min(item.elevation + item.height, top)
+                    > max(item.elevation, bottom) + 1e-6
+                    and shape.intersection(door).area > 0.035
+                ):
                     issues.append(
                         f"{label} 阻挡 {wall_id} 门口，请留出至少 0.45 米通行区"
                     )
         for other, other_shape in zip(plan.items[:i], footprints[:i]):
-            if min(item.elevation + item.height, other.elevation + other.height) <= max(item.elevation, other.elevation) + 1e-6:
+            if (
+                min(item.elevation + item.height, other.elevation + other.height)
+                <= max(item.elevation, other.elevation) + 1e-6
+            ):
                 continue
             if "rug" in {item.kind, other.kind}:
                 continue
@@ -134,9 +173,11 @@ def prepare_generated_furnishing(plan, layout):
     """
     result = plan.model_copy(deep=True)
     rooms = {room.id: room for room in layout.rooms}
-    shapes = {key: Polygon([(p.x, p.y) for p in room.polygon]).buffer(1e-6)
-              for key, room in rooms.items()}
-    solids, doors = solid_walls(layout), door_clearances(layout)
+    shapes = {
+        key: Polygon([(p.x, p.y) for p in room.polygon]).buffer(1e-6)
+        for key, room in rooms.items()
+    }
+    solids, doors = solid_walls(layout), door_clearances(layout, with_height=True)
     accepted = []
     fitted = {}
     notes = []
@@ -145,19 +186,39 @@ def prepare_generated_furnishing(plan, layout):
         shape = footprint(item)
         if shower_issues(item, layout):
             return False
-        if item.kind in SHOWER_KINDS and entrance(item).intersection(solids).area > .012:
+        if (
+            item.kind in SHOWER_KINDS
+            and entrance(item).intersection(solids).area > 0.012
+        ):
             return False
         if item.room_id not in shapes or not shapes[item.room_id].covers(shape):
             return False
         if not (-60 <= item.x <= 60 and -60 <= item.y <= 60):
             return False
         if item.kind != "rug":
-            if shape.intersection(solids).area > 0.012:
+            if (
+                shape.intersection(
+                    walls_at_height(
+                        layout, item.elevation, item.elevation + item.height
+                    )
+                ).area
+                > 1e-6
+            ):
                 return False
-            if any(shape.intersection(door).area > 0.035 for _, door in doors):
+            if any(
+                min(item.elevation + item.height, top)
+                > max(item.elevation, bottom) + 1e-6
+                and shape.intersection(door).area > 0.035
+                for _, door, bottom, top in doors
+            ):
                 return False
         for other, other_shape in accepted:
-            if item.kind in SHOWER_KINDS and other.kind != "rug" and other.elevation < 1.8 and entrance(item).intersection(other_shape).area > .025:
+            if (
+                item.kind in SHOWER_KINDS
+                and other.kind != "rug"
+                and other.elevation < 1.8
+                and entrance(item).intersection(other_shape).area > 0.025
+            ):
                 return False
             if other.kind in SHOWER_KINDS and item.kind != "rug" and item.elevation < 1.8 and entrance(other).intersection(shape).area > .025:
                 return False

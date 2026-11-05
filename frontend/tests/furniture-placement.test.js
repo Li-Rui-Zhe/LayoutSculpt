@@ -66,7 +66,7 @@ test("拒绝越界、凹空间跨边界与同高度重叠", () => {
     false,
   );
 });
-test("地毯和垂直分离允许叠放，隐藏家具仍占位", () => {
+test("地毯和垂直分离允许叠放，隐藏家具不占位", () => {
   const d = doc();
   d.furniture.items.push({
     ...chair,
@@ -75,7 +75,7 @@ test("地毯和垂直分离允许叠放，隐藏家具仍占位", () => {
     rotation: 0,
     edit_hidden: true,
   });
-  assert.equal(furniturePlacementAt(d, chair, { x: 2, y: 2 }).valid, false);
+  assert.equal(furniturePlacementAt(d, chair, { x: 2, y: 2 }).valid, true);
   assert.equal(
     furniturePlacementAt(
       d,

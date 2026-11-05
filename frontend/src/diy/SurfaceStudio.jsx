@@ -35,7 +35,7 @@ const dataUrl = (blob) =>
     reader.readAsDataURL(blob);
   });
 
-export default function SurfaceStudio({ category, onLibrary }) {
+export default function SurfaceStudio({ category, onLibrary, onApply }) {
   useCustomTextures();
   const label = category === "walls" ? "墙面" : "地板";
   const bases = materials.filter(
@@ -246,8 +246,8 @@ export default function SurfaceStudio({ category, onLibrary }) {
           },
     );
   };
-  const save = async (event) => {
-    event.preventDefault();
+  const save = async (event, apply = false) => {
+    event?.preventDefault();
     if (saveLock.current || saveReason) return;
     const snapshot = { ...draft },
       currentMode = mode;
@@ -261,12 +261,14 @@ export default function SurfaceStudio({ category, onLibrary }) {
         body: JSON.stringify(snapshot),
       });
       await loadCustomTextures(true);
-      if (mounted.current)
+      if (mounted.current) {
         setSaved({
           ...result,
           mode: currentMode,
           signature: JSON.stringify(snapshot),
         });
+        if (apply) onApply?.(result);
+      }
     } catch (e) {
       if (mounted.current) setError(e.message);
     } finally {
@@ -384,6 +386,15 @@ export default function SurfaceStudio({ category, onLibrary }) {
         </div>
         <div className="surface-save-actions">
           <button onClick={onLibrary}>查看素材库</button>
+          {onApply && (
+            <button
+              type="button"
+              disabled={!!saveReason}
+              onClick={() => (currentSaved ? onApply(saved) : save(null, true))}
+            >
+              {currentSaved ? "应用到户型" : "保存并应用"}
+            </button>
+          )}
           <button
             form="surface-design-form"
             type="submit"

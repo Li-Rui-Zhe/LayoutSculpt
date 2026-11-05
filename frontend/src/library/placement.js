@@ -1,12 +1,18 @@
 import {
+  furnitureCollision,
+  structureObstacles,
+  structureCollision,
+  heightOverlap,
+} from "../editor/placementRules.js";
+import { placementSuggestions } from "./placementSuggestions.js";
+import {
   clone,
   center,
-  furnitureCorners,
   itemFits,
-  overlapArea,
+  furnitureSpace,
   round,
 } from "../editor/geometry.js";
-import { verticalOverlap, wallPlacement } from "./wallPlacement.js";
+import { wallPlacement } from "./wallPlacement.js";
 import {
   showerKinds,
   showerPlacementIssues,
@@ -44,40 +50,15 @@ export function validateFurnitureTemplate(document, template) {
 }
 
 export function furnitureObstacles(document, template) {
-  const obstacles = document.layout.walls.map((w) => ({
-    x: (w.start.x + w.end.x) / 2,
-    y: (w.start.y + w.end.y) / 2,
-    width: Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y),
-    depth: w.thickness,
-    rotation:
-      (Math.atan2(w.end.y - w.start.y, w.end.x - w.start.x) * 180) / Math.PI,
-  }));
-  for (const o of document.layout.openings.filter((o) =>
-    ["door", "passage"].includes(o.kind),
-  )) {
-    const w = document.layout.walls.find((w) => w.id === o.wall_id);
-    if (!w) continue;
-    const dx = w.end.x - w.start.x,
-      dy = w.end.y - w.start.y,
-      length = Math.hypot(dx, dy);
-    if (!length) continue;
-    const distance = o.offset + o.width / 2;
-    obstacles.push({
-      x: w.start.x + (dx * distance) / length,
-      y: w.start.y + (dy * distance) / length,
-      width: o.width,
-      depth: w.thickness + 0.9,
-      rotation: (Math.atan2(dy, dx) * 180) / Math.PI,
-    });
-  }
-  const blocked = obstacles.map(furnitureCorners);
-  if (template.kind !== "rug")
-    blocked.push(
-      ...document.furniture.items
-        .filter((f) => f.kind !== "rug" && verticalOverlap(f, template))
-        .map(furnitureCorners),
-    );
-  return blocked;
+  return structureObstacles(document.layout)
+    .filter((part) => part.kind === "wall" && heightOverlap(template, part))
+    .map((part) => part.polygon);
+}
+
+function blockedByFurniture(document, item) {
+  return document.furniture.items.some((other) =>
+    furnitureCollision(item, other),
+  );
 }
 
 function blocksExistingShower(document, item) {
@@ -90,7 +71,7 @@ function blocksExistingShower(document, item) {
     },
   };
   return document.furniture.items.some((f) => {
-    if (!showerKinds.includes(f.kind)) return false;
+    if (f.edit_hidden || !showerKinds.includes(f.kind)) return false;
     const before = showerPlacementIssues(f, document);
     return showerPlacementIssues(f, next).some(
       (message) => !before.includes(message),
@@ -100,10 +81,12 @@ function blocksExistingShower(document, item) {
 
 export function placeLibraryFurniture(document, template, preferredRoomId) {
   validateFurnitureTemplate(document, template);
-  let rooms = [...document.layout.rooms].sort(
-    (a, b) =>
-      Number(b.id === preferredRoomId) - Number(a.id === preferredRoomId),
-  );
+  let rooms = document.layout.rooms
+    .filter((r) => !r.edit_hidden)
+    .sort(
+      (a, b) =>
+        Number(b.id === preferredRoomId) - Number(a.id === preferredRoomId),
+    );
   if (!rooms.length) throw Error("请先创建空间，再放置家具。");
   if (showerKinds.includes(template.kind)) {
     rooms = preferredRoomId
@@ -113,6 +96,7 @@ export function placeLibraryFurniture(document, template, preferredRoomId) {
       throw Error("请先选择淋浴区所属空间，或创建卫生间空间，再添加淋浴素材。");
   }
   const blocked = furnitureObstacles(document, template);
+  const structure = structureObstacles(document.layout);
   if (template.kind === "wall_television") {
     const next = clone(document);
     next.furniture.items.push(
@@ -122,12 +106,28 @@ export function placeLibraryFurniture(document, template, preferredRoomId) {
         rooms,
         blocked,
         null,
-        (item) => !blocksExistingShower(document, item),
+        (item) =>
+          !blocksExistingShower(document, item) &&
+          !blockedByFurniture(document, item) &&
+          !structureCollision(item, structure),
       ),
     );
     return next;
   }
   for (const room of rooms) {
+    for (const point of placementSuggestions(document, template, room.id)) {
+      const result = furniturePlacementAt(
+        document,
+        template,
+        point,
+        point.rotation,
+      );
+      if (result.valid && result.item.room_id === room.id) {
+        const next = clone(document);
+        next.furniture.items.push(result.item);
+        return next;
+      }
+    }
     const minX = Math.min(...room.polygon.map((p) => p.x)),
       maxX = Math.max(...room.polygon.map((p) => p.x));
     const minY = Math.min(...room.polygon.map((p) => p.y)),
@@ -154,8 +154,11 @@ export function placeLibraryFurniture(document, template, preferredRoomId) {
           rotation,
         };
         if (!itemFits(item, room)) continue;
-        const corners = furnitureCorners(item);
-        if (blocked.some((p) => overlapArea(corners, p) > 1e-6)) continue;
+        if (
+          structureCollision(item, structure) ||
+          blockedByFurniture(document, item)
+        )
+          continue;
         if (
           showerPlacementIssues(item, document).length ||
           blocksExistingShower(document, item)
@@ -186,6 +189,7 @@ export function furniturePlacementAt(document, template, point, rotation = 0) {
     if (![point.x, point.y, rotation].every(Number.isFinite))
       throw Error("放置坐标无效。");
     const blocked = furnitureObstacles(document, template);
+    const structure = structureObstacles(document.layout);
     if (template.kind === "wall_television") {
       item = wallPlacement(
         document,
@@ -193,12 +197,18 @@ export function furniturePlacementAt(document, template, point, rotation = 0) {
         document.layout.rooms,
         blocked,
         point,
+        (candidate) =>
+          !blockedByFurniture(document, candidate) &&
+          !structureCollision(candidate, structure),
       );
     }
-    const room = document.layout.rooms.find((room) => itemFits(item, room));
+    const room = furnitureSpace(document.layout)(item);
     if (!room) throw Error("家具超出空间边界，请移入房间或旋转后放置。");
     item.room_id = room.id;
-    if (blocked.some((p) => overlapArea(furnitureCorners(item), p) > 1e-6))
+    if (
+      structureCollision(item, structure) ||
+      blockedByFurniture(document, item)
+    )
       throw Error("此处与家具、墙体或门口通道重叠，请换一个位置。");
     const issues = showerPlacementIssues(item, document);
     if (issues.length) throw Error(issues[0]);

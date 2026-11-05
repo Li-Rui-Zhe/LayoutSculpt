@@ -57,6 +57,8 @@
 - [2026-10-26 使用体验与数据保障优化](optimization-20261026.md)
 - [2026-11-02 质量回归、三维性能与设计体验优化](optimization-20261102.md)
 - [2026-11-03 草稿自动恢复、保存状态与质量验收](reliability-polish-20261103.md)
+- [2026-11-05 家具摆放与 DIY 使用优化](placement-diy-polish-20261105.md)
+- [2026-11-05 家具建模与实时观感优化](visual-polish-20261105.md)
 - [示例空间与交互体验更新](optimization-20261027.md)
 - [全站优化实施与验收记录](optimization-progress.md)
 - [生成体验与断点恢复优化（2026-10-26）](progressive-generation-20261026.md)

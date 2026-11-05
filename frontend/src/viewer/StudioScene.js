@@ -185,7 +185,7 @@ export class StudioScene {
       near: 0.5,
       far: 80,
     });
-    this.sun.shadow.normalBias = 0.04;
+    this.sun.shadow.normalBias = 0.012;
     this.sun.shadow.bias = -0.0002;
     this.sun.shadow.radius = 3;
     this.scene.add(this.sun, this.sun.target);

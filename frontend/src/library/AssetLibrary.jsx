@@ -129,7 +129,9 @@ export default function AssetLibrary({
     floorOnly ? "floor" : readContext("materialCategory", "walls"),
   );
   const [targetId, setTargetId] = useState(currentJobId);
-  useEffect(() => { setTargetId(currentJobId); }, [currentJobId]);
+  useEffect(() => {
+    setTargetId(currentJobId);
+  }, [currentJobId]);
   const [placing, setPlacing] = useState(false),
     [placeError, setPlaceError] = useState("");
   const [opening, setOpening] = useState(false),
@@ -382,7 +384,9 @@ export default function AssetLibrary({
               素材库{" "}
               <small>
                 {assetType === "models"
-                  ? `${items.length} 个模型`
+                  ? loading && !items.length
+                    ? "正在读取…"
+                    : `${items.length} 个模型`
                   : assetType === "architecture"
                     ? "建筑构件"
                     : assetType === "lighting"
@@ -588,9 +592,11 @@ export default function AssetLibrary({
                 >
                   {name}
                   <small>
-                    {id === "all"
-                      ? items.length
-                      : items.filter((i) => i.source === id).length}
+                    {loading && !items.length
+                      ? "—"
+                      : id === "all"
+                        ? items.length
+                        : items.filter((i) => i.source === id).length}
                   </small>
                 </button>
               ))}
@@ -725,7 +731,8 @@ export default function AssetLibrary({
             <div className="library-browser">
               <div className="library-result-label">
                 <h2>
-                  素材 <span>{visible.length}</span>
+                  素材{" "}
+                  <span>{loading && !items.length ? "—" : visible.length}</span>
                 </h2>
                 <span>选择素材，查看三维细节</span>
               </div>
@@ -862,6 +869,7 @@ export default function AssetLibrary({
                     )}
                   </div>
                   <DiyPreview
+                    defaultGrid={false}
                     modelUrl={selected.model_url}
                     onInfo={setInfo}
                     frontDirection={selected.source === "builtin" ? 1 : -1}
@@ -933,9 +941,14 @@ export default function AssetLibrary({
                         ) : (
                           <label>
                             目标方案
-                            <ProjectTargetSelect jobs={jobs} value={targetId}
-                              currentId={currentJobId} label="放入目标方案"
-                              disabled={placing} onChange={setTargetId} />
+                            <ProjectTargetSelect
+                              jobs={jobs}
+                              value={targetId}
+                              currentId={currentJobId}
+                              label="放入目标方案"
+                              disabled={placing}
+                              onChange={setTargetId}
+                            />
                           </label>
                         )}
                         <label>

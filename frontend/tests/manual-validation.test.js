@@ -81,7 +81,7 @@ test("基础边界错误仍然阻止保存，即使同时存在通行建议", ()
   const doc = document();
   doc.furniture.items[1].x = 3.2;
   const result = manualDesignChecks(doc);
-  assert.ok(result.errors.some((issue) => issue.text.includes("超出所属房间")));
+  assert.ok(result.errors.some((issue) => issue.text.includes("超出可用空间")));
   doc.furniture.items[1].x = 2.65;
   doc.furniture.items[1].elevation = -0.1;
   assert.ok(

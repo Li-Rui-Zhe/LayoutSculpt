@@ -1,3 +1,4 @@
+import { applySurface } from "./applySurface.js";
 import { useEditorValidation } from "./useEditorValidation.js";
 import PresentationLayers from "./PresentationLayers.jsx";
 import FurnitureExtras from "./FurnitureExtras.jsx";
@@ -218,6 +219,8 @@ function ManualEditorContent({
   boundaryRequest,
   onBoundaryConsumed,
   onArchitectureContext,
+  surfaceRequest,
+  onSurfaceConsumed,
   floorRequest,
   onFloorConsumed,
   designMode = null,
@@ -302,6 +305,38 @@ function ManualEditorContent({
       value.edit_locked = !value.edit_locked;
       return next;
     }, false);
+  const consumedSurface = useRef(null);
+  useEffect(() => {
+    if (
+      !isActive ||
+      !surfaceRequest ||
+      surfaceRequest.jobId !== job.id ||
+      !draft.document ||
+      draft.restoreConflict ||
+      consumedSurface.current === surfaceRequest.id
+    )
+      return;
+    consumedSurface.current = surfaceRequest.id;
+    try {
+      const result = applySurface(draft.document, surfaceRequest);
+      draft.commit(result.document, false);
+      setTool(result.selection.type);
+      setSelected(result.selection);
+      if (result.selection.type === "walls") setWallSide(surfaceRequest.side);
+      setSidebarTab("objects");
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    }
+    onSurfaceConsumed?.();
+  }, [
+    surfaceRequest,
+    draft.document,
+    draft.restoreConflict,
+    onSurfaceConsumed,
+    isActive,
+    job.id,
+  ]);
   const consumedFloor = useRef(null);
   useEffect(() => {
     if (

@@ -513,31 +513,55 @@ class StructureConfirmation(StrictModel):
 
 
 def validate_furnishing(plan: Furnishing, layout: Layout) -> Furnishing:
+    from shapely.ops import unary_union
+    from .placement_geometry import walls_at_height
+
     rooms = {room.id: room for room in layout.rooms}
+    available = unary_union(
+        [
+            Polygon([(p.x, p.y) for p in r.polygon])
+            for r in layout.rooms
+            if not r.edit_hidden
+        ]
+    ).buffer(1e-6)
     for item in plan.items:
         room = rooms.get(item.room_id)
         if not room:
             raise ValueError(f"家具引用不存在的房间 {item.room_id}")
+        if item.edit_hidden:
+            continue
+        if room.edit_hidden:
+            raise ValueError(f"{item.kind} 家具所属空间已隐藏，请切换所属空间")
         angle = math.radians(item.rotation)
-        corners = []
-        for dx, dy in [(0, 0)] + [
-            (x * item.width / 2, y * item.depth / 2)
-            for x, y in [(-1, -1), (-1, 1), (1, 1), (1, -1)]
-        ]:
-            p = Point(
-                x=item.x + dx * math.cos(angle) - dy * math.sin(angle),
-                y=item.y + dx * math.sin(angle) + dy * math.cos(angle),
+        corners = [
+            (
+                item.x + dx * math.cos(angle) - dy * math.sin(angle),
+                item.y + dx * math.sin(angle) + dy * math.cos(angle),
             )
-            if not contains(p, room.polygon):
-                raise ValueError(f"{item.kind} 家具超出 {room.name} 边界，请缩小或移动")
-            if dx != 0 or dy != 0:
-                corners.append((p.x, p.y))
-        if (
-            not Polygon([(p.x, p.y) for p in room.polygon])
-            .buffer(1e-6)
-            .covers(Polygon(corners))
-        ):
+            for dx, dy in [
+                (-item.width / 2, -item.depth / 2),
+                (item.width / 2, -item.depth / 2),
+                (item.width / 2, item.depth / 2),
+                (-item.width / 2, item.depth / 2),
+            ]
+        ]
+        shape = Polygon(corners)
+        own = Polygon([(p.x, p.y) for p in room.polygon]).buffer(1e-6)
+        if own.covers(shape):
+            continue
+        if not contains(
+            Point(x=item.x, y=item.y), room.polygon
+        ) or not available.covers(shape):
+            if all(contains(Point(x=x, y=y), room.polygon) for x, y in corners):
+                raise ValueError(f"{item.kind} 家具跨越凹形空间缺口，请缩小或移动")
             raise ValueError(
-                f"{item.kind} 家具跨越 {room.name} 的凹形边界，请缩小或移动"
+                f"{item.kind} 家具超出 {room.name} 或可用空间边界，请缩小或移动"
             )
+        if (
+            shape.intersection(
+                walls_at_height(layout, item.elevation, item.elevation + item.height)
+            ).area
+            > 1e-6
+        ):
+            raise ValueError(f"{item.kind} 家具跨越房间实体墙，请缩小或移动")
     return plan

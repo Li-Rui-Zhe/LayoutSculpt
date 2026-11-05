@@ -1,5 +1,5 @@
 import { InlineProgress } from "../components/LoadingProgress.jsx";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useMemo } from "react";
 import { flushSync } from "react-dom";
 import {
   Sparkles,
@@ -26,6 +26,7 @@ import { api } from "../api.js";
 import DiyPreview from "./DiyPreview.jsx";
 import DiyReferenceImage from "./DiyReferenceImage.jsx";
 import { furnitureTemplate } from "./templates.js";
+import { createDraftReconnect } from "../hooks/draftReconnect.js";
 import { useDraftSync } from "../hooks/useDraftSync.js";
 import { writeContext, readContext } from "../hooks/urlContext.js";
 import ColorDesigner from "./ColorDesigner.jsx";
@@ -41,7 +42,12 @@ import {
   promptExamples,
   materialPresets,
 } from "./design.js";
-import { draftRecoveryAction, sameDesign } from "./draftRecovery.js";
+import {
+  draftRecoveryAction,
+  sameDesign,
+  lockedPartChange,
+  reconnectDiyDraft,
+} from "./draftRecovery.js";
 import "./diy.css";
 
 const labels = {
@@ -79,6 +85,10 @@ export default function DiyStudio({
     operation = useRef(false);
   const [draftMeta, setDraftMeta] = useState(null);
   const [recoverable, setRecoverable] = useState(null);
+  const [cacheReadyKey, setCacheReadyKey] = useState(null);
+  const [draftOffline, setDraftOffline] = useState(false);
+  const syncBase = useRef(null);
+  const cachedAlternative = useRef(null);
   const [versions, setVersions] = useState([]),
     [compareBase, setCompareBase] = useState(false),
     [archivedItems, setArchivedItems] = useState([]);
@@ -128,62 +138,147 @@ export default function DiyStudio({
   const draftSync = useDraftSync(
     draftKey,
     design,
-    !initialDesign && !generating && draftMeta?.key === draftKey
+    !initialDesign && !generating && !recoverable && draftMeta?.key === draftKey
       ? draftMeta.revision
       : null,
     (merged) => setHistory({ past: [], present: merged, future: [] }),
+    {
+      baseDocument: syncBase.current,
+      onSaved: (document) => {
+        syncBase.current = document;
+        try {
+          const cached = JSON.parse(
+            localStorage.getItem(`diy-cache:${draftKey}`),
+          );
+          if (cached)
+            localStorage.setItem(
+              `diy-cache:${draftKey}`,
+              JSON.stringify({ ...cached, syncedDocument: document }),
+            );
+        } catch {
+          /* 下次本地保存仍使用最新基线。 */
+        }
+      },
+    },
   );
   useEffect(() => {
     let alive = true;
     setRecoverable(null);
     setDraftMeta(null);
+    setCacheReadyKey(null);
+    setDraftOffline(false);
+    syncBase.current = JSON.parse(baselineRef.current);
     if (initialDesign || generating) return;
     const sequence = token.current;
     let cached = null;
     try {
-      cached = JSON.parse(localStorage.getItem(`diy-cache:${draftKey}`));
-    } catch {}
-    api(`/drafts/${draftKey}`)
-      .then((value) => {
-        if (
-          cached?.document &&
-          (!value.updated_at || cached.updated_at > value.updated_at)
-        )
-          value = { ...value, document: cached.document };
+      const value = JSON.parse(localStorage.getItem(`diy-cache:${draftKey}`));
+      if (value?.document && !designIssues(value.document).length)
+        cached = value;
+    } catch {
+      /* 无有效缓存时读取服务草稿。 */
+    }
+    let cachedChoice =
+      cached?.pendingAlternative &&
+      !designIssues(cached.pendingAlternative).length
+        ? cached.pendingAlternative
+        : null;
+    if (cached) {
+      syncBase.current = cached.syncedDocument || cached.baseDocument || null;
+      const action = draftRecoveryAction(
+        designRef.current,
+        cached.document,
+        true,
+        cached.baseDocument,
+      );
+      if (action === "restore") {
+        designRef.current = copy(cached.document);
+        setHistory({ past: [], present: copy(cached.document), future: [] });
+        setPartId(cached.document.parts[0]?.id || "");
+        setRequestExpanded(false);
+      } else if (action === "choose") {
+        // 在读取服务前备份差异缓存；即使断线也不丢掉另一个版本。
+        try {
+          localStorage.setItem(
+            `diy-recovery:${draftKey}`,
+            JSON.stringify(cached),
+          );
+        } catch {
+          setError("无法备份旧草稿，请先保存当前素材；旧草稿仍保留。");
+          return;
+        }
+        cachedChoice = cached.document;
+      }
+    }
+    cachedAlternative.current = cachedChoice;
+    setCacheReadyKey(draftKey);
+    const connection = createDraftReconnect(
+      async (signal) => {
+        try {
+          const value = await api(`/drafts/${draftKey}`, { signal });
+          if (!Number.isInteger(value?.revision) || value.revision < 0)
+            throw Error("草稿版本无效");
+          if (value.document && designIssues(value.document).length)
+            throw Error("草稿数据不完整");
+          return value;
+        } catch (e) {
+          if (alive) setDraftOffline(true);
+          throw e;
+        }
+      },
+      (remote) => {
         if (!alive) return;
-        const valid = value.document && !designIssues(value.document).length;
-        const action = draftRecoveryAction(
-          designRef.current,
-          valid ? value.document : null,
-          sequence === token.current &&
-            !operation.current &&
-            !pendingInputRef.current,
-          cached?.baseDocument &&
-            sameDesign(cached.document, value.document) &&
-            sameDesign(cached.baseDocument, JSON.parse(baselineRef.current))
-            ? cached.baseDocument
-            : null,
+        const latest = designRef.current;
+        const choice = reconnectDiyDraft(
+          latest,
+          remote,
+          syncBase.current,
+          cachedChoice,
+          sequence === token.current && !operation.current,
+          pendingInputRef.current,
         );
-        if (action === "choose") {
-          setRecoverable({ ...value, key: draftKey });
+        syncBase.current = choice.baseDocument;
+        setDraftOffline(false);
+        cachedAlternative.current = choice.alternative;
+        if (choice.alternative) {
+          setRecoverable({
+            ...remote,
+            document: choice.alternative,
+            remoteDocument: remote.document,
+            key: draftKey,
+          });
         } else {
-          if (action === "restore") {
-            setHistory({ past: [], present: copy(value.document), future: [] });
-            setPartId(value.document.parts[0]?.id || "");
+          if (choice.document && !sameDesign(choice.document, latest)) {
+            setHistory({
+              past: [],
+              present: copy(choice.document),
+              future: [],
+            });
+            setPartId(choice.document.parts[0]?.id || "");
             setRequestExpanded(false);
           }
-          setDraftMeta({ key: draftKey, revision: value.revision });
+          setDraftMeta({ key: draftKey, revision: remote.revision });
         }
-      })
-      .catch((e) => {
-        if (alive) setError(e.message);
-      });
+      },
+    );
+    const retry = () => {
+      void connection.retry();
+    };
+    const visible = () => {
+      if (globalThis.document.visibilityState === "visible") retry();
+    };
+    retry();
+    globalThis.addEventListener("online", retry);
+    globalThis.document.addEventListener("visibilitychange", visible);
     return () => {
       alive = false;
+      connection.close();
+      globalThis.removeEventListener("online", retry);
+      globalThis.document.removeEventListener("visibilitychange", visible);
     };
   }, [draftKey, generating]);
   useEffect(() => {
-    if (initialDesign || generating || !design || draftMeta?.key !== draftKey)
+    if (initialDesign || generating || !design || cacheReadyKey !== draftKey)
       return;
     try {
       localStorage.setItem(
@@ -191,13 +286,18 @@ export default function DiyStudio({
         JSON.stringify({
           document: design,
           baseDocument: JSON.parse(baselineRef.current),
+          syncedDocument: syncBase.current,
+          pendingAlternative:
+            recoverable?.key === draftKey
+              ? recoverable.document
+              : cachedAlternative.current,
           updated_at: new Date().toISOString(),
         }),
       );
     } catch {
       setError("浏览器草稿缓存空间不足，请及时保存素材");
     }
-  }, [design, draftKey, draftMeta, initialDesign, generating]);
+  }, [design, draftKey, cacheReadyKey, initialDesign, generating, recoverable]);
   useEffect(() => {
     setVersions([]);
     setCompareBase(false);
@@ -212,9 +312,12 @@ export default function DiyStudio({
       alive = false;
     };
   }, [asset?.id, asset?.revision]);
-  const dirty = JSON.stringify(design) !== baseline;
+  const dirty = useMemo(
+    () => !sameDesign(design, JSON.parse(baseline)),
+    [design, baseline],
+  );
   const unsaved = dirty || hasPendingInput;
-  const issues = design ? designIssues(design) : [];
+  const issues = useMemo(() => (design ? designIssues(design) : []), [design]);
   const refresh = async () => setItems((await api("/diy/assets")).items);
   const loadValue = (value) => {
     ++token.current;
@@ -319,22 +422,9 @@ export default function DiyStudio({
   const commit = (update, group) => {
     const next =
       typeof update === "function" ? update(copy(history.present)) : update;
-    for (const previous of history.present?.parts || []) {
-      if (!previous.edit_locked) continue;
-      const after = next?.parts.find((p) => p.id === previous.id);
-      const stable = (p) =>
-        Object.fromEntries(
-          Object.entries(p).filter(
-            ([k]) => !["edit_locked", "edit_hidden"].includes(k),
-          ),
-        );
-      if (
-        !after ||
-        JSON.stringify(stable(previous)) !== JSON.stringify(stable(after))
-      ) {
-        setError("操作涉及已锁定部件，请先解锁。");
-        return false;
-      }
+    if (lockedPartChange(history.present, next)) {
+      setError("操作涉及已锁定部件，请先解锁。");
+      return false;
     }
     setHistory((h) => {
       return commitDesign(h, next, group);
@@ -343,18 +433,34 @@ export default function DiyStudio({
     setNotice("");
     return true;
   };
-  const resolveRecovery = (restore) => {
+  const resolveRecovery = (restore, useRemote = false) => {
     if (!recoverable || recoverable.key !== draftKey || busy || generating)
       return;
     if (!restore && !inputValid()) return;
-    const selected = restore ? recoverable.document : designRef.current;
+    const selected = useRemote
+      ? recoverable.remoteDocument
+      : restore
+        ? recoverable.document
+        : designRef.current;
     if (!selected) return;
-    if (restore && !commit(selected)) return;
+    if (restore && lockedPartChange(designRef.current, selected)) {
+      setError("恢复涉及已锁定部件，请先解锁；当前内容与草稿都已保留。");
+      return;
+    }
     try {
+      localStorage.setItem(
+        `diy-recovery:${draftKey}`,
+        JSON.stringify({
+          current: designRef.current,
+          alternative: recoverable.document,
+          remote: recoverable.remoteDocument,
+        }),
+      );
       localStorage.setItem(
         `diy-cache:${draftKey}`,
         JSON.stringify({
           document: selected,
+          syncedDocument: recoverable.remoteDocument || null,
           baseDocument: JSON.parse(baselineRef.current),
           updated_at: new Date().toISOString(),
         }),
@@ -365,6 +471,9 @@ export default function DiyStudio({
       );
       return;
     }
+    if (restore && !commit(selected)) return;
+    syncBase.current = recoverable.remoteDocument || null;
+    cachedAlternative.current = null;
     if (restore) setPartId(selected.parts[0]?.id || "");
     setDraftMeta({ key: draftKey, revision: recoverable.revision });
     setRecoverable(null);
@@ -902,7 +1011,23 @@ export default function DiyStudio({
                 >
                   保留当前内容
                 </button>
+                {recoverable.remoteDocument &&
+                  !sameDesign(
+                    recoverable.document,
+                    recoverable.remoteDocument,
+                  ) &&
+                  !sameDesign(design, recoverable.remoteDocument) && (
+                    <button
+                      disabled={busy || generating}
+                      onClick={() => resolveRecovery(true, true)}
+                    >
+                      恢复服务端草稿
+                    </button>
+                  )}
               </details>
+            )}
+            {draftOffline && (
+              <p role="status">连接暂时中断，可继续编辑；恢复后自动同步。</p>
             )}
             {draftSync.error && <p role="alert">{draftSync.error}</p>}
             {design && (

@@ -20,6 +20,7 @@ export function wallPlacement(
   const candidates = [];
   for (const room of rooms) {
     for (const wall of document.layout.walls) {
+      if (wall.edit_hidden) continue;
       const dx = wall.end.x - wall.start.x,
         dy = wall.end.y - wall.start.y;
       const length = Math.hypot(dx, dy);
@@ -52,6 +53,7 @@ export function wallPlacement(
         if (
           document.layout.openings.some(
             (o) =>
+              !o.edit_hidden &&
               o.wall_id === wall.id &&
               offset + template.width / 2 > o.offset &&
               offset - template.width / 2 < o.offset + o.width &&

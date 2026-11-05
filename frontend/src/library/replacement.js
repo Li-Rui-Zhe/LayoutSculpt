@@ -1,11 +1,5 @@
+import { clone, furnitureSpace } from "../editor/geometry.js";
 import {
-  clone,
-  furnitureCorners,
-  itemFits,
-  overlapArea,
-} from "../editor/geometry.js";
-import {
-  furnitureObstacles,
   furniturePlacementAt,
   validateFurnitureTemplate,
 } from "./placement.js";
@@ -54,7 +48,7 @@ export function replaceFurniture(document, index, template) {
   };
   validateFurnitureTemplate(without, nextItem);
   const room = document.layout.rooms.find((r) => r.id === previous.room_id);
-  if (!room || !itemFits(nextItem, room))
+  if (!room || !furnitureSpace(document.layout)(nextItem))
     throw Error(
       "新款超出原房间边界，请选择尺寸更小的款式，或先调整原家具位置。",
     );
@@ -72,12 +66,6 @@ export function replaceFurniture(document, index, template) {
     Math.abs(check.item.rotation - previous.rotation) > 0.002
   )
     throw Error("新款无法在原位置安装，请先调整原家具位置。");
-  if (
-    furnitureObstacles(without, nextItem).some(
-      (p) => overlapArea(furnitureCorners(nextItem), p) > 1e-6,
-    )
-  )
-    throw Error("新款会与家具、墙体或门口通道重叠，请选择更小的款式。");
   const next = clone(document);
   next.furniture.items[index] = nextItem;
   return next;

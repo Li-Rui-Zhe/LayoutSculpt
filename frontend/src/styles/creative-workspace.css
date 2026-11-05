@@ -1045,16 +1045,17 @@
     display: block;
   }
   .diy-page .diy-library {
-    order: 0;
-    max-height: none;
+    order: 2;
+    max-height: 360px;
+    overflow: auto;
     border: 0;
   }
   .diy-page .diy-workbench {
-    order: 1;
+    order: 0;
     border-block: 1px solid var(--creative-line);
   }
   .diy-page .diy-properties {
-    order: 2;
+    order: 1;
     border: 0;
   }
   .diy-page .diy-workbench > .diy-preview-wrap {

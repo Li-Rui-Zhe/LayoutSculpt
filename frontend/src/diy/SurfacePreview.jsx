@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { applyOptics } from "../materials/optics.js";
+import { environmentTarget } from "../viewer/environment.js";
 
 // 与保存材质使用同一张烘焙贴图和粗糙度，拖动可检查墙角与铺装。
 export default function SurfacePreview({ url, roughness, optics, category }) {
@@ -14,9 +15,12 @@ export default function SurfacePreview({ url, roughness, optics, category }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    const daylightProfile = environmentTarget("midday");
+    renderer.toneMappingExposure = daylightProfile.exposure;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
     element.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#f5f3eb");
@@ -24,6 +28,7 @@ export default function SurfacePreview({ url, roughness, optics, category }) {
     const room = new RoomEnvironment();
     const environment = pmrem.fromScene(room, 0.04);
     scene.environment = environment.texture;
+    scene.environmentIntensity = daylightProfile.environment;
     room.dispose();
     pmrem.dispose();
     const camera = new THREE.PerspectiveCamera(37, 1, 0.1, 50);
@@ -36,12 +41,23 @@ export default function SurfacePreview({ url, roughness, optics, category }) {
     controls.minAzimuthAngle = -0.15;
     controls.maxAzimuthAngle = 1.4;
     controls.maxPolarAngle = Math.PI / 2 - 0.05;
-    const daylight = new THREE.DirectionalLight("#fff5e2", 3.5);
+    const daylight = new THREE.DirectionalLight(
+      daylightProfile.sunColor,
+      daylightProfile.sun,
+    );
     daylight.position.set(2.5, 5, 4);
     daylight.castShadow = true;
     daylight.shadow.mapSize.set(1024, 1024);
-    daylight.shadow.bias = -0.001;
-    scene.add(daylight, new THREE.HemisphereLight("#ffffff", "#c5bba6", 2.1));
+    daylight.shadow.bias = -0.0001;
+    daylight.shadow.normalBias = 0.006;
+    scene.add(
+      daylight,
+      new THREE.HemisphereLight(
+        daylightProfile.sky,
+        daylightProfile.bounce,
+        daylightProfile.ambient,
+      ),
+    );
     const finish = new THREE.MeshPhysicalMaterial({
       color: "#ffffff",
       roughness,
@@ -118,7 +134,7 @@ export default function SurfacePreview({ url, roughness, optics, category }) {
     controls.addEventListener("change", render);
     controls.update();
     resize();
-    runtime.current = { finish, render, references, target };
+    runtime.current = { finish, render, references, target, renderer };
     return () => {
       runtime.current = null;
       observer.disconnect();
@@ -130,6 +146,7 @@ export default function SurfacePreview({ url, roughness, optics, category }) {
         mat.dispose();
       }
       renderer.dispose();
+      daylight.shadow.dispose();
       environment.dispose();
       renderer.domElement.remove();
     };
@@ -145,6 +162,7 @@ export default function SurfacePreview({ url, roughness, optics, category }) {
         optics?.transmission > 0 &&
         (category === "walls" ? index < 2 : index === 2);
     });
+    rt.renderer.shadowMap.needsUpdate = true;
     rt.render();
   }, [roughness, optics, category]);
   useEffect(() => {

@@ -5,21 +5,61 @@ import { verticalOverlap } from "../src/library/wallPlacement.js";
 
 test("壁挂电视靠完整墙面、朝室内安装，可处于低柜上方", () => {
   const doc = document();
-  doc.layout.walls = [{id:"w",start:{x:0,y:0},end:{x:5,y:0},thickness:.16,height:2.7}];
-  const tv = {kind:"wall_television", width:1.24,depth:.1,height:.71,elevation:1.05};
-  doc.furniture.items = [{kind:"tv_console",x:2.5,y:.3,width:1.8,depth:.4,height:.52,rotation:0,room_id:"r"}];
+  doc.layout.walls = [
+    {
+      id: "w",
+      start: { x: 0, y: 0 },
+      end: { x: 5, y: 0 },
+      thickness: 0.16,
+      height: 2.7,
+    },
+  ];
+  const tv = {
+    kind: "wall_television",
+    width: 1.24,
+    depth: 0.1,
+    height: 0.71,
+    elevation: 1.05,
+  };
+  doc.furniture.items = [
+    {
+      kind: "tv_console",
+      x: 2.5,
+      y: 0.3,
+      width: 1.8,
+      depth: 0.4,
+      height: 0.52,
+      rotation: 0,
+      room_id: "r",
+    },
+  ];
   const placed = placeLibraryFurniture(doc, tv).furniture.items.at(-1);
   assert.equal(placed.rotation, 0);
-  assert.ok(Math.abs(placed.y - .138) < .001);
+  assert.ok(Math.abs(placed.y - 0.138) < 0.001);
   assert.equal(placed.elevation, 1.05);
-  assert.equal(verticalOverlap(placed,doc.furniture.items[0]), false);
-  assert.equal(verticalOverlap({...placed,elevation:.4},doc.furniture.items[0]), true);
-  doc.layout.openings = [{wall_id:"w",kind:"window",offset:0,width:5,bottom:.5,height:1.8}];
-  assert.throws(() => placeLibraryFurniture(doc,tv), /完整墙面/);
+  assert.equal(verticalOverlap(placed, doc.furniture.items[0]), false);
+  assert.equal(
+    verticalOverlap({ ...placed, elevation: 0.4 }, doc.furniture.items[0]),
+    true,
+  );
+  doc.layout.openings = [
+    {
+      wall_id: "w",
+      kind: "window",
+      offset: 0,
+      width: 5,
+      bottom: 0.5,
+      height: 1.8,
+    },
+  ];
+  assert.throws(() => placeLibraryFurniture(doc, tv), /完整墙面/);
   doc.layout.openings = [];
   doc.layout.walls[0].height = 1.6;
-  assert.throws(() => placeLibraryFurniture(doc,tv), /完整墙面/);
-  assert.throws(() => placeLibraryFurniture(doc,{...tv,elevation:-1}), /离地高度/);
+  assert.throws(() => placeLibraryFurniture(doc, tv), /完整墙面/);
+  assert.throws(
+    () => placeLibraryFurniture(doc, { ...tv, elevation: -1 }),
+    /离地高度/,
+  );
 });
 import {
   itemFits,
@@ -86,5 +126,13 @@ test("新增家具避开实体墙和门前通行区", () => {
   ];
   doc.layout.openings = [{ wall_id: "w", kind: "door", offset: 2, width: 1 }];
   const item = placeLibraryFurniture(doc, template).furniture.items[0];
-  assert.ok(Math.abs(item.y - 2) >= 0.8 - 1e-6);
+  // 与后端相同：以门洞中心线两侧 45 cm 检查，保留边缘建模容差。
+  const doorZone = [
+    { x: 2.06, y: 1.55 },
+    { x: 2.94, y: 1.55 },
+    { x: 2.94, y: 2.45 },
+    { x: 2.06, y: 2.45 },
+  ];
+  assert.ok(overlapArea(furnitureCorners(item), doorZone) <= 0.035);
+  assert.ok(Math.abs(item.y - 2) >= 0.35 - 1e-6);
 });

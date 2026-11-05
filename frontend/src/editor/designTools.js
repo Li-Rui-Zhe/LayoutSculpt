@@ -99,6 +99,7 @@ export function snapFurniture(document, index, threshold = 0.12) {
   const a = (f.rotation * Math.PI) / 180;
   let closest = null;
   for (const w of next.layout.walls) {
+    if (w.edit_hidden || (f.elevation || 0) >= w.height) continue;
     const dx = w.end.x - w.start.x,
       dy = w.end.y - w.start.y,
       length = Math.hypot(dx, dy);

@@ -1,3 +1,11 @@
+import {
+  furnitureCorners,
+  polygonArea,
+  overlapArea,
+  clipRing,
+} from "./planShapes.js";
+export { furnitureCorners, polygonArea, overlapArea } from "./planShapes.js";
+import { structureObstacles, structureCollision } from "./placementRules.js";
 import polygonClipping from "polygon-clipping";
 import { designIssues } from "../diy/design.js";
 import { boundaryProblems, boundaryNames } from "./balcony.js";
@@ -41,21 +49,6 @@ export function polygonInside(points, polygon) {
   return points.every((a, i) =>
     segmentInside(a, points[(i + 1) % points.length], polygon),
   );
-}
-const clipRing = (points) => [points.map((p) => [p.x, p.y])];
-export function overlapArea(a, b) {
-  return polygonClipping
-    .intersection(clipRing(a), clipRing(b))
-    .reduce(
-      (sum, poly) =>
-        sum +
-        poly.reduce(
-          (area, ring, i) =>
-            area + (i ? -1 : 1) * polygonArea(ring.map(([x, y]) => ({ x, y }))),
-          0,
-        ),
-      0,
-    );
 }
 function collinearOverlap(a, b) {
   const dx = a.end.x - a.start.x,
@@ -322,13 +315,6 @@ export const round = (value) => Math.round(value * 1000) / 1000;
 export const clone = (value) => structuredClone(value);
 export const wallLength = (wall) =>
   Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
-export const polygonArea = (points) =>
-  Math.abs(
-    points.reduce((sum, a, i) => {
-      const b = points[(i + 1) % points.length];
-      return sum + a.x * b.y - b.x * a.y;
-    }, 0) / 2,
-  );
 export function center(points) {
   return {
     x: points.reduce((s, p) => s + p.x, 0) / points.length,
@@ -404,26 +390,34 @@ export function contains(point, polygon) {
   }
   return inside;
 }
-export function furnitureCorners(item) {
-  const angle = (item.rotation * Math.PI) / 180;
-  return [
-    [-1, -1],
-    [1, -1],
-    [1, 1],
-    [-1, 1],
-  ].map(([dx, dy]) => ({
-    x:
-      item.x +
-      (Math.cos(angle) * dx * item.width) / 2 -
-      (Math.sin(angle) * dy * item.depth) / 2,
-    y:
-      item.y +
-      (Math.sin(angle) * dx * item.width) / 2 +
-      (Math.cos(angle) * dy * item.depth) / 2,
-  }));
-}
 export function itemFits(item, room) {
   return polygonInside(furnitureCorners(item), room.polygon);
+}
+// 功能分区不是障碍；用所有可用地面的并集检查整个占地，保留凹口与孔洞。
+export function furnitureSpace(layout) {
+  const rooms = layout.rooms.filter((r) => !r.edit_hidden);
+  const area = rooms.length
+    ? polygonClipping.union(...rooms.map((r) => clipRing(r.polygon)))
+    : [];
+  const walls = structureObstacles(layout).filter((p) => p.kind === "wall");
+  return (item) => {
+    if (!area.length) return null;
+    const own = rooms.find((r) => r.id === item.room_id);
+    if ((!own || !itemFits(item, own)) && structureCollision(item, walls))
+      return null;
+    const corners = furnitureCorners(item);
+    if (
+      polygonClipping
+        .difference(clipRing(corners), area)
+        .some((p) => polygonArea(p[0].map(([x, y]) => ({ x, y }))) > 1e-6)
+    )
+      return null;
+    return (
+      rooms.find((r) => r.id === item.room_id && contains(item, r.polygon)) ||
+      rooms.find((r) => contains(item, r.polygon)) ||
+      null
+    );
+  };
 }
 export function normalizeRotation(angle) {
   if (!Number.isFinite(angle)) throw new Error("旋转角度必须是有限数字。");
@@ -441,8 +435,8 @@ export function reconcileFurnitureRoom(document, item) {
   const oldRoom = document.layout.rooms.find(
     (room) => room.id === item.room_id,
   );
-  if (!oldRoom || !itemFits(item, oldRoom)) {
-    const room = document.layout.rooms.find((room) => itemFits(item, room));
+  if (!oldRoom || oldRoom.edit_hidden || !itemFits(item, oldRoom)) {
+    const room = furnitureSpace(document.layout)(item);
     if (room) item.room_id = room.id;
   }
 }
@@ -581,6 +575,7 @@ export function problems(document) {
       index: 0,
       text: "户型轮廓自交、折返或面积不足 2 ㎡。",
     });
+  const fitsSpace = furnitureSpace(layout);
   const validPoint = (p) =>
     Number.isFinite(p.x) &&
     Number.isFinite(p.y) &&
@@ -704,11 +699,15 @@ export function problems(document) {
         text: `家具 ${index + 1} 的坐标超出 -60～60 米范围。`,
       });
     const room = layout.rooms.find((r) => r.id === item.room_id);
-    if (!room || !itemFits(item, room))
+    if (
+      !room ||
+      (!item.edit_hidden &&
+        (room.edit_hidden || !contains(item, room.polygon) || !fitsSpace(item)))
+    )
       issues.push({
         type: "furniture",
         index,
-        text: `${furnitureNames[item.kind]} ${index + 1} 超出所属房间，请移动、缩小或切换所属空间。`,
+        text: `${furnitureNames[item.kind]} ${index + 1} 超出可用空间，请移动、缩小或切换所属空间。`,
       });
   });
   layout.openings.forEach((opening, index) => {

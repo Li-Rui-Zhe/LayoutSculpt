@@ -23,8 +23,15 @@ const strip = (a, b, depth) =>
   });
 
 export function showerPlacementIssues(item, document) {
-  if (!showerKinds.includes(item.kind)) return [];
-  const { layout, furniture } = document;
+  if (item.edit_hidden || !showerKinds.includes(item.kind)) return [];
+  const layout = {
+    ...document.layout,
+    walls: document.layout.walls.filter((w) => !w.edit_hidden),
+    openings: document.layout.openings.filter((o) => !o.edit_hidden),
+  };
+  const furniture = {
+    items: document.furniture.items.filter((f) => !f.edit_hidden),
+  };
   const issues = [],
     label = item.name || "淋浴区",
     bottom = item.elevation || 0;

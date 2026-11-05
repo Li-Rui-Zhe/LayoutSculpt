@@ -1,3 +1,5 @@
+import ApplySurfaceDialog from "./diy/ApplySurfaceDialog.jsx";
+import ProjectTargetSelect from "./library/ProjectTargetSelect.jsx";
 import ProgressBoundary from "./components/ProgressBoundary.jsx";
 import { lazy, useEffect, useRef, useState } from "react";
 import {
@@ -67,6 +69,7 @@ export default function App() {
   const [boundaryRequest, setBoundaryRequest] = useState(null);
   const [architectureContext, setArchitectureContext] = useState(null);
   const [materialRequest, setMaterialRequest] = useState(null);
+  const [surfaceToApply, setSurfaceToApply] = useState(null);
   const [materialContext, setMaterialContext] = useState({ id: "", rooms: [] });
   const navigate = (next) => {
     setSurface(next);
@@ -188,6 +191,26 @@ export default function App() {
         </div>
       </header>
       {helpOpen && <WorkspaceHelp onClose={() => setHelpOpen(false)} />}
+      {surfaceToApply && (
+        <ApplySurfaceDialog
+          {...surfaceToApply}
+          jobs={projects.jobs}
+          currentDraft={architectureContext}
+          currentId={
+            projects.job?.status === "succeeded" ? projects.job.id : ""
+          }
+          onClose={() => setSurfaceToApply(null)}
+          onApply={(request) => {
+            const job = projects.jobs.find(
+              (j) => j.id === request.jobId && j.status === "succeeded",
+            );
+            if (!job) return;
+            setMaterialRequest({ ...request, id: crypto.randomUUID() });
+            setSurfaceToApply(null);
+            select(job);
+          }}
+        />
+      )}
       <div className="factory-body">
         <nav className="navigation-strip" aria-label="项目导航">
           <button
@@ -320,38 +343,16 @@ export default function App() {
               {!surfaceDiy && (
                 <label>
                   目标户型
-                  <select
-                    aria-label="DIY 目标户型"
+                  <ProjectTargetSelect
+                    jobs={projects.jobs}
                     value={projects.job?.id || ""}
-                    onChange={(e) => {
-                      const job = projects.jobs.find(
-                        (job) => job.id === e.target.value,
-                      );
+                    currentId={projects.job?.id || ""}
+                    label="DIY 目标户型"
+                    onChange={(id) => {
+                      const job = projects.jobs.find((j) => j.id === id);
                       if (job) projects.select(job);
                     }}
-                  >
-                    <option value="" disabled>
-                      请选择已生成的户型方案
-                    </option>
-                    {projects.jobs
-                      .filter(
-                        (job) =>
-                          (job.status === "succeeded" && !job.archived) ||
-                          job.id === projects.job?.id,
-                      )
-                      .map((job) => (
-                        <option
-                          key={job.id}
-                          value={job.id}
-                          disabled={job.status !== "succeeded"}
-                        >
-                          {job.name}
-                          {job.status !== "succeeded"
-                            ? ` · ${job.stage || "处理中"}`
-                            : ""}
-                        </option>
-                      ))}
-                  </select>
+                  />
                 </label>
               )}
               <p>
@@ -366,6 +367,9 @@ export default function App() {
               <SurfaceStudio
                 key={diyMode}
                 category={diyMode}
+                onApply={(material) =>
+                  setSurfaceToApply({ material, category: diyMode })
+                }
                 onLibrary={() => {
                   writeContext({
                     assetType: "materials",

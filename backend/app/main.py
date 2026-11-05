@@ -14,7 +14,7 @@ from .public_errors import public_message
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from .frontend_files import FrontendFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import ValidationError
@@ -899,7 +899,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         )
 
     if (ROOT / "dist" / "index.html").exists():
-        app.mount("/", StaticFiles(directory=ROOT / "dist", html=True), name="frontend")
+        app.mount("/", FrontendFiles(directory=ROOT / "dist", html=True), name="frontend")
     return app
 
 

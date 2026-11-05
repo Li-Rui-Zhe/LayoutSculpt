@@ -13,7 +13,7 @@ from tools.furniture_refinement import plate, refined, soft
 from tools.home_office import equipment
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "3.2.0"
+VERSION = "3.3.0"
 
 # key, 中文名, 放置类型, 空间, 品类, 款式, 宽深高, 造型, 配色
 SPECS = [
@@ -634,16 +634,37 @@ SPECS = [
         "steel",
     ),
     (
-        "drying_rack_single", "伸缩单杆落地晾衣架", "model", "阳台",
-        "晾衣架", "单杆晾衣架", (1.6, 0.55, 1.65), "single_rack", "steel",
+        "drying_rack_single",
+        "伸缩单杆落地晾衣架",
+        "model",
+        "阳台",
+        "晾衣架",
+        "单杆晾衣架",
+        (1.6, 0.55, 1.65),
+        "single_rack",
+        "steel",
     ),
     (
-        "desktop_computer", "台式电脑显示器主机键鼠套装", "model", "书房",
-        "电脑", "台式电脑套装", (0.94, 0.48, 0.49), "desktop", "charcoal",
+        "desktop_computer",
+        "台式电脑显示器主机键鼠套装",
+        "model",
+        "书房",
+        "电脑",
+        "台式电脑套装",
+        (0.94, 0.48, 0.49),
+        "desktop",
+        "charcoal",
     ),
     (
-        "laptop", "轻薄笔记本电脑（展开）", "model", "书房",
-        "电脑", "笔记本电脑", (0.35, 0.27, 0.245), "laptop", "steel",
+        "laptop",
+        "轻薄笔记本电脑（展开）",
+        "model",
+        "书房",
+        "电脑",
+        "笔记本电脑",
+        (0.35, 0.27, 0.245),
+        "laptop",
+        "steel",
     ),
     (
         "balcony_table",
@@ -747,6 +768,29 @@ def material(role):
             kwargs["baseColorTexture"] = im.copy()
         if role not in {"sage", "oak", "walnut", "stone"}:
             kwargs["baseColorFactor"] = [255] * 4
+        normal_file = {
+            "oak": "veneer",
+            "walnut": "veneer",
+            "stone": "stone",
+            "linen": "woven",
+            "cream": "woven",
+            "sage": "woven",
+        }[role]
+        with Image.open(ROOT / "public/materials" / f"{normal_file}_normal.png") as im:
+            # 256px 微表面足以表现近景，避免为每个家具嵌入大贴图。
+            normal = np.asarray(
+                im.convert("RGB").resize((256, 256)), dtype=float
+            ).copy()
+        normal[:, :, :2] = 128 + (normal[:, :, :2] - 128) * 0.3
+        kwargs["normalTexture"] = Image.fromarray(normal.clip(0, 255).astype(np.uint8))
+        kwargs["roughnessFactor"] = {
+            "oak": 0.58,
+            "walnut": 0.53,
+            "stone": 0.62,
+            "linen": 0.94,
+            "cream": 0.92,
+            "sage": 0.94,
+        }[role]
     if role == "mirror":
         kwargs["roughnessFactor"] = 0.12
     if role in {"screen", "screen_light"}:
@@ -759,19 +803,22 @@ class FurnitureMesh:
         self.scene = trimesh.Scene()
 
     def add(self, name, mesh, role, smooth=False):
-        normals = (
-            mesh.vertex_normals[mesh.faces].reshape(-1, 3).copy() if smooth else None
-        )
+        if not smooth:
+            # 分离尖锐边，圆柱侧面和倒角连续着色，平面不会被抹成鼓包。
+            mesh = trimesh.graph.smooth_shade(mesh, angle=math.radians(50))
+        normals = mesh.vertex_normals[mesh.faces].reshape(-1, 3).copy()
         mesh.unmerge_vertices()
-        if normals is not None:
-            mesh.vertex_normals = normals
+        mesh.vertex_normals = normals
         uv = np.zeros((len(mesh.vertices), 2))
         for axis in range(3):
             faces = mesh.faces[
                 np.argmax(abs(mesh.face_normals), axis=1) == axis
             ].reshape(-1)
-            uv[faces] = mesh.vertices[faces][:, [(1, 2), (0, 2), (0, 1)][axis]] * 2
+            scale = 5 if role in {"linen", "cream", "sage"} else 2
+            uv[faces] = mesh.vertices[faces][:, [(1, 2), (0, 2), (0, 1)][axis]] * scale
         mesh.visual = trimesh.visual.TextureVisuals(uv=uv, material=material(role))
+        # 只焊接所有属性一致的顶点，保留硬边和 UV 接缝，不做减面。
+        mesh.merge_vertices(digits_vertex=8, digits_norm=8, digits_uv=8)
         unique = f"{name}_{len(self.scene.geometry)}"
         self.scene.add_geometry(mesh, node_name=unique, geom_name=unique)
 

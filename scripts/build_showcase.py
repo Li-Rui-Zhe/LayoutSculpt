@@ -706,7 +706,8 @@ class Showcase(Builder):
                 if category:
                     mat["extras"] = {"surface_category": category}
                 if "normalTexture" in mat:
-                    mat["normalTexture"]["scale"] = 0.12
+                    # 家具微表面的幅度已写入贴图，保持与单件素材预览一致。
+                    mat["normalTexture"]["scale"] = 1.0 if name.startswith("家居系列_") else 0.12
 
         output.write_bytes(
             self.scene.export(file_type="glb", tree_postprocessor=extras)

@@ -3,6 +3,10 @@ import ContextRecovery from "../viewer/ContextRecovery.jsx";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { interactionQuality } from "../viewer/interactionQuality.js";
+import {
+  createPreviewLighting,
+  preparePreviewMesh,
+} from "../viewer/previewLighting.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
@@ -160,6 +164,7 @@ export default function DiyPreview({
   movementFeedback = null,
   retainPrevious = false,
   loadRevision = 0,
+  defaultGrid = true,
 }) {
   const host = useRef(null),
     runtime = useRef(null),
@@ -196,7 +201,7 @@ export default function DiyPreview({
   }, [liveSelection?.type, transformMode]);
   callbacks.current.transformMode = transformMode;
   const [solo, setSolo] = useState(false),
-    [gridVisible, setGridVisible] = useState(!cutaway);
+    [gridVisible, setGridVisible] = useState(defaultGrid && !cutaway);
   const [view, setView] = useState("perspective"),
     [frame, setFrame] = useState(0),
     [version, setVersion] = useState(0);
@@ -226,11 +231,11 @@ export default function DiyPreview({
     controls.maxDistance = 100;
     const group = new THREE.Group();
     scene.add(group);
-    const ambient = new THREE.HemisphereLight(0xffffff, 0x70806d, 2.3);
-    scene.add(ambient);
-    const light = new THREE.DirectionalLight(0xffffff, 3);
-    light.position.set(3, 6, -4);
-    scene.add(light);
+    const lighting = createPreviewLighting(renderer, scene, {
+      shadows: !modelDocument && !cutaway,
+    });
+    const { ambient, light } = lighting;
+    lighting.apply();
     const grid = new THREE.GridHelper(20, 80, 0xa7b3a1, 0xd7ded1);
     grid.position.y = -0.005;
     scene.add(grid);
@@ -270,6 +275,7 @@ export default function DiyPreview({
       light,
       frontDirection,
       ambient,
+      lighting,
       needsFit: true,
     };
     if (modelDocument)
@@ -506,6 +512,7 @@ export default function DiyPreview({
       controls.dispose();
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
       renderer.domElement.removeEventListener("pointerup", pointerUp);
+      lighting.dispose();
       dispose(scene);
       renderer.dispose();
       renderer.domElement.remove();
@@ -623,6 +630,7 @@ export default function DiyPreview({
           geom.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
         }
         mesh.userData.partId = p.id;
+        preparePreviewMesh(mesh, rt.renderer);
         mesh.userData.sourcePart = p;
         mesh.userData.designOffset = {
           x: (low[0] + high[0]) / 2,
@@ -707,6 +715,7 @@ export default function DiyPreview({
         triangles = 0;
       gltf.scene.traverse((o) => {
         if (o.isMesh) {
+          preparePreviewMesh(o, rt.renderer);
           meshes++;
           triangles +=
             (o.geometry.index?.count ||
@@ -839,9 +848,8 @@ export default function DiyPreview({
   useEffect(() => {
     const rt = runtime.current;
     if (!rt) return;
-    rt.ambient.intensity = night ? 0.2 : 2.3;
-    rt.light.intensity = night ? 0.12 : 3;
-    rt.scene.background.set(night ? "#1b2930" : "#edf0e9");
+    rt.lighting.apply(night);
+    rt.lighting.fit(rt.group);
     rt.group.children.forEach((model) => updateFixtureLights(model, night));
     rt.render();
   }, [night, version]);

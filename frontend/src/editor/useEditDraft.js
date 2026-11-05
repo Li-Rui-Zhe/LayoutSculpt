@@ -263,7 +263,7 @@ export function useEditDraft(jobId, reviewing = false) {
     },
     base,
     constraintError,
-    document: history?.present,
+    document: loadedKey === serverKey ? history?.present : null,
     error,
     storageError: restoreConflict
       ? "本地修改与服务端草稿存在冲突，已保留本地内容，请选择恢复版本。"

@@ -24,19 +24,31 @@ def outline(w, d, radius, count=12):
 
 def plate(m, name, p, size, role="oak", radius=0.10):
     w, h, d = size
-    rim = outline(w, d, radius)
-    n = len(rim)
-    vertices = [[x, y, z] for y in [-h / 2, h / 2] for x, z in rim]
+    # 桌板保留真实外廓；上下缘的毫米级倒角让斜光产生连续高光。
+    bevel = min(0.004, h * 0.16, w * 0.04, d * 0.04)
+    rings = [
+        (-h / 2, bevel),
+        (-h / 2 + bevel, 0),
+        (h / 2 - bevel, 0),
+        (h / 2, bevel),
+    ]
+    n = len(outline(w, d, radius))
+    vertices = [
+        [x, y, z]
+        for y, inset in rings
+        for x, z in outline(w - 2 * inset, d - 2 * inset, max(0.001, radius - inset))
+    ]
     vertices += [[0, -h / 2, 0], [0, h / 2, 0]]
     faces = []
     for i in range(n):
         j = (i + 1) % n
         faces += [
-            [2 * n, j, i],
-            [2 * n + 1, n + i, n + j],
-            [i, j, n + j],
-            [i, n + j, n + i],
+            [4 * n, j, i],
+            [4 * n + 1, 3 * n + i, 3 * n + j],
         ]
+        for ring in range(3):
+            a, b = ring * n, (ring + 1) * n
+            faces += [[a + i, a + j, b + j], [a + i, b + j, b + i]]
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
     mesh.fix_normals()
     mesh.apply_translation(p)

@@ -31,6 +31,7 @@ export default function SurfaceAiCreator({ category, onSelection }) {
     [revision, setRevision] = useState(0);
   const [before, setBefore] = useState(null),
     [historyBusy, setHistoryBusy] = useState(false);
+  const generatedHere = useRef(new Set());
   const historyStarted = useRef(false),
     historyLock = useRef(false);
   const mergeJobs = (previous, items) =>
@@ -139,6 +140,7 @@ export default function SurfaceAiCreator({ category, onSelection }) {
       });
       if (!mounted.current) return;
       setJobs((list) => [result, ...list.filter((j) => j.id !== result.id)]);
+      generatedHere.current.add(result.id);
       setSelected(result.id);
       setRevision((n) => n + 1);
     } catch (e) {
@@ -176,6 +178,7 @@ export default function SurfaceAiCreator({ category, onSelection }) {
       });
       if (mounted.current) {
         setJobs((list) => [result, ...list]);
+        generatedHere.current.add(result.id);
         setSelected(result.id);
         setRevision((n) => n + 1);
       }
@@ -254,7 +257,11 @@ export default function SurfaceAiCreator({ category, onSelection }) {
       )}
       {job && !active(job) && (
         <div className="surface-ai-result">
-          <strong>{labels[job.status]}</strong>
+          <strong>
+            {job.status === "succeeded" && !generatedHere.current.has(job.id)
+              ? "上次设计 · 已恢复"
+              : labels[job.status]}
+          </strong>
           {["failed", "cancelled"].includes(job.status) && (
             <button disabled={busy || !!running} onClick={retry}>
               按原参数重新生成

@@ -265,6 +265,10 @@ export default function TaskWorkspace({
   useEffect(() => {
     if (!materialRequest || lastMaterialRequest.current === materialRequest.id)
       return;
+    if (materialRequest.edit) {
+      setTab("edit");
+      return;
+    }
     lastMaterialRequest.current = materialRequest.id;
     update((s) =>
       materialSelection(
@@ -516,6 +520,8 @@ export default function TaskWorkspace({
             boundaryRequest={boundaryRequest}
             onBoundaryConsumed={onBoundaryConsumed}
             onArchitectureContext={onArchitectureContext}
+            surfaceRequest={materialRequest?.edit ? materialRequest : null}
+            onSurfaceConsumed={onMaterialConsumed}
             floorRequest={floorRequest}
             onFloorConsumed={() => setFloorRequest(null)}
             onClose={() => {

@@ -23,6 +23,8 @@ def access_issues(plan, layout):
         if opening.kind != "door" or not opening.door_leaf or opening.door_style == "sliding" or opening.edit_hidden:
             continue
         wall = walls[opening.wall_id]
+        if wall.edit_hidden:
+            continue
         length = math.hypot(wall.end.x-wall.start.x, wall.end.y-wall.start.y)
         c, s = (wall.end.x-wall.start.x)/length, (wall.end.y-wall.start.y)/length
         shapes = []

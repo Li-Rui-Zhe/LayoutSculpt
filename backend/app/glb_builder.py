@@ -794,7 +794,7 @@ class Builder:
                         name.removeprefix("地板_素材_").removeprefix("墙面_素材_"), {}
                     )
                     material["normalTexture"]["scale"] = finish.get(
-                        "normalStrength", 0.18
+                        "normalStrength", 1.0 if name.startswith("家居系列_") else 0.18
                     )
                 role = next(
                     (key for key, value in NAMES.items() if name.startswith(value)),
