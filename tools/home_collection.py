@@ -9,11 +9,12 @@ import trimesh
 from PIL import Image
 from trimesh.visual.material import PBRMaterial
 
-from tools.furniture_refinement import plate, refined, soft
+from tools.furniture_refinement import plate, refined, soft, piping
 from tools.home_office import equipment
+from tools.household_essentials import SPECS as ESSENTIAL_SPECS, household
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "3.3.0"
+VERSION = "3.4.0"
 
 # key, 中文名, 放置类型, 空间, 品类, 款式, 宽深高, 造型, 配色
 SPECS = [
@@ -791,11 +792,24 @@ def material(role):
             "cream": 0.92,
             "sage": 0.94,
         }[role]
+    scanned = "wood" if role in {"oak", "walnut"} else "fabric" if role in {"linen", "cream", "sage"} else None
+    if scanned:
+        folder = ROOT / "assets/materials/pbr"
+        for slot, suffix in [("baseColorTexture", "color.jpg"), ("normalTexture", "normal.png"), ("metallicRoughnessTexture", "roughness.png")]:
+            with Image.open(folder / f"{scanned}_{suffix}") as image:
+                kwargs[slot] = image.copy()
+                if suffix.endswith("jpg"):
+                    kwargs[slot].format = "JPEG"
+        kwargs["baseColorFactor"] = [*COLORS[role], 255]
+        kwargs["roughnessFactor"] = 1.0
     if role == "mirror":
         kwargs["roughnessFactor"] = 0.12
     if role in {"screen", "screen_light"}:
         kwargs.update(roughnessFactor=0.22, emissiveFactor=[0.025, 0.055, 0.075])
     return PBRMaterial(**kwargs)
+
+
+SPECS.extend(ESSENTIAL_SPECS)
 
 
 class FurnitureMesh:
@@ -814,7 +828,7 @@ class FurnitureMesh:
             faces = mesh.faces[
                 np.argmax(abs(mesh.face_normals), axis=1) == axis
             ].reshape(-1)
-            scale = 5 if role in {"linen", "cream", "sage"} else 2
+            scale = 4 if role in {"linen", "cream", "sage"} else 1.25
             uv[faces] = mesh.vertices[faces][:, [(1, 2), (0, 2), (0, 1)][axis]] * scale
         mesh.visual = trimesh.visual.TextureVisuals(uv=uv, material=material(role))
         # 只焊接所有属性一致的顶点，保留硬边和 UV 接缝，不做减面。
@@ -964,7 +978,7 @@ class FurnitureMesh:
 def construct(spec):
     key, name, base, room, family, variant, (w, d, h), shape, role = spec
     m = FurnitureMesh()
-    if equipment(m, spec) or refined(m, spec):
+    if household(m, spec) or equipment(m, spec) or refined(m, spec):
         pass
     elif shape in {"sofa", "sofa_left", "sofa_right", "lounge"}:
         seats = 1 if shape == "lounge" else 4 if w > 3 else 3 if w > 2.15 else 2
@@ -1005,6 +1019,7 @@ def construct(spec):
                 role,
                 0.07,
             )
+            piping(m, "坐垫缝线", [x, .49, -d / 2 + .16 + sd / 2], sw-.03, sd-.025, role, radius=.06, thickness=.0018)
             m.soft(
                 "软包靠垫",
                 [x, (h + 0.48) / 2, back_z],

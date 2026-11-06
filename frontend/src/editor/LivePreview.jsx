@@ -9,6 +9,8 @@ import SceneSyncStatus from "./SceneSyncStatus.jsx";
 import { preparePreviewDocument } from "./previewDocument.js";
 import { previewKey, previewFeedback } from "./previewIdentity.js";
 import { canSyncLiveScene, mayReuseSavedScene } from "./liveSceneUpdates.js";
+import { isWallAirConditioner } from "../viewer/cutaway.js";
+import CutawayHint from "../components/CutawayHint.jsx";
 
 export default function LivePreview({
   movementFeedback,
@@ -36,26 +38,9 @@ export default function LivePreview({
 }) {
   const [cutaway, setCutaway] = useState(true);
   const renderingNoteId = useId();
-  const [showRenderingNote, setShowRenderingNote] = useState(() => {
-    try {
-      return (
-        localStorage.getItem("layoutsculpt:editor-rendering-note:v1") !==
-        "dismissed"
-      );
-    } catch {
-      return true;
-    }
-  });
+  const [showRenderingNote, setShowRenderingNote] = useState(false);
   const dismissRenderingNote = () => {
     setShowRenderingNote(false);
-    try {
-      localStorage.setItem(
-        "layoutsculpt:editor-rendering-note:v1",
-        "dismissed",
-      );
-    } catch {
-      // Storage restrictions must not prevent closing an informational note.
-    }
   };
   const [rotationOpen, setRotationOpen] = useState(false);
   useEffect(
@@ -273,6 +258,17 @@ export default function LivePreview({
           <button aria-pressed={!cutaway} onClick={() => setCutaway(!cutaway)}>
             {cutaway ? "剖切墙体" : "完整墙体"}
           </button>
+          {cutaway && (
+            <CutawayHint
+              editing
+              revealed={
+                selected?.type === "furniture" &&
+                !!item &&
+                !item.edit_hidden &&
+                isWallAirConditioner(item)
+              }
+            />
+          )}
         </div>
       </div>
       {showRenderingNote && (
@@ -281,7 +277,7 @@ export default function LivePreview({
           <p>
             为让拖动、旋转和调整更流畅，三维设计页适当简化了光影渲染，画面会比方案预览更简洁，感谢理解。
             <span>
-              这不会降低模型几何或设计数据的精度；保存并生成三维后，可返回预览查看完整效果。
+              这不会降低模型几何或设计数据的精度；点击“生成最新三维效果”后，可返回预览查看完整效果。
             </span>
           </p>
           <button

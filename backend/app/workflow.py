@@ -19,24 +19,24 @@ from .ai_contracts import (
 )
 from .ai_failures import ai_failure_message, classify_ai_error
 from .ai_requests import asset_input, furnishing_schema, layout_input, review_schema
-from .asset_selection import select_candidates
 from .architecture import structure_issues, validate_generated_structure
+from .asset_selection import select_candidates
 from .codex import CodexChatModel, CodexClient, CodexError
 from .consistency import matches_confirmation, source_hash, structure_hash
-from .modeling import build_model
-from .public_errors import public_message
+from .furnishing_quality import functional_gaps
 from .input_quality import SourceImageRejected
-from .recognition_contract import RecognitionExtraction, validate_recognition
-from .recognition_checkpoint import (
-    RecognitionCheckpoint, checkpoint_candidate, save_checkpoint, validation_summary,
-)
-from .source_evidence import (
-    PixelLayoutExtraction, SourceEvidence, alignment_from_evidence, compare_source,
-    detail_views, image_wall_findings, pixel_wire, update_comparison, validate_evidence,
-)
-from .quality import finish_design, prepare_generated_furnishing
-from .recovery import REVIEW_TIMEOUT_WARNING
+from .modeling import build_model
 from .parallel_read import independent_reads
+from .public_errors import public_message
+from .quality import finish_design, prepare_generated_furnishing
+from .recognition_checkpoint import (
+    RecognitionCheckpoint,
+    checkpoint_candidate,
+    save_checkpoint,
+    validation_summary,
+)
+from .recognition_contract import RecognitionExtraction, validate_recognition
+from .recovery import REVIEW_TIMEOUT_WARNING
 from .resilience import transient_ai_error
 from .schemas import (
     CustomStyleFurnishing,
@@ -44,6 +44,17 @@ from .schemas import (
     Layout,
     signed_area,
     validate_furnishing,
+)
+from .source_evidence import (
+    PixelLayoutExtraction,
+    SourceEvidence,
+    alignment_from_evidence,
+    compare_source,
+    detail_views,
+    image_wall_findings,
+    pixel_wire,
+    update_comparison,
+    validate_evidence,
 )
 
 
@@ -66,7 +77,10 @@ class State(TypedDict, total=False):
     ai_review: dict
     recovered_structure_of: str
     source_sha256: str
+    source_kind: str
     furnishing_status: str
+    furnishing_resume: bool
+    furnishing_targets: list
     style_scheme: dict
     render_style: str
     recognition_review: dict
@@ -121,7 +135,7 @@ def create_graph(
             from .recognition_contract import RecognitionContract
 
             response_schema = RecognitionContract.model_json_schema()
-        elif role == "furnishing":
+        elif role in {"furnishing", "furnishing_completion"}:
             response_schema = furnishing_schema(
                 output_type,
                 library=state["options"].get("furniture_mode", "library") == "library",
@@ -668,6 +682,14 @@ def create_graph(
                 "selected_floor_material": state["options"].get("floor_material"),
             }
 
+        def validate_asset_references(plan):
+            for item in plan.items:
+                if item.asset_id and (
+                    item.asset_id not in allowed_assets
+                    or item.kind != allowed_assets[item.asset_id]["kind"]
+                ):
+                    raise ValueError("家具素材 ID 或类型不在本次目录中，请使用目录提供的 asset_id 和 kind")
+
         def validate_plan(plan):
             validate_furnishing(plan, layout)
             if custom_style:
@@ -681,62 +703,134 @@ def create_graph(
                         raise ValueError(
                             "饰面不在本次用途对应的材质目录中，请从提供的目录选择"
                         )
-            for item in plan.items:
-                if item.asset_id and (
-                    item.asset_id not in allowed_assets
-                    or item.kind != allowed_assets[item.asset_id]["kind"]
-                ):
-                    raise ValueError(
-                        "家具素材 ID 或类型不在本次目录中，请使用目录提供的 asset_id 和 kind"
-                    )
+            validate_asset_references(plan)
 
-        try:
-            furniture, trace = await run_agent(
-                state,
-                "furnishing",
-                "furniture-planning",
-                CustomStyleFurnishing if custom_style else Furnishing,
+        planned_rooms = set()
+        planned_names = set()
+
+        def prepare_plan(plan):
+            # 先核对来源，再做几何修正，避免错误素材被删除后绕过检查。
+            validate_asset_references(plan)
+            planned_rooms.clear()
+            planned_rooms.update((item.room_id, item.kind) for item in plan.items)
+            planned_names.clear()
+            planned_names.update((item.room_id, item.kind, item.name or item.kind) for item in plan.items)
+            return prepare_generated_furnishing(plan, layout, assets=allowed_assets)
+
+        continuing = bool(state.get("furnishing_resume") and state.get("furniture", {}).get("items"))
+        if continuing:
+            furniture = state["furniture"]
+            style_scheme = state.get("style_scheme", {})
+            traces = []
+        else:
+            try:
+                furniture, trace = await run_agent(
+                    state,
+                    "furnishing",
+                    "furniture-planning",
+                    CustomStyleFurnishing if custom_style else Furnishing,
+                    {
+                        "layout": layout_input(layout),
+                        "style": state["options"]["style"],
+                        "furniture_assets": asset_input(asset_items),
+                        **style_context,
+                    },
+                    validate_plan,
+                    transform=prepare_plan,
+                )
+            except (TimeoutError, ValueError, CodexError, ConnectionError) as exc:
+                if isinstance(
+                    exc, (CodexError, ConnectionError)
+                ) and not transient_ai_error(exc):
+                    raise
+                reason = (
+                    "超时"
+                    if isinstance(exc, TimeoutError)
+                    else "连接暂时不可用"
+                    if transient_ai_error(exc)
+                    else "结果无法读取"
+                )
+                warning = f"家具规划{reason}，已先生成确认的房屋结构；家具尚未完成，可手动布置或重新规划家具。"
+                if custom_style:
+                    warning += "自定义风格搭配尚未完成，已保留风格描述供重新规划使用。"
+                await store.update(state["job_id"], agent="家具规划", message=warning)
+                return {
+                    "furniture": {"items": [], "notes": [warning]},
+                    "furnishing_status": "incomplete",
+                    "style_scheme": {},
+                }
+            style_scheme = (
                 {
-                    "layout": layout_input(layout),
-                    "style": state["options"]["style"],
-                    "furniture_assets": asset_input(asset_items),
-                    **style_context,
-                },
-                validate_plan,
-                transform=lambda plan: prepare_generated_furnishing(plan, layout),
+                    key: furniture.pop(key)
+                    for key in ("render_style", "wall_material", "floor_material")
+                }
+                if custom_style
+                else {}
             )
-        except (TimeoutError, ValueError, CodexError, ConnectionError) as exc:
-            if isinstance(
-                exc, (CodexError, ConnectionError)
-            ) and not transient_ai_error(exc):
-                raise
-            reason = (
-                "超时"
-                if isinstance(exc, TimeoutError)
-                else "连接暂时不可用"
-                if transient_ai_error(exc)
-                else "结果无法读取"
-            )
-            warning = f"家具规划{reason}，已先生成确认的房屋结构；家具尚未完成，可手动布置或重新规划家具。"
-            if custom_style:
-                warning += "自定义风格搭配尚未完成，已保留风格描述供重新规划使用。"
-            await store.update(state["job_id"], agent="家具规划", message=warning)
-            return {
-                "furniture": {"items": [], "notes": [warning]},
-                "furnishing_status": "incomplete",
-                "style_scheme": {},
-            }
-        style_scheme = (
-            {
-                key: furniture.pop(key)
-                for key in ("render_style", "wall_material", "floor_material")
-            }
-            if custom_style
-            else {}
+            traces = [trace]
+        retained = Furnishing.model_validate(furniture)
+        gaps = functional_gaps(layout, retained)
+        # 仅为已尝试但放置失败的核心家具补救，不擅自补回用户没要求的用途。
+        recover = [gap for gap in gaps if (continuing and gap["room_id"] in state.get("furnishing_targets", [])) or (not continuing and any(
+            room == gap["room_id"] and kind in gap["kinds"] for room, kind in planned_rooms
+        ))]
+        if recover:
+            await store.update(state["job_id"], stage="完善家具方案", progress=72,
+                               message="正在为放不下的主要家具寻找合适尺寸，已完成布置保持不动")
+            def prepare_additions(plan):
+                # 补充请求不能改变饰面、结构或已完成的家具。
+                for item in plan.items:
+                    if item.asset_id and (item.asset_id not in allowed_assets or item.kind != allowed_assets[item.asset_id]["kind"]):
+                        raise ValueError("补充家具必须来自本次目录")
+                    if not any(item.room_id == gap["room_id"] and item.kind in gap["kinds"] for gap in recover):
+                        raise ValueError("只补充指定房间缺少的核心家具，不重复添加其他物件")
+                if len(plan.items) > 10:
+                    raise ValueError("局部补充最多 10 件家具")
+                return prepare_generated_furnishing(plan, layout, assets=allowed_assets, fixed_items=retained.items)
+            try:
+                additions, completion_trace = await run_agent(
+                    state, "furnishing_completion", "furniture-planning", Furnishing,
+                    {"layout": layout_input(layout), "furniture_assets": asset_input(asset_items),
+                     "completion_only": True, "missing_functions": recover,
+                     "fixed_furniture": [item.model_dump() for item in retained.items],
+                     "previous_issues": retained.notes, "style": state["options"]["style"]},
+                    transform=prepare_additions,
+                )
+                extra = Furnishing.model_validate(additions)
+                if len(retained.items) + len(extra.items) <= 90:
+                    retained.items.extend(extra.items)
+                    retained.notes = list(dict.fromkeys([*extra.notes, *retained.notes]))[:20]
+                    remaining = {gap["room_id"] for gap in functional_gaps(layout, retained)}
+                    resolved = [gap for gap in recover if gap["room_id"] not in remaining]
+                    labels = {name for gap in resolved for room, kind, name in planned_names
+                              if room == gap["room_id"] and kind in gap["kinds"]}
+                    retained.notes = [note for note in retained.notes if not any(
+                        note.startswith(f"暂未放置{label}：") for label in labels)]
+                    if resolved:
+                        if not remaining:
+                            retained.notes = [note for note in retained.notes if not (
+                                note.endswith("尚未完成，已保留现有布置；可继续补齐，无需重新生成整屋。")
+                                or note.startswith("局部补充未完成，")
+                            )]
+                        retained.notes = ["已完成主要家具的局部补充，其他有效布置保持不动。", *retained.notes][:20]
+                traces.append(completion_trace)
+            except (TimeoutError, ValueError, CodexError, ConnectionError):
+                retained.notes = ["局部补充未完成，已保留可用家具布置，可继续人工设计。", *retained.notes][:20]
+        furniture = retained.model_dump()
+        (settings.workspace(state["job_id"]) / "furnishing-quality.json").write_text(
+            json.dumps({"completion_requested": recover, "remaining": functional_gaps(layout, retained),
+                        "notes": retained.notes, "furniture_count": len(retained.items)}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
         if library:
             furniture = (await library.resolve_furnishing(furniture)).model_dump()
             validate_furnishing(Furnishing.model_validate(furniture), layout)
+        unresolved = [gap for gap in functional_gaps(layout, retained)
+                      if any(gap["room_id"] == target["room_id"] for target in recover)]
+        if unresolved and furniture["items"]:
+            room_names = {room.id: room.name for room in layout.rooms}
+            missing = "、".join(f"{room_names[gap['room_id']]}的{gap['need']}" for gap in unresolved)
+            furniture["notes"] = [f"{missing}尚未完成，已保留现有布置；可继续补齐，无需重新生成整屋。", *furniture["notes"]][:20]
         if not furniture["items"]:
             furniture["notes"] = [
                 "本次方案未包含可放置的家具，已保留完整房屋结构，可手动补充或重新规划家具。",
@@ -744,9 +838,10 @@ def create_graph(
             ][:20]
         return {
             "furniture": furniture,
-            "agents": [trace],
+            "agents": traces,
             "style_scheme": style_scheme,
-            "furnishing_status": "completed" if furniture["items"] else "incomplete",
+            "furnishing_status": "completed" if furniture["items"] and not unresolved else "incomplete",
+            "furnishing_targets": [gap["room_id"] for gap in unresolved],
         }
 
     async def prepare_review(state):
@@ -810,9 +905,9 @@ def create_graph(
         layout, furniture, quality = finish_design(
             layout,
             Furnishing.model_validate(state["furniture"]),
-            automatic=not bool(state.get("edited_of") or state.get("preserve_design")),
+            automatic=not bool(state.get("edited_of") or state.get("preserve_design") or state.get("furnishing_resume")),
         )
-        if not (state.get("edited_of") or state.get("preserve_design")):
+        if not (state.get("edited_of") or state.get("preserve_design") or state.get("furnishing_resume")):
             from .surface_design import apply_generation_surfaces
 
             scheme = state.get("style_scheme", {})
@@ -846,6 +941,7 @@ def create_graph(
                 "structure_hash": structure_hash(layout),
             }
         quality["furnishing_complete"] = state.get("furnishing_status") != "incomplete"
+        quality["pending_furniture"] = state.get("furnishing_targets", [])
         (workspace / "quality-report.json").write_text(
             json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -856,6 +952,10 @@ def create_graph(
             furniture,
             render_style,
             furniture_mode=state["options"].get("furniture_mode", "library"),
+        )
+        quality.update(furniture_report.get("lighting", {}))
+        (workspace / "quality-report.json").write_text(
+            json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         if state.get("source_sha256") and state["source_sha256"] != source_hash(workspace / "source.png"):
             raise ValueError("建模期间原图发生变化，请重新识别")
@@ -884,7 +984,7 @@ def create_graph(
             "scale_note": layout.scale_note,
             "warnings": layout.warnings + furniture.notes + quality["issues"],
             "quality": quality,
-            "delivery_notice": furniture.notes[0]
+            "delivery_notice": (furniture.notes[0] if furniture.notes else "家具布置尚未完成，已保留当前空间，可继续补齐。")
             if not quality["furnishing_complete"]
             else None,
             "delivery_status": "ready"
@@ -897,6 +997,7 @@ def create_graph(
                     confirmation and confirmation.get("method") == "user_review"
                 ),
                 "confirmation": confirmation,
+                "source_kind": state.get("source_kind", "uploaded_plan"),
                 "source_sha256": source_hash(workspace / "source.png"),
             },
             "quality_url": base + "/quality-report.json",

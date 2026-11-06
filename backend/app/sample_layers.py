@@ -28,7 +28,7 @@ def atomic_write(path, content):
 
 def preserve_sample(document, source, library):
     raw = Path(source).read_bytes()
-    cache = Path(library) / ("sample-" + hashlib.sha256(raw).hexdigest() + "-v2.json")
+    cache = Path(library) / ("sample-" + hashlib.sha256(raw).hexdigest() + "-v3.json")
     if cache.exists():
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
@@ -77,14 +77,16 @@ def preserve_sample(document, source, library):
             furniture[index].add_geometry(mesh.copy(), node_name=node, transform=np.linalg.inv(pose) @ transform)
             continue
         if (any(key in meta for key in ("structure_kind", "architecture_network", "opening_index"))
-                or any(key.startswith("fixture_") for key in meta)
                 or node.startswith(("未铺设地板的基层", "连续踢脚线"))):
             continue
         world_center = trimesh.transform_points([mesh.bounds.mean(axis=0)], transform)[0]
         point = Point(world_center[0]+cx, world_center[2]+cy)
         room = min(rooms, key=lambda pair: pair[1].distance(point))[0]
         key = (room["id"], room["name"], bool(meta.get("cutaway_upper")), bool(meta.get("cutaway_only")))
-        groups[key].add_geometry(mesh.copy(), node_name=node, transform=transform)
+        # Authored lamps belong to the sample's presentation layers. Keep their
+        # emitter metadata so saving/rebuilding a copy retains its night lighting.
+        groups[key].add_geometry(mesh.copy(), node_name=node, transform=transform,
+                                 metadata={k: v for k, v in meta.items() if k.startswith("fixture_")})
     references = []
     for i in range(len(document["furniture"])):
         if not furniture[i].geometry:
@@ -94,7 +96,7 @@ def preserve_sample(document, source, library):
     layers = []
     for number, ((room_id, name, upper, only), group) in enumerate(groups.items()):
         low, high = group.bounds
-        ref, _ = save_snapshot(library, group.export(file_type="glb"))
+        ref, _ = save_snapshot(library, group.export(file_type="glb"), preserve_fixtures=True)
         layers.append({"id": f"sample-detail-{number}", "name": f"{name} · {'高处装饰' if upper else '剖切装饰' if only else '展示陈设'}",
                        "asset_id": ref, "x": float((low[0]+high[0])/2+cx), "y": float((low[2]+high[2])/2+cy),
                        "elevation": float(low[1]), "rotation": 0, "visible": True,
@@ -112,9 +114,11 @@ def add_presentation_layers(builder):
         if not layer.get("visible", True):
             continue
         source = trimesh.load(snapshot_file(builder.library_dir, layer["asset_id"]), force="scene")
+        metadata = {child: edge.get("metadata", {}) for (_, child), edge in source.graph.transforms.edge_data.items()}
         pose = trimesh.transformations.translation_matrix([layer["x"]-builder.cx, layer["elevation"], layer["y"]-builder.cz]) @ trimesh.transformations.rotation_matrix(-np.radians(layer.get("rotation",0)), [0,1,0])
         for i, node in enumerate(source.graph.nodes_geometry):
             transform, geometry = source.graph[node]
             builder.scene.add_geometry(source.geometry[geometry].copy(), node_name=f"陈设层_{layer['id']}_{i}", transform=pose @ transform,
-                metadata={"presentation_layer_id": layer["id"], "cutaway_upper": layer.get("cutaway_upper", False), "cutaway_only": layer.get("cutaway_only", False)})
+                metadata={**{k: v for k, v in metadata.get(node, {}).items() if k.startswith("fixture_")},
+                          "presentation_layer_id": layer["id"], "cutaway_upper": layer.get("cutaway_upper", False), "cutaway_only": layer.get("cutaway_only", False)})
         builder.asset_hashes[layer["asset_id"]] = layer["asset_id"].split(":")[1]

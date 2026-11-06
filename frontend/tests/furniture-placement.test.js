@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { initialPlacement } from "../src/library/initialPlacement.js";
 import {
   furniturePlacementAt,
   commitFurniturePlacement,
@@ -26,6 +27,27 @@ const chair = {
   height: 0.8,
   elevation: 0,
 };
+test("初始落点只给建议不添加家具，优先目标空间并拒绝占用位置", () => {
+  const d = doc(),
+    original = structuredClone(d);
+  const suggested = initialPlacement(d, chair, "r");
+  assert.equal(suggested.room_id, "r");
+  assert.equal(
+    furniturePlacementAt(d, chair, suggested, suggested.rotation).valid,
+    true,
+  );
+  assert.deepEqual(d, original);
+  d.furniture.items.push(suggested);
+  assert.equal(initialPlacement(d, chair, "r"), null);
+  d.layout.rooms.push({
+    id: "other",
+    name: "卧室",
+    polygon: polygon.map((p) => ({ x: p.x + 10, y: p.y })),
+  });
+  assert.equal(initialPlacement(d, chair, "other").room_id, "other");
+  d.layout.rooms[1].edit_hidden = true;
+  assert.equal(initialPlacement(d, chair, "other"), null);
+});
 test("预览不修改原稿，确认按落点新增且可旋转", () => {
   const d = doc(),
     original = structuredClone(d);
@@ -163,4 +185,19 @@ test("壁挂电视只吸附落点附近的完整墙面，避开窗户", () => {
     height: 1.4,
   });
   assert.equal(furniturePlacementAt(d, tv, { x: 3, y: 0.4 }).valid, false);
+});
+
+test("壁挂家电沿用贴墙放置，台面设备有支撑才落下", () => {
+  const d = doc();
+  const ac = {...chair, kind: "model", placement_surface: "wall", width: .86, depth: .22, height: .3, elevation: 2.1};
+  d.layout.walls.push({id: "w", start: {x: 0, y: 0}, end: {x: 6, y: 0}, thickness: .2, height: 2.8});
+  assert.equal(furniturePlacementAt(d, ac, {x: 3, y: .4}).valid, true);
+  assert.equal(furniturePlacementAt(d, ac, {x: 3, y: 3}).valid, false);
+  const laptop = {...chair, kind: "model", placement_surface: "countertop", width: .35, depth: .27, height: .25, elevation: .75};
+  assert.equal(furniturePlacementAt(d, laptop, {x: 3, y: 3}).valid, false);
+  d.furniture.items.push({...chair, kind: "desk", room_id: "r", x: 3, y: 3, width: 1.2, depth: .6, height: .82, rotation: 0});
+  const placed = furniturePlacementAt(d, laptop, {x: 3, y: 3});
+  assert.equal(placed.valid, true);
+  assert.equal(placed.item.elevation, .82);
+  assert.equal(initialPlacement(d, laptop, "r").elevation, .82);
 });

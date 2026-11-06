@@ -786,6 +786,15 @@ class Builder:
                 self.part_metadata = None
 
         def extras(tree):
+            for node in tree.get("nodes", []):
+                meta = node.get("extras", {})
+                index = meta.get("furniture_index")
+                if isinstance(index, int) and 0 <= index < len(doc["furniture"]):
+                    item = doc["furniture"][index]
+                    meta["furniture_kind"] = item["kind"]
+                    meta["furniture_name"] = item.get("name", "")
+                    if item.get("placement_surface"):
+                        meta["placement_surface"] = item["placement_surface"]
             apply_surface_optics(tree, self.texture_root)
             for material in tree.get("materials", []):
                 name = material.get("name", "")

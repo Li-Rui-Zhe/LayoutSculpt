@@ -1,11 +1,10 @@
-import { Check, Save, Circle, AlertCircle } from "lucide-react";
+import { Check, Save, Circle, AlertCircle, Eye } from "lucide-react";
 import OperationStatus from "../components/OperationStatus.jsx";
-import { editorSaveStatus } from "./saveStatus.js";
+import { editorSaveStatus, editorPrimaryAction } from "./saveStatus.js";
 
 export default function EditorSaveBar({
   draft,
   reviewing,
-  isScene,
   job,
   acknowledged,
   setAcknowledged,
@@ -13,17 +12,30 @@ export default function EditorSaveBar({
   name,
   onNameChange,
   issues,
-  adviceCount = 0,
   drawing,
   pendingDelete,
   openingKind,
   placement,
   save,
+  onPreview,
   error,
   completion,
   proposalPreview = false,
 }) {
   const status = editorSaveStatus(draft, proposalPreview);
+  const action = editorPrimaryAction({
+    draft,
+    reviewing,
+    acknowledged,
+    busy,
+    proposalPreview,
+    issues,
+    name,
+    drawing,
+    pendingDelete,
+    openingKind,
+    placement,
+  });
   const StatusIcon =
     status.kind === "saved"
       ? Check
@@ -45,15 +57,9 @@ export default function EditorSaveBar({
           <StatusIcon size={13} />
           {status.text}
         </span>
-        <small>
-          {reviewing
-            ? "修改后请再次对照原图确认结构"
-            : adviceCount && !issues.length
-              ? `有 ${adviceCount} 项布局建议，仍可保存并生成三维`
-              : isScene
-                ? "画布可实时调整；生成三维版本后，预览与导出才会更新。"
-                : "修改会自动保存为草稿；生成三维版本后，预览与导出才会更新。"}
-        </small>
+        {!action.disabled && (
+          <small className="editor-next-step">{action.detail}</small>
+        )}
         {reviewing && (
           <a
             className="text-button"
@@ -75,7 +81,7 @@ export default function EditorSaveBar({
           />
           我已核对修改后的墙体和门窗
         </label>
-      ) : (
+      ) : draft.dirty ? (
         <details className="editor-version">
           <summary>版本设置</summary>
           <label>
@@ -91,32 +97,15 @@ export default function EditorSaveBar({
             />
           </label>
         </details>
-      )}
+      ) : null}
       <button
         className="primary-button"
-        disabled={
-          busy ||
-          proposalPreview ||
-          (reviewing && !acknowledged) ||
-          !!issues.length ||
-          !name.trim() ||
-          !!drawing ||
-          !!pendingDelete ||
-          !!openingKind ||
-          !!placement
-        }
-        onClick={save}
+        disabled={action.disabled}
+        title={action.detail}
+        onClick={action.preview ? onPreview : save}
       >
-        <Save size={15} />
-        {proposalPreview
-          ? "请先应用或退出建议预览"
-          : busy
-            ? "正在提交…"
-            : placement
-              ? "请先完成或取消放置"
-              : reviewing
-                ? "确认修改并继续生成"
-                : "保存并生成三维"}
+        {action.preview ? <Eye size={15} /> : <Save size={15} />}
+        {action.label}
       </button>
     </div>
   );

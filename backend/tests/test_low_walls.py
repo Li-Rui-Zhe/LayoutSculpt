@@ -43,10 +43,10 @@ def test_exported_glb_preserves_low_wall_sections(tmp_path):
     assert proof["geometry_verified"] and proof["outline_verified"]
 
 
-def test_low_parapet_does_not_lower_indoor_pendants():
+def test_low_parapet_does_not_lower_indoor_main_lights():
     layout = low_wall_layout()
     result, _, _ = finish_design(layout, Furnishing(items=[], notes=[]))
-    assert result.lights[0].elevation == pytest.approx(2.35)
+    assert result.lights[0].elevation == pytest.approx(2.58)
     assert not layout.lights
 
 
@@ -56,7 +56,7 @@ def test_all_low_walls_use_default_ceiling_for_suggested_lights():
     for wall in data["walls"]:
         wall["height"] = 1.1
     result, _, _ = finish_design(Layout.model_validate(data), Furnishing(items=[], notes=[]))
-    assert result.lights[0].elevation == pytest.approx(2.35)
+    assert result.lights[0].elevation == pytest.approx(2.58)
 
 
 @pytest.mark.parametrize("height", [0, -1, 0.29, 4.51])

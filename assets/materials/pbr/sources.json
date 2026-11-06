@@ -1,0 +1,30 @@
+{
+  "fabric": {
+    "asset": "Fabric030",
+    "source_url": "https://ambientcg.com/a/Fabric030",
+    "download_url": "https://ambientcg.com/get?file=Fabric030_1K-JPG.zip",
+    "license": "CC0-1.0",
+    "license_url": "https://docs.ambientcg.com/license/",
+    "source_sha256": "82d4d00ccf901cf4707c5489005945ab8574933fc60437e26c6737f0436699e0",
+    "outputs": {
+      "fabric_color.jpg": "6f395ad2a526a906869daf2a8a6701ece45261a610bc970d474d708a1fb4b376",
+      "fabric_normal.png": "1c0ef9dc6ae1ee379c1f81385e54e88eabd3ea050afce84cb46b23b397f689a1",
+      "fabric_roughness.png": "8e59d732d3dd1d175eea0a651cd2afc1d93375fc4fc4ee780312c2c109c33cd8"
+    },
+    "modifications": "512px；中性色图；减弱 OpenGL 法线；粗糙度打包为 glTF G 通道，B=0"
+  },
+  "wood": {
+    "asset": "Wood051",
+    "source_url": "https://ambientcg.com/a/Wood051",
+    "download_url": "https://ambientcg.com/get?file=Wood051_1K-JPG.zip",
+    "license": "CC0-1.0",
+    "license_url": "https://docs.ambientcg.com/license/",
+    "source_sha256": "debf3d60f69a09c30613dc95a94da49c8116160ab8a29f77ac8e32cc33f1a1c3",
+    "outputs": {
+      "wood_color.jpg": "bfa53faeea83c852de596c2fad49e49eab82bb280d197ca25eba739d6a23ca18",
+      "wood_normal.png": "ca9bc63e0f91a4bc09e637c474670437908297322dae03061b85e6d835ffe305",
+      "wood_roughness.png": "74ae9aa6f3351d63018877b832756c3df5747c5989ba3890428b036e23300223"
+    },
+    "modifications": "512px；中性色图；减弱 OpenGL 法线；粗糙度打包为 glTF G 通道，B=0"
+  }
+}

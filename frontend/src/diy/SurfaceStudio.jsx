@@ -392,7 +392,7 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
               disabled={!!saveReason}
               onClick={() => (currentSaved ? onApply(saved) : save(null, true))}
             >
-              {currentSaved ? "应用到户型" : "保存并应用"}
+              {currentSaved ? "选择墙面 / 地板应用" : "保存并选择应用位置"}
             </button>
           )}
           <button

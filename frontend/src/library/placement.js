@@ -10,9 +10,10 @@ import {
   center,
   itemFits,
   furnitureSpace,
+  furnitureCorners,
   round,
 } from "../editor/geometry.js";
-import { wallPlacement } from "./wallPlacement.js";
+import { wallPlacement, isWallMounted } from "./wallPlacement.js";
 import {
   showerKinds,
   showerPlacementIssues,
@@ -97,7 +98,7 @@ export function placeLibraryFurniture(document, template, preferredRoomId) {
   }
   const blocked = furnitureObstacles(document, template);
   const structure = structureObstacles(document.layout);
-  if (template.kind === "wall_television") {
+  if (isWallMounted(template)) {
     const next = clone(document);
     next.furniture.items.push(
       wallPlacement(
@@ -190,7 +191,7 @@ export function furniturePlacementAt(document, template, point, rotation = 0) {
       throw Error("放置坐标无效。");
     const blocked = furnitureObstacles(document, template);
     const structure = structureObstacles(document.layout);
-    if (template.kind === "wall_television") {
+    if (isWallMounted(template)) {
       item = wallPlacement(
         document,
         template,
@@ -205,6 +206,17 @@ export function furniturePlacementAt(document, template, point, rotation = 0) {
     const room = furnitureSpace(document.layout)(item);
     if (!room) throw Error("家具超出空间边界，请移入房间或旋转后放置。");
     item.room_id = room.id;
+    if (template.placement_surface === "countertop") {
+      const support = document.furniture.items.find((other) =>
+        !other.edit_hidden && other.room_id === room.id &&
+        ["desk", "table", "counter", "cabinet", "tv_console"].includes(other.kind) &&
+        (other.elevation || 0) + other.height >= .45 &&
+        (other.elevation || 0) + other.height <= 1.25 &&
+        itemFits(item, {polygon: furnitureCorners(other)})
+      );
+      if (!support) throw Error("请放在尺寸足够的桌面或台面上，设备会自动贴合台面高度。");
+      item.elevation = round((support.elevation || 0) + support.height);
+    }
     if (
       structureCollision(item, structure) ||
       blockedByFurniture(document, item)

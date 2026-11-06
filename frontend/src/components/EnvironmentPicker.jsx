@@ -112,7 +112,7 @@ export default function EnvironmentPicker({
           </div>
           <p className="environment-caption">
             {selected.id === "night"
-              ? "吊灯、灯泡默认隐藏外形以免遮挡，照明仍生效。效果仅供预览。"
+              ? "顶部灯具默认隐藏外形以免遮挡，照明仍生效。效果仅供预览。"
               : "氛围预览 · 不改变设计，不代表真实采光分析"}
           </p>
         </div>

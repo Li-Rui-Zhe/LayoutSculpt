@@ -82,7 +82,7 @@ def test_furniture_issues_do_not_block_confirmed_structure_delivery(tmp_path, pr
         delivered = client.get(result["layout_url"]).json()
         assert structure_hash(delivered) == result["consistency"]["confirmation"]["structure_hash"]
         calls = [call for call in codex.calls if call["schema"]["title"] == "Furnishing"]
-        assert len(calls) == (2 if problem == "malformed" else 1)
+        assert len(calls) == (2 if problem in {"malformed", "unplaceable"} else 1)
         if problem == "minor":
             assert result["delivery_status"] == "ready"
             assert not result["delivery_notice"]

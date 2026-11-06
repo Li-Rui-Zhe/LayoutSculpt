@@ -1,6 +1,11 @@
 // 只推荐落点，不提交或移动现有家具；最终仍走同一套碰撞校验。
 export function placementSuggestions(document, template, roomId) {
   const points = [];
+  if (template.placement_surface === "countertop") {
+    return document.furniture.items.filter((f) => !f.edit_hidden && f.room_id === roomId &&
+      ["table", "desk", "counter", "cabinet", "tv_console"].includes(f.kind))
+      .map((f) => ({x: f.x, y: f.y, rotation: f.rotation || 0}));
+  }
   if (
     [
       "cabinet",
@@ -10,7 +15,7 @@ export function placementSuggestions(document, template, roomId) {
       "tv_console",
       "bed",
       "sofa",
-    ].includes(template.kind)
+    ].includes(template.kind) || template.placement_surface === "wall"
   ) {
     for (const wall of document.layout.walls.filter((w) => !w.edit_hidden)) {
       const dx = wall.end.x - wall.start.x,

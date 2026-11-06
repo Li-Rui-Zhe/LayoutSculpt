@@ -19,7 +19,7 @@ PRESETS = [
 def fixture_parts(fixture):
     """Meshes are centred horizontally; elevation denotes the emitting centre."""
     kind, y = fixture["kind"], fixture["elevation"]
-    hidden = kind in {"bulb", "pendant"}
+    hidden = kind in {"bulb", "pendant", "ceiling", "downlight"}
     def mat(name, color, rough=.6, metal=0):
         return trimesh.visual.material.PBRMaterial(name=name, baseColorFactor=[*color,255], roughnessFactor=rough, metallicFactor=metal)
     bronze = mat("灯具_拉丝香槟金属", [118,105,83], .42, .72)

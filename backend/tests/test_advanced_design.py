@@ -172,7 +172,7 @@ def test_extended_lights_have_distinct_geometry_and_glb_metadata(tmp_path):
         meta = edge.get("metadata", {})
         if meta.get("fixture_kind"):
             kinds.add(meta["fixture_kind"])
-            assert meta["fixture_visual_placeholder"] is False
+            assert meta["fixture_visual_placeholder"] == (meta["fixture_kind"] in {"ceiling", "downlight"})
     assert kinds == {"ceiling", "downlight", "table_lamp"}
 
 

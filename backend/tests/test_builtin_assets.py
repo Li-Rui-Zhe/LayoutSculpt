@@ -20,7 +20,8 @@ KINDS = [entry["kind"] for entry in CATALOG_DATA["items"]]
 @pytest.mark.parametrize("kind", KINDS)
 def test_builtin_geometry_and_thumbnail(kind):
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    assert catalog["version"] == "3.3.0"
+    from tools.home_collection import VERSION
+    assert catalog["version"] == VERSION
     assert {e["kind"] for e in catalog["items"]} == set(KINDS)
     entry = next(e for e in catalog["items"] if e["kind"] == kind)
     w, d, h = entry["dimensions"]
@@ -35,7 +36,8 @@ def test_builtin_geometry_and_thumbnail(kind):
     assert sum(len(mesh.faces) for mesh in scene.geometry.values()) < 100_000
     assert len(data) < 8 * 1024 * 1024
     with Image.open(CATALOG.parent / "thumbnails" / f"{kind}.png") as thumbnail:
-        assert thumbnail.size == (320, 320)
+        expected = 384 if entry.get("generator") == "external" else 320
+        assert thumbnail.size == (expected, expected)
         assert thumbnail.getbbox() is not None
 
 

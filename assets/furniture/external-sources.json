@@ -1,0 +1,205 @@
+{
+  "provider": "Poly Haven",
+  "license_url": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "items": [
+    {
+      "asset": "modern_arm_chair_01",
+      "key": "ph_modern_arm_chair_01",
+      "name": "木扶手高背软包休闲椅",
+      "furniture_kind": "armchair",
+      "category": "客厅",
+      "family": "休闲座椅",
+      "variant": "高背木扶手",
+      "styles": [
+        "modern",
+        "natural"
+      ],
+      "authors": [
+        "Vibrant Nordic"
+      ],
+      "license": "CC0-1.0",
+      "source_url": "https://polyhaven.com/a/modern_arm_chair_01",
+      "yaw_degrees": 0,
+      "files": {
+        "modern_arm_chair_01.gltf": {
+          "size": 5121,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/modern_arm_chair_01/modern_arm_chair_01_1k.gltf",
+          "md5": "a5ce303bc2962fe98b733fcdfa5a842b"
+        },
+        "textures/modern_arm_chair_01_pillow_nor_gl_1k.jpg": {
+          "size": 302377,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_arm_chair_01/modern_arm_chair_01_pillow_nor_gl_1k.jpg",
+          "md5": "6804f34108fcc755f0c84dd3c638270c"
+        },
+        "textures/modern_arm_chair_01_legs_nor_gl_1k.jpg": {
+          "size": 560864,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_arm_chair_01/modern_arm_chair_01_legs_nor_gl_1k.jpg",
+          "md5": "7cece7eccf75588af5b5df9b095d2c97"
+        },
+        "textures/modern_arm_chair_01_pillow_arm_1k.jpg": {
+          "size": 321223,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_arm_chair_01/modern_arm_chair_01_pillow_arm_1k.jpg",
+          "md5": "772495ddbf26ca3de4b31298f10113b9"
+        },
+        "textures/modern_arm_chair_01_legs_diff_1k.jpg": {
+          "size": 460937,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_arm_chair_01/modern_arm_chair_01_legs_diff_1k.jpg",
+          "md5": "778f1897e07ff81b2bc338f3d463ad1f"
+        },
+        "textures/modern_arm_chair_01_legs_arm_1k.jpg": {
+          "size": 577931,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_arm_chair_01/modern_arm_chair_01_legs_arm_1k.jpg",
+          "md5": "9c69cb001df175bddf6d1c2436567fb7"
+        },
+        "modern_arm_chair_01.bin": {
+          "size": 240728,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/modern_arm_chair_01/modern_arm_chair_01.bin",
+          "md5": "5a8f2ea1c79ea484140e484b2a621670"
+        },
+        "textures/modern_arm_chair_01_pillow_diff_1k.jpg": {
+          "size": 228851,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_arm_chair_01/modern_arm_chair_01_pillow_diff_1k.jpg",
+          "md5": "2e4f64c633c3cb1656ad3eabdb3f0607"
+        }
+      }
+    },
+    {
+      "asset": "dining_chair_02",
+      "key": "ph_dining_chair_02",
+      "name": "高背软包餐椅",
+      "furniture_kind": "chair",
+      "category": "餐厅",
+      "family": "餐椅",
+      "variant": "高背软包",
+      "styles": [
+        "modern"
+      ],
+      "authors": [
+        "James Ray Cock"
+      ],
+      "license": "CC0-1.0",
+      "source_url": "https://polyhaven.com/a/dining_chair_02",
+      "yaw_degrees": 0,
+      "files": {
+        "dining_chair_02.gltf": {
+          "size": 2723,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/dining_chair_02/dining_chair_02_1k.gltf",
+          "md5": "5aff75016e0943e84161de89dcc3ceb8"
+        },
+        "dining_chair_02.bin": {
+          "size": 544592,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/dining_chair_02/dining_chair_02.bin",
+          "md5": "b7f8a91c0a5249d02de7885f3b242c4e"
+        },
+        "textures/dining_chair_02_nor_gl_1k.jpg": {
+          "size": 119612,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dining_chair_02/dining_chair_02_nor_gl_1k.jpg",
+          "md5": "9c0e1003f9c8859a2e5c2c7f92a8f238"
+        },
+        "textures/dining_chair_02_diff_1k.jpg": {
+          "size": 91518,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dining_chair_02/dining_chair_02_diff_1k.jpg",
+          "md5": "6b7b8e4ac0a3aad9ecdf314a97b0ef75"
+        },
+        "textures/dining_chair_02_arm_1k.jpg": {
+          "size": 162630,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dining_chair_02/dining_chair_02_arm_1k.jpg",
+          "md5": "2b16c9ddb3ea83d200b02de54a4fdcb8"
+        }
+      }
+    },
+    {
+      "asset": "modern_wooden_cabinet",
+      "key": "ph_modern_wooden_cabinet",
+      "name": "格栅实木长电视柜",
+      "furniture_kind": "tv_console",
+      "category": "客厅",
+      "family": "电视柜",
+      "variant": "格栅长柜",
+      "styles": [
+        "natural",
+        "modern"
+      ],
+      "authors": [
+        "Patrik Pangerl"
+      ],
+      "license": "CC0-1.0",
+      "source_url": "https://polyhaven.com/a/modern_wooden_cabinet",
+      "yaw_degrees": 0,
+      "files": {
+        "modern_wooden_cabinet.gltf": {
+          "size": 10960,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/modern_wooden_cabinet/modern_wooden_cabinet_1k.gltf",
+          "md5": "623406579e948eb75ff52ec1498085c8"
+        },
+        "modern_wooden_cabinet.bin": {
+          "size": 1170136,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/modern_wooden_cabinet/modern_wooden_cabinet.bin",
+          "md5": "0a619e6311e6b04b92e9f226f3d0978d"
+        },
+        "textures/modern_wooden_cabinet_nor_gl_1k.jpg": {
+          "size": 430053,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_wooden_cabinet/modern_wooden_cabinet_nor_gl_1k.jpg",
+          "md5": "62477103e44ac1b2746c9bb201f89e06"
+        },
+        "textures/modern_wooden_cabinet_arm_1k.jpg": {
+          "size": 574020,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_wooden_cabinet/modern_wooden_cabinet_arm_1k.jpg",
+          "md5": "bb821c89979d89ce2421df13af67fb07"
+        },
+        "textures/modern_wooden_cabinet_diff_1k.jpg": {
+          "size": 670353,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/modern_wooden_cabinet/modern_wooden_cabinet_diff_1k.jpg",
+          "md5": "9c7e897741dd9aea6382f04e710d739b"
+        }
+      }
+    },
+    {
+      "asset": "side_table_01",
+      "key": "ph_side_table_01",
+      "name": "实木双层方边几",
+      "furniture_kind": "side_table",
+      "category": "客厅",
+      "family": "边几",
+      "variant": "双层方形",
+      "styles": [
+        "natural",
+        "modern"
+      ],
+      "authors": [
+        "James Ray Cock"
+      ],
+      "license": "CC0-1.0",
+      "source_url": "https://polyhaven.com/a/side_table_01",
+      "yaw_degrees": 0,
+      "files": {
+        "side_table_01.gltf": {
+          "size": 2700,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/side_table_01/side_table_01_1k.gltf",
+          "md5": "4f72b88ca0cb4329d09d87788df495f3"
+        },
+        "side_table_01.bin": {
+          "size": 117784,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/side_table_01/side_table_01.bin",
+          "md5": "344e55dbf8dc39b1bca0ca66b956a8dc"
+        },
+        "textures/side_table_01_diff_1k.jpg": {
+          "size": 183315,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/side_table_01/side_table_01_diff_1k.jpg",
+          "md5": "858d3b2c5f7f4c733a5c6a32183b11de"
+        },
+        "textures/side_table_01_nor_gl_1k.jpg": {
+          "size": 71744,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/side_table_01/side_table_01_nor_gl_1k.jpg",
+          "md5": "9252911489f1024faad8bb1443d31d9e"
+        },
+        "textures/side_table_01_arm_1k.jpg": {
+          "size": 129725,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/side_table_01/side_table_01_arm_1k.jpg",
+          "md5": "79435258a51369b735349763689f1cba"
+        }
+      }
+    }
+  ]
+}

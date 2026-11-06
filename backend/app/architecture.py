@@ -129,15 +129,41 @@ def structure_issues(layout, *, include_access=True):
     if include_access:
         openings = [opening_footprint(wall, opening).buffer(0.22)
                     for opening in data["openings"]
-                    if opening["kind"] in {"door", "passage"}
+                    if opening["kind"] in {"door", "passage"} and opening.get("bottom", 0) <= .05
+                    and opening["height"] >= 1.8 and opening["width"] >= .55
                     for wall in walls if wall["id"] == opening["wall_id"]]
+        connected = rooms_with_open_access(data)
         for room in data["rooms"]:
             if room["kind"] not in {"bedroom", "bathroom", "kitchen", "balcony"}:
                 continue
             shape = Polygon([(point["x"], point["y"]) for point in room["polygon"]])
-            if not any(shape.intersection(door).area > 0.01 for door in openings):
+            if room["id"] not in connected and not any(shape.intersection(door).area > 0.01 for door in openings):
                 issues.append(f"{room['name']} 未识别到门或通道，请对照原图确认出入口")
     return issues + balcony_findings
+
+
+def rooms_with_open_access(data):
+    """An open zone can reach a real door through a neighbouring zone.
+
+    Erode by 25 cm before testing components: corner contact and wall cracks
+    are not usable passages. No room names or AI confidence affect this check.
+    """
+    by_id = {wall["id"]: wall for wall in data["walls"]}
+    doors = [opening_footprint(by_id[o["wall_id"]], o)
+             for o in data["openings"]
+             if o["kind"] in {"door", "passage"} and o.get("bottom", 0) <= .05
+             and o["height"] >= 1.8 and o["width"] >= .55]
+    if not doors:
+        return set()
+    footprint = Polygon([(p["x"], p["y"]) for p in data["outline"]])
+    obstacles = unary_union([wall_footprint(w) for w in data["walls"]]).difference(unary_union(doors))
+    walkable = footprint.difference(obstacles).buffer(-.25)
+    components = [walkable] if walkable.geom_type == "Polygon" else getattr(walkable, "geoms", [])
+    reachable = [part for part in components if part.area > .05
+                 and any(part.distance(door.representative_point()) <= .26 for door in doors)]
+    return {room["id"] for room in data["rooms"]
+            if any(part.intersection(Polygon([(p["x"], p["y"]) for p in room["polygon"]])).area > .05
+                   for part in reachable)}
 
 
 def validate_generated_structure(layout):

@@ -15,8 +15,6 @@
 }
 * {
   box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: #3d4d51 transparent;
 }
 body {
   margin: 0;

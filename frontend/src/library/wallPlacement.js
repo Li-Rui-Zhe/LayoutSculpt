@@ -9,6 +9,8 @@ export const verticalOverlap = (a, b) =>
   Math.min((a.elevation ?? 0) + a.height, (b.elevation ?? 0) + b.height) >
   Math.max(a.elevation ?? 0, b.elevation ?? 0) + 1e-6;
 
+export const isWallMounted = (item) => item?.kind === "wall_television" || item?.placement_surface === "wall";
+
 export function wallPlacement(
   document,
   template,
@@ -90,8 +92,8 @@ export function wallPlacement(
   if (candidates.length)
     return candidates.sort((a, b) => a.distance - b.distance)[0].item;
   if (anchor)
-    throw Error("请靠近可安装电视的完整墙面，避开门窗；电视将自动贴墙。");
+    throw Error("请靠近可安装的完整墙面，避开门窗；家具将自动贴墙。");
   throw Error(
-    "没有找到可安装电视的完整墙面，请检查墙面宽度、高度、门窗和同高度家具。",
+    "没有找到可安装的完整墙面，请检查墙面宽度、高度、门窗和同高度家具。",
   );
 }

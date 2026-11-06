@@ -9,9 +9,6 @@
   --accent-dark: #eaf0e9;
   --gold: #a48149;
 }
-* {
-  scrollbar-color: #c6cec4 transparent;
-}
 button:hover:not(:disabled) {
   color: #244d3e;
 }

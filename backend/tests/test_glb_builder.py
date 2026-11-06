@@ -114,6 +114,19 @@ def test_kitchen_accessories_follow_furniture_selection(tmp_path):
     assert all(node.get("extras", {}).get("furniture_index") == 0 for node in details)
 
 
+def test_export_retains_wall_mount_semantics_for_cutaway(tmp_path):
+    data = Layout.model_validate(layout_data()).model_dump()
+    item = {**furniture_data()["items"][0], "kind": "wall_television", "name": "挂墙电视",
+            "width": 1.2, "depth": .1, "height": .7, "elevation": 1.1, "placement_surface": "wall"}
+    data.update(furniture=[item], style="natural", furniture_mode="library")
+    Builder(data, Settings().furniture_catalog).build(tmp_path)
+    scene = trimesh.load(tmp_path / "model.glb", force="scene")
+    parts = [e["metadata"] for e in scene.graph.transforms.edge_data.values()
+             if e.get("metadata", {}).get("furniture_index") == 0]
+    assert parts
+    assert all(p["placement_surface"] == "wall" and p["furniture_kind"] == "wall_television" for p in parts)
+
+
 def test_bare_fixture_parts_keep_light_records_with_placeholder_metadata(tmp_path):
     data = Layout.model_validate(layout_data()).model_dump()
     data.update(furniture=[], style="natural")

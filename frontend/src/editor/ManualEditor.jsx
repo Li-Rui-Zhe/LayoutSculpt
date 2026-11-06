@@ -1,6 +1,7 @@
 import DimensionCalibration, {
   DimensionStatus,
 } from "./DimensionCalibration.jsx";
+import { initialPlacement } from "../library/initialPlacement.js";
 import { applySurface } from "./applySurface.js";
 import { useEditorValidation } from "./useEditorValidation.js";
 import PresentationLayers from "./PresentationLayers.jsx";
@@ -16,6 +17,7 @@ import ProgressBoundary, {
 import OperationStatus from "../components/OperationStatus.jsx";
 import { useProgressGate } from "../components/useProgressGate.js";
 import EditorSaveBar from "./EditorSaveBar.jsx";
+import { editorReturnAction } from "./saveStatus.js";
 import "./editorWorkspace.css";
 import "./editorPolish.css";
 import PlanReferenceTools from "./PlanReferenceTools.jsx";
@@ -84,6 +86,7 @@ const SurfaceStudio = lazy(() => import("../diy/SurfaceStudio.jsx"));
 import SurfaceFinishPicker from "./SurfaceFinishPicker.jsx";
 import SurfaceTransfer from "./SurfaceTransfer.jsx";
 import AssetLibrary from "../library/AssetLibrary.jsx";
+import { isWallMounted } from "../library/wallPlacement.js";
 import {
   applyArchitecture,
   architectureSelection,
@@ -984,7 +987,7 @@ function ManualEditorContent({
           event.key.toLowerCase() === "r" &&
           !event.ctrlKey &&
           !event.metaKey &&
-          placement.template.kind !== "wall_television"
+          !isWallMounted(placement.template)
         ) {
           event.preventDefault();
           setPlacement((p) => p && { ...p, rotation: (p.rotation + 90) % 360 });
@@ -1185,17 +1188,26 @@ function ManualEditorContent({
     setTool("furniture");
     setPreview(null);
     placementCommitted.current = false;
+    const preferredRoomId =
+      item?.room_id || (selected?.type === "rooms" ? item?.id : null);
+    const suggestion = initialPlacement(
+      draft.document,
+      template,
+      preferredRoomId,
+    );
     setPlacement({
       template: clone(template),
-      point: null,
-      rotation: template.rotation || 0,
-      preferredRoomId:
-        item?.room_id || (selected?.type === "rooms" ? item?.id : null),
+      point: suggestion ? { x: suggestion.x, y: suggestion.y } : null,
+      rotation: suggestion?.rotation ?? template.rotation ?? 0,
+      suggested: !!suggestion,
+      preferredRoomId,
     });
     setError("");
   };
   const movePlacement = (point) =>
-    setPlacement((current) => (current ? { ...current, point } : null));
+    setPlacement((current) =>
+      current ? { ...current, point, suggested: false } : null,
+    );
   const placementResult =
     placement?.point && draft.document
       ? furniturePlacementAt(
@@ -1241,6 +1253,7 @@ function ManualEditorContent({
         ...current,
         point: { x: candidate.x, y: candidate.y },
         rotation: candidate.rotation,
+        suggested: true,
       }));
       setError("");
     } catch (e) {
@@ -1486,6 +1499,8 @@ function ManualEditorContent({
       pendingDelete ||
       openingKind ||
       architecturePlacement ||
+      placement ||
+      aiPreview ||
       (reviewing && !acknowledged)
     )
       return;
@@ -1527,6 +1542,31 @@ function ManualEditorContent({
       saveLock.current = false;
       setBusy(false);
     }
+  };
+  const returnAction = editorReturnAction({
+    draft,
+    reviewing,
+    acknowledged,
+    busy,
+    proposalPreview: !!aiPreview,
+    issues,
+    name,
+    drawing,
+    pendingDelete,
+    openingKind,
+    placement: placement || architecturePlacement,
+  });
+  const returnToPreview = () => {
+    if (busy || saveLock.current) return;
+    const invalid = root.current?.querySelector(
+      'input:invalid, input[aria-invalid="true"]',
+    );
+    if (invalid) {
+      invalid.focus();
+      setError("请先修正输入值，或按 Esc 放弃该项输入。");
+      return;
+    }
+    onClose();
   };
   if (!document)
     return (
@@ -1877,19 +1917,21 @@ function ManualEditorContent({
                 {round(placementResult?.item.rotation ?? placement.rotation)}°
               </span>
               <p role="status">
-                {placementResult?.message ||
-                  (placement.template.kind === "wall_television"
-                    ? "移动到墙边预览安装位置，点击放下；Esc 取消。"
-                    : "移动鼠标预览占地，点击画布放下；R 旋转，Esc 取消。")}
+                {placement.suggested && placementResult?.valid
+                  ? "已找到建议落点，尚未添加。确认放置，或移动鼠标换个位置。"
+                  : placementResult?.message ||
+                    (isWallMounted(placement.template)
+                      ? "移动到墙边预览安装位置，点击放下；Esc 取消。"
+                      : "移动鼠标预览占地，点击画布放下；R 旋转，Esc 取消。")}
               </p>
-              {placement.template.kind === "wall_television" && (
+              {isWallMounted(placement.template) && (
                 <small>靠近墙面自动吸附，方向随墙面调整。</small>
               )}
             </div>
             <div className="furniture-placement-actions">
               <button
                 type="button"
-                disabled={busy || placement.template.kind === "wall_television"}
+                disabled={busy || isWallMounted(placement.template)}
                 onClick={() =>
                   setPlacement((p) => ({
                     ...p,
@@ -2028,6 +2070,26 @@ function ManualEditorContent({
             <details className="editor-more">
               <summary>更多</summary>
               <div>
+                {!reviewing && draft.dirty && (
+                  <button
+                    className="text-button"
+                    disabled={
+                      busy ||
+                      !!(
+                        drawing ||
+                        pendingDelete ||
+                        openingKind ||
+                        placement ||
+                        architecturePlacement ||
+                        aiPreview
+                      )
+                    }
+                    onClick={returnToPreview}
+                    title="查看上一次生成的完整效果，当前修改仍保留在草稿中。"
+                  >
+                    查看上一版（保留草稿）
+                  </button>
+                )}
                 <button
                   className="text-button"
                   onClick={() => {
@@ -2050,178 +2112,188 @@ function ManualEditorContent({
             </details>
             <button
               className="secondary-button editor-return"
-              onClick={onClose}
-              aria-label={reviewing ? "返回结构核对" : "返回方案预览"}
+              onClick={returnAction.preview ? returnToPreview : save}
+              disabled={returnAction.disabled}
+              title={returnAction.detail}
+              aria-label={returnAction.label}
             >
               <ArrowLeft size={14} />
-              返回预览
+              {returnAction.label}
             </button>
           </div>
         </div>
-        {!placement && !isScene && (
-          <details className="editor-tools-disclosure">
-            <summary>操作说明与步长</summary>
-            <div className="edit-intro">
-              <MousePointer2 size={15} />
-              <p>
-                {isScene
-                  ? "直接拖动物体摆放；需要精调时修改右侧参数，停输后自动更新。"
-                  : hints[tool]}
-              </p>
-              <label>
-                {isScene ? "微移步长" : "吸附 / 微移"}
-                <select
-                  aria-label="移动步长"
-                  value={step}
-                  onChange={(e) => setStep(Number(e.target.value))}
-                >
-                  <option value={0.1}>10 厘米</option>
-                  <option value={0.05}>5 厘米</option>
-                  <option value={0.01}>1 厘米</option>
-                </select>
-              </label>
-            </div>
-          </details>
-        )}
-        {drawing && !isScene && (
-          <div className="edit-drawing-bar" role="status">
-            <span>
-              {drawing.type === "walls"
-                ? "在图中点击起点和终点"
-                : "在图中依次点击边界角点，再点击完成"}{" "}
-              · 已选 {drawing.points.length} 点
-            </span>
-            <button
-              disabled={busy || !drawing.points.length}
-              onClick={() =>
-                setDrawing({ ...drawing, points: drawing.points.slice(0, -1) })
-              }
-            >
-              撤回一点
-            </button>
-            {drawing.type !== "walls" && (
-              <button
-                disabled={busy || drawing.points.length < 3}
-                onClick={() => finishDrawing()}
-              >
-                完成绘制
-              </button>
-            )}
-            <button
-              disabled={busy}
-              onClick={() => {
-                setDrawing(null);
-                setError("");
-              }}
-            >
-              取消绘制
-            </button>
-          </div>
-        )}
-        {!isScene && !placement && (
-          <details className="editor-tools-disclosure">
-            <summary>辅助工具 · 测量、原图与批量操作</summary>
-            {!isScene && !placement && (
-              <PlanReferenceTools
-                displayUnit={displayUnit}
-                setDisplayUnit={setDisplayUnit}
-                measureMode={measureMode}
-                setMeasureMode={setMeasureMode}
-                setBoxMode={setBoxMode}
-                measure={measure}
-                setMeasure={setMeasure}
-                overlay={overlay}
-                setOverlay={setOverlay}
-                opacity={opacity}
-                setOpacity={setOpacity}
-                snap={snap}
-                setSnap={setSnap}
-                registration={registration}
-                setRegistration={setRegistration}
-                constraintError={draft.constraintError}
-              />
-            )}
-            {!isScene && !placement && tool === "furniture" && (
-              <div className="batch-toolbar">
-                <button
-                  aria-pressed={boxMode}
-                  onClick={() => {
-                    setBoxMode(!boxMode);
-                    setMeasureMode(false);
-                  }}
-                >
-                  框选家具
-                </button>
-                <button
-                  onClick={() =>
-                    setMulti(document.furniture.items.map((_, i) => i))
-                  }
-                >
-                  全选家具
-                </button>
-                <button onClick={() => setMulti([])}>清除多选</button>
-                <button
-                  onClick={() =>
-                    draft.commit((next) => {
-                      next.furniture.items.forEach(
-                        (f) => (f.edit_hidden = false),
-                      );
-                      return next;
-                    }, false)
-                  }
-                >
-                  显示隐藏对象
-                </button>
-                <button
-                  aria-pressed={hideFurniture}
-                  onClick={() => setHideFurniture(!hideFurniture)}
-                >
-                  {hideFurniture ? "显示家具" : "隐藏家具"}
-                </button>
-                {multi.length > 1 && (
-                  <>
-                    <span>选中 {multi.length} 件</span>
-                    {[
-                      ["group", "编为一组"],
-                      ["ungroup", "解除组合"],
-                      ["hide", "隐藏选中"],
-                      ["align-x", "左右居中"],
-                      ["align-y", "前后对齐"],
-                      ["distribute", "横向等距"],
-                      ["copy", "批量复制"],
-                      ["delete", "批量删除"],
-                    ].map(([op, title]) => (
-                      <button
-                        key={op}
-                        onClick={() => {
-                          try {
-                            draft.commit(
-                              batchFurniture(
-                                draft.document,
-                                multi.filter(
-                                  (i) => !locked.includes(`furniture:${i}`),
-                                ),
-                                op,
-                              ),
-                            );
-                            if (op === "delete") {
-                              setMulti([]);
-                              setSelected(null);
-                            }
-                          } catch (e) {
-                            setError(e.message);
-                          }
-                        }}
-                      >
-                        {title}
-                      </button>
-                    ))}
-                  </>
-                )}
+        <div
+          className="editor-plan-tools"
+          hidden={isScene || (!!placement && !drawing)}
+        >
+          {!placement && !isScene && (
+            <details className="editor-tools-disclosure">
+              <summary>操作说明与步长</summary>
+              <div className="edit-intro">
+                <MousePointer2 size={15} />
+                <p>
+                  {isScene
+                    ? "直接拖动物体摆放；需要精调时修改右侧参数，停输后自动更新。"
+                    : hints[tool]}
+                </p>
+                <label>
+                  {isScene ? "微移步长" : "吸附 / 微移"}
+                  <select
+                    aria-label="移动步长"
+                    value={step}
+                    onChange={(e) => setStep(Number(e.target.value))}
+                  >
+                    <option value={0.1}>10 厘米</option>
+                    <option value={0.05}>5 厘米</option>
+                    <option value={0.01}>1 厘米</option>
+                  </select>
+                </label>
               </div>
-            )}
-          </details>
-        )}
+            </details>
+          )}
+          {drawing && !isScene && (
+            <div className="edit-drawing-bar" role="status">
+              <span>
+                {drawing.type === "walls"
+                  ? "在图中点击起点和终点"
+                  : "在图中依次点击边界角点，再点击完成"}{" "}
+                · 已选 {drawing.points.length} 点
+              </span>
+              <button
+                disabled={busy || !drawing.points.length}
+                onClick={() =>
+                  setDrawing({
+                    ...drawing,
+                    points: drawing.points.slice(0, -1),
+                  })
+                }
+              >
+                撤回一点
+              </button>
+              {drawing.type !== "walls" && (
+                <button
+                  disabled={busy || drawing.points.length < 3}
+                  onClick={() => finishDrawing()}
+                >
+                  完成绘制
+                </button>
+              )}
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setDrawing(null);
+                  setError("");
+                }}
+              >
+                取消绘制
+              </button>
+            </div>
+          )}
+          {!isScene && !placement && (
+            <details className="editor-tools-disclosure">
+              <summary>辅助工具 · 测量、原图与批量操作</summary>
+              {!isScene && !placement && (
+                <PlanReferenceTools
+                  displayUnit={displayUnit}
+                  setDisplayUnit={setDisplayUnit}
+                  measureMode={measureMode}
+                  setMeasureMode={setMeasureMode}
+                  setBoxMode={setBoxMode}
+                  measure={measure}
+                  setMeasure={setMeasure}
+                  overlay={overlay}
+                  setOverlay={setOverlay}
+                  opacity={opacity}
+                  setOpacity={setOpacity}
+                  snap={snap}
+                  setSnap={setSnap}
+                  registration={registration}
+                  setRegistration={setRegistration}
+                  constraintError={draft.constraintError}
+                />
+              )}
+              {!isScene && !placement && tool === "furniture" && (
+                <div className="batch-toolbar">
+                  <button
+                    aria-pressed={boxMode}
+                    onClick={() => {
+                      setBoxMode(!boxMode);
+                      setMeasureMode(false);
+                    }}
+                  >
+                    框选家具
+                  </button>
+                  <button
+                    onClick={() =>
+                      setMulti(document.furniture.items.map((_, i) => i))
+                    }
+                  >
+                    全选家具
+                  </button>
+                  <button onClick={() => setMulti([])}>清除多选</button>
+                  <button
+                    onClick={() =>
+                      draft.commit((next) => {
+                        next.furniture.items.forEach(
+                          (f) => (f.edit_hidden = false),
+                        );
+                        return next;
+                      }, false)
+                    }
+                  >
+                    显示隐藏对象
+                  </button>
+                  <button
+                    aria-pressed={hideFurniture}
+                    onClick={() => setHideFurniture(!hideFurniture)}
+                  >
+                    {hideFurniture ? "显示家具" : "隐藏家具"}
+                  </button>
+                  {multi.length > 1 && (
+                    <>
+                      <span>选中 {multi.length} 件</span>
+                      {[
+                        ["group", "编为一组"],
+                        ["ungroup", "解除组合"],
+                        ["hide", "隐藏选中"],
+                        ["align-x", "左右居中"],
+                        ["align-y", "前后对齐"],
+                        ["distribute", "横向等距"],
+                        ["copy", "批量复制"],
+                        ["delete", "批量删除"],
+                      ].map(([op, title]) => (
+                        <button
+                          key={op}
+                          onClick={() => {
+                            try {
+                              draft.commit(
+                                batchFurniture(
+                                  draft.document,
+                                  multi.filter(
+                                    (i) => !locked.includes(`furniture:${i}`),
+                                  ),
+                                  op,
+                                ),
+                              );
+                              if (op === "delete") {
+                                setMulti([]);
+                                setSelected(null);
+                              }
+                            } catch (e) {
+                              setError(e.message);
+                            }
+                          }}
+                        >
+                          {title}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </details>
+          )}
+        </div>
         <div className="edit-columns">
           <aside
             className="edit-library edit-properties"
@@ -2252,9 +2324,9 @@ function ManualEditorContent({
                 role="note"
                 aria-label="灯具显示说明"
               >
-                <strong>辅助光源默认隐藏外形</strong>
+                <strong>顶部灯具默认隐藏外形</strong>
                 <p>
-                  为避免悬挂灯具遮挡户型、影响观感，设计预览默认隐藏灯泡和吊灯的外形，夜间照明仍保留。可在灯具素材库查看完整造型。
+                  为避免顶部灯具遮挡户型、影响观感，设计预览默认隐藏灯泡、吊灯、吸顶灯和筒灯的外形，夜间照明仍保留。可在灯具素材库查看完整造型。
                 </p>
                 <small>
                   从列表选中即可调整；保存后切到「夜晚」查看效果。落地灯、台灯等实体灯具正常显示。
@@ -2390,7 +2462,7 @@ function ManualEditorContent({
                       </button>
                     </div>
                     <p className="field-note">
-                      保存并生成三维后，可在设计预览查看灯光效果。最多 12
+                      生成最新三维效果后，可在设计预览查看灯光效果。最多 12
                       盏灯，可单独开关。
                     </p>
                   </>
@@ -3715,7 +3787,7 @@ function ManualEditorContent({
                             onChange={rotate}
                           />
                         </details>
-                        <details className="inspector-group" open>
+                        <details className="inspector-group">
                           <summary>尺寸</summary>
                           <div className="edit-number-grid">
                             {number("家具宽度", "width", 0.1, 6)}
@@ -4852,6 +4924,7 @@ function ManualEditorContent({
           openingKind={openingKind}
           placement={placement || architecturePlacement}
           save={save}
+          onPreview={returnToPreview}
         />
       </div>
     </UnitContext.Provider>

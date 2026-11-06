@@ -15,7 +15,7 @@ import {
   installFixtureLights,
   updateFixtureLights,
 } from "../viewer/fixtureLights.js";
-import { installCutaway, updateCutaway } from "../viewer/cutaway.js";
+import { installCutaway, updateCutaway, setCutawaySelection } from "../viewer/cutaway.js";
 import { repairLegacyWallMaterials } from "../viewer/materialCompatibility.js";
 import { materials } from "../catalog.js";
 import furnitureMaterials from "../../../assets/materials/furniture.json" with { type: "json" };
@@ -749,6 +749,12 @@ export default function DiyPreview({
         : null;
       if (rt.liveGroups && callbacks.current.liveDocument)
         syncLiveFurniture(rt.liveGroups, callbacks.current.liveDocument);
+      const selection = callbacks.current.liveSelection;
+      const selectedItem = selection?.type === "furniture"
+        ? callbacks.current.liveDocument?.furniture.items[selection.index] : null;
+      setCutawaySelection(gltf.scene, selectedItem && !selectedItem.edit_hidden
+        ? rt.liveGroups?.get(liveKey(selectedItem, selection.index)) : null);
+      if (modelDocument) updateCutaway(gltf.scene, rt.camera, { enabled: cutaway });
       dispose(rt.group);
       rt.group.clear();
       rt.group.add(gltf.scene);
@@ -884,7 +890,17 @@ export default function DiyPreview({
         updateFixtureLights(rt.group.children[0], night);
       }
     }
-    if (modelDocument) updateRoomHighlight(rt, liveDocument, liveSelection);
+    if (modelDocument) {
+      const model = rt.group.children[0];
+      const selectedItem = liveSelection?.type === "furniture"
+        ? liveDocument?.furniture.items[liveSelection.index] : null;
+      // A drag temporarily skips gizmo rebinding; keep its selected appliance
+      // revealed throughout the gesture instead of depending on `picked`.
+      setCutawaySelection(model, selectedItem && !selectedItem.edit_hidden
+        ? rt.liveGroups?.get(liveKey(selectedItem, liveSelection.index)) : null);
+      updateCutaway(model, rt.camera, { enabled: cutaway, furnitureOnly: true });
+      updateRoomHighlight(rt, liveDocument, liveSelection);
+    }
     else clearRoomHighlight(rt);
     for (const mesh of rt.group.children) {
       mesh.visible = !solo || !selected || mesh.userData.partId === selected;

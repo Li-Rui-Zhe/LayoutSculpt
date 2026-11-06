@@ -92,6 +92,9 @@ export function bindLiveFurniture(model, snapshot) {
     const index = node.userData.furniture_index,
       source = snapshot.furniture.items[index];
     if (!source) continue;
+    node.userData.furniture_kind = source.kind;
+    node.userData.placement_surface = source.placement_surface;
+    node.userData.furniture_name = source.name;
     const key = liveKey(source, index);
     let pivot = groups.get(key);
     if (!pivot) {

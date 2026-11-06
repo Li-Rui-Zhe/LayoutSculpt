@@ -23,6 +23,8 @@ def test_shipped_showcase_structure_and_metadata():
     public_metadata = json.loads((ROOT / f"public/models/{SHOWCASE_ID}.json").read_text(encoding="utf-8"))
     assert metadata == public_metadata
     assert metadata["id"] == SHOWCASE_ID
+    catalog = json.loads((ROOT / "assets/furniture/catalog.json").read_text(encoding="utf-8"))
+    assert metadata["furniture_version"] == catalog["version"]
     path = ROOT / "public" / metadata["model_url"].lstrip("/")
     assert path.stat().st_size < 12 * 1024 * 1024
     proof = verify_export(document(), path)
@@ -77,3 +79,22 @@ def test_showcase_finishes_are_reproducible_and_foliage_uses_shared_parts():
     assert len(tree.geometry) == 6
     assert np.isfinite(tree.bounds).all()
     assert all(mesh.visual.material.metallicFactor == 0 for mesh in tree.geometry.values())
+
+
+def test_shipped_showcase_uses_uniform_cut_and_attached_decorations_follow_walls():
+    scene = trimesh.load(ROOT / f"public/models/{SHOWCASE_ID}.glb", force="scene")
+    curtains, pictures, walls = [], [], []
+    for (_, node), edge in scene.graph.transforms.edge_data.items():
+        meta = edge.get('metadata', {})
+        if meta.get('cutaway_full'):
+            points = np.asarray(meta['cutaway_geometry']['positions']).reshape(-1, 3)
+            assert points[:, 1].max() <= 1.20001
+            walls.append(node)
+        if '连续亚麻窗帘' in node or '窗帘细轨道' in node:
+            curtains.append(node)
+            assert meta.get('cutaway_upper') is True
+        if any(word in node for word in ('画框', '画底纸', '织物画底', '浮雕织物', '艺术画色块')):
+            pictures.append(node)
+            assert meta.get('cutaway_upper') is True
+    assert walls and len(curtains) == 6 and len(pictures) >= 8
+    assert sum('剖切窗帘' in node for node in scene.graph.nodes_geometry) == 4

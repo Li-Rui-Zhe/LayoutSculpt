@@ -13,7 +13,7 @@ def test_fixture_geometry_has_one_emitter_and_owned_visible_parts(preset):
     assert sources[0]["fixture_lumens"] == preset["lumens"]
     for _,mesh,meta in parts:
         assert meta["fixture_owner_id"] == "test"
-        assert meta["fixture_visual_placeholder"] == (preset["kind"] in {"bulb","pendant"})
+        assert meta["fixture_visual_placeholder"] == (preset["kind"] in {"bulb","pendant","ceiling","downlight"})
         assert np.isfinite(mesh.vertices).all() and np.isfinite(mesh.vertex_normals).all()
         assert mesh.is_watertight and mesh.volume > 0
     if preset["kind"] == "floor_lamp":

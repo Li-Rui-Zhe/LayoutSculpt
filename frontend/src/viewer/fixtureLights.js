@@ -149,7 +149,7 @@ export function installFixtureLights(model, { sample = false } = {}) {
   }
   model.updateMatrixWorld(true);
   model.userData.designLights = markers.map(({ marker, data }) => {
-    const LightType = ["pendant", "downlight"].includes(data.fixture_kind)
+    const LightType = ["pendant", "downlight", "ceiling"].includes(data.fixture_kind)
       ? THREE.SpotLight
       : THREE.PointLight;
     const light = new LightType(
@@ -159,6 +159,11 @@ export function installFixtureLights(model, { sample = false } = {}) {
       2,
     );
     light.name = `人工设计光源_${data.fixture_id}`;
+    if (data.presentation_layer_id) {
+      light.userData.presentation_layer_id = data.presentation_layer_id;
+      if (light.isSpotLight)
+        light.target.userData.presentation_layer_id = data.presentation_layer_id;
+    }
     // GLB may bake elevation into vertices rather than the node transform.
     // Anchor illumination to the emitting surface, including already saved GLBs.
     const emitter = new THREE.Vector3();
@@ -171,7 +176,7 @@ export function installFixtureLights(model, { sample = false } = {}) {
     }
     light.position.copy(model.worldToLocal(emitter));
     if (light.isSpotLight) {
-      light.angle = Math.PI * (data.fixture_kind === "downlight" ? 0.18 : 0.38);
+      light.angle = Math.PI * (data.fixture_kind === "downlight" ? 0.18 : data.fixture_kind === "ceiling" ? 0.42 : 0.38);
       light.penumbra = 1;
       light.decay = 2;
       light.target.position
@@ -213,6 +218,8 @@ export function installFixtureLights(model, { sample = false } = {}) {
       surfaces,
       enabled: data.fixture_enabled !== false,
       lumens: Number(data.fixture_lumens) || 0,
+      // 吸顶灯向下漫射，减少剖切后向天空与外部地面发光；不改用户保存的流明。
+      previewScale: data.fixture_kind === "ceiling" ? 0.65 : 1,
     };
   });
   // Lights are siblings of their geometry. Hiding a placeholder never hides
@@ -237,7 +244,7 @@ export function updateFixtureLights(model, night, strength = 1) {
   for (const fixture of model?.userData.designLights || []) {
     const enabled = night && fixture.enabled && fixture.lumens > 0;
     fixture.light.intensity = enabled
-      ? (fixture.lumens / (4 * Math.PI)) * previewIntensity * strength
+      ? (fixture.lumens / (4 * Math.PI)) * previewIntensity * strength * (fixture.previewScale ?? 1)
       : 0;
     fixture.light.visible = enabled;
     for (const material of fixture.materials)

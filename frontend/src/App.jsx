@@ -124,7 +124,7 @@ export default function App() {
     setRailOpen(false);
   };
   return (
-    <main className="factory result-first">
+    <main className="factory result-first studio-shell">
       <BuildNotice />
       <ConnectionNotice
         serviceError={projects.error}
@@ -133,6 +133,7 @@ export default function App() {
       <header className="factory-header">
         <a
           className="factory-brand"
+          aria-label="造个家 LayoutSculpt · 返回示例空间"
           href="#"
           onClick={(e) => {
             e.preventDefault();
@@ -143,10 +144,11 @@ export default function App() {
             <Boxes size={24} />
           </span>
           <strong>
-            LayoutSculpt<span>户型设计工厂</span>
+            造个家<span>LayoutSculpt</span>
           </strong>
         </a>
         <div className="project-heading-host" ref={setHeadingHost}>
+          {creating && surface === "workspace" && <strong>新建户型</strong>}
           {surface !== "workspace" && (
             <strong>
               {surface === "diy"
@@ -227,12 +229,13 @@ export default function App() {
             ) : (
               <PanelLeftOpen size={20} />
             )}
-            <span>任务</span>
+            <span>我的方案</span>
           </button>
           <button
             aria-label="新建生成任务"
             title="新建户型"
             className={creating ? "active" : ""}
+            aria-current={creating ? "page" : undefined}
             onClick={() => {
               navigate("workspace");
               setCreating(true);
@@ -240,11 +243,18 @@ export default function App() {
             }}
           >
             <Plus size={20} />
-            <span>新建</span>
+            <span>新建户型</span>
           </button>
           <button
             aria-label="探索示例空间"
             title="示例空间"
+            aria-current={
+              surface === "workspace" &&
+              !creating &&
+              projects.selectedId === "sample"
+                ? "page"
+                : undefined
+            }
             className={
               surface === "workspace" &&
               !creating &&
@@ -255,7 +265,7 @@ export default function App() {
             onClick={() => select(null)}
           >
             <Home size={20} />
-            <span>示例</span>
+            <span>示例空间</span>
           </button>
           <button
             aria-label="打开 DIY 设计"
@@ -265,7 +275,7 @@ export default function App() {
             onClick={() => navigate("diy")}
           >
             <Sparkles size={20} />
-            <span>DIY</span>
+            <span>DIY 创作</span>
           </button>
           <button
             aria-label="打开素材库"
@@ -390,7 +400,35 @@ export default function App() {
                   active={surface === "diy" && !surfaceDiy}
                   openAssetRequest={diyAssetId}
                   saveBeforeUse
-                  useLabel="保存并放入目标户型"
+                  useLabel="保存并选择放置位置"
+                  onLibrary={(assetId) => {
+                    try {
+                      sessionStorage.setItem(
+                        "library-context:page",
+                        JSON.stringify({
+                          assetType: "models",
+                          source: "diy",
+                          query: "",
+                          selectedId: `diy:${assetId}`,
+                          category: "all",
+                          family: "all",
+                          style: "all",
+                        }),
+                      );
+                    } catch {
+                      /* URL 仍指向 DIY 素材。 */
+                    }
+                    writeContext({
+                      assetType: "models",
+                      librarySource: "diy",
+                      category: "all",
+                      family: "all",
+                      furnitureStyle: "all",
+                      libraryAsset: `diy:${assetId}`,
+                      q: null,
+                    });
+                    navigate("library");
+                  }}
                   onUse={
                     projects.job?.status === "succeeded"
                       ? async (design) => {

@@ -1,0 +1,35 @@
+.cutaway-hint {
+  position: relative;
+  flex: 0 0 auto;
+  color: #66786f;
+  font-size: 12px;
+}
+.cutaway-hint summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  border-radius: 6px;
+  list-style: none;
+}
+.cutaway-hint summary::-webkit-details-marker { display: none; }
+.cutaway-hint summary:hover,
+.cutaway-hint summary:focus-visible { background: #edf2ee; }
+.cutaway-hint summary:focus-visible { outline: 2px solid #34634e; }
+.cutaway-hint p {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: min(250px, 65vw);
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #dbe4dd;
+  border-radius: 9px;
+  background: #fffefa;
+  box-shadow: 0 5px 18px #233c2820;
+  color: #485b50;
+  line-height: 1.7;
+  z-index: 30;
+}

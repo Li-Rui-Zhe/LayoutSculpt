@@ -332,6 +332,7 @@ class Layout(StrictModel):
 
 
 class Furniture(EditableObject):
+    placement_surface: Literal["floor", "wall", "countertop"] | None = None
     size_reference: FurnitureSizeReference | None = None
     parent_furniture_id: str | None = Field(default=None, min_length=1, max_length=100)
     name: str = Field(default="", max_length=60)

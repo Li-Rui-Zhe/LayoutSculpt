@@ -40,7 +40,13 @@ def test_cylinder_sides_are_smooth_but_end_faces_stay_flat():
 @pytest.mark.parametrize("role", ["oak", "walnut", "stone", "linen", "cream", "sage"])
 def test_exported_material_keeps_small_embedded_micro_surface(role):
     mat = material(role)
-    assert mat.normalTexture.size == (256, 256)
+    expected = 256 if role == "stone" else 512
+    assert mat.normalTexture.size == (expected, expected)
+    if role != "stone":
+        packed = np.asarray(mat.metallicRoughnessTexture)
+        assert np.max(packed[:, :, 2]) == 0  # 非金属，粗糙度仅写入 G 通道。
+        assert np.std(packed[:, :, 1]) > 1
+        assert mat.baseColorTexture.size == (512, 512)
     assert 0.5 <= mat.roughnessFactor <= 1
     assert mat.metallicFactor == 0
     model = FurnitureMesh()

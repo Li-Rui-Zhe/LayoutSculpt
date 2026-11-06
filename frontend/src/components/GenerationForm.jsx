@@ -40,7 +40,7 @@ export default function GenerationForm({
   const [finishes, setFinishes] = useState({ walls: "", floor: "" });
   const models = useModels({
     initialModel: replacementJob?.options?.model,
-    initialEffort: replacementJob?.options?.effort,
+    initialEffort: replacementJob?.options?.reasoning_effort,
   });
   const modelOptions = useRef(null);
   const picker = useRef(null);
@@ -331,10 +331,9 @@ export default function GenerationForm({
       {draftError && <p role="alert">{draftError}</p>}
       <header className="page-heading">
         <div>
-          <h1>
-            新建设计<span>让家的想法，变成看得见的空间</span>
-          </h1>
-          <p>上传户型图，AI 为你搭建三维空间，之后可以自由调整。</p>
+          <span className="studio-eyebrow">从一张户型图开始</span>
+          <h1>把想象中的家，<wbr />变成眼前的空间。</h1>
+          <p>上传户型，选一个喜欢的风格。生成后，家具、墙面和地板都可以继续调整。</p>
         </div>
         <div className="creation-import">
           <button

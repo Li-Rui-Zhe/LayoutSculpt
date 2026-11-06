@@ -145,6 +145,7 @@ def document():
                 "kind": kind,
                 "polygon": points(*bounds),
                 "floor_finish": finish,
+                **({"balcony_type": "open"} if kind == "balcony" else {}),
             }
             for id, name, kind, bounds, finish in rooms
         ],
@@ -197,6 +198,21 @@ def parquet_texture():
     return Image.fromarray(np.clip(base * factor[..., None], 0, 255).astype(np.uint8))
 
 
+def scanned_finish(target, family):
+    """Reuse the library's licensed microtextures without changing the palette."""
+    folder = ROOT / "assets/materials/pbr"
+    for slot, suffix in [("baseColorTexture", "color.jpg"),
+                         ("normalTexture", "normal.png"),
+                         ("metallicRoughnessTexture", "roughness.png")]:
+        with Image.open(folder / f"{family}_{suffix}") as source:
+            image = source.copy()
+            if suffix.endswith("jpg"):
+                image.format = "JPEG"
+            setattr(target, slot, image)
+    target.roughnessFactor = 1.0
+    return target
+
+
 class Showcase(Builder):
     def __init__(self, doc):
         super().__init__(doc, ROOT / "assets/furniture/catalog.json")
@@ -219,21 +235,15 @@ class Showcase(Builder):
             alphaMode="BLEND", doubleSided=True, roughnessFactor=0.32, metallicFactor=0,
         )
         self.rug = material("软装_细织羊毛", [224, 215, 196], 1)
-        self.rug.normalTexture = Image.open(ROOT / "public/materials/linen_normal.png").copy()
-        self.materials["fabric"].normalTexture = Image.open(
-            ROOT / "public/materials/linen_normal.png"
-        ).copy()
-        self.cream.normalTexture = self.materials["fabric"].normalTexture
         self.cushion_olive = material("软装_苔绿亚麻靠垫", [109, 128, 96], 0.96)
         self.cushion_terracotta = material("软装_陶土亚麻靠垫", [174, 118, 87], 0.96)
-        weave = Image.open(ROOT / "public/materials/linen_color.png").convert("L")
-        weave = weave.point(lambda value: 192 + value * 63 // 255).convert("RGB")
-        for cushion in (self.cushion_olive, self.cushion_terracotta):
-            cushion.normalTexture = self.materials["fabric"].normalTexture
-            cushion.baseColorTexture = weave
         self.curtain_linen = material("软装_暖白亚麻窗帘", [232, 224, 208], .98)
-        self.curtain_linen.baseColorTexture = weave
-        self.curtain_linen.normalTexture = self.materials["fabric"].normalTexture
+        fabrics = (self.rug, self.materials["fabric"], self.materials["accent"],
+                   self.cream, self.cushion_olive, self.cushion_terracotta, self.curtain_linen)
+        for fabric in fabrics:
+            scanned_finish(fabric, "fabric")
+        scanned_finish(self.materials["wood"], "wood")
+        self.scanned_material_names = {m.name for m in (*fabrics, self.materials["wood"])}
         self.parquet = trimesh.visual.material.PBRMaterial(
             name="地板_人字拼橡木",
             baseColorFactor=[255, 255, 255, 255],
@@ -270,43 +280,12 @@ class Showcase(Builder):
         self.instances.append({"kind": kind, "room_id": item["room_id"], "asset_id": "showcase_olive" if kind == "plant" else f"builtin_{kind}", "dimensions": [item["width"], item["depth"], item["height"]]})
 
     def add(self, name, mesh, role, transform=None, metadata=None, material=None):
+        # 挂画随承托墙体隐藏，不让画框/画芯在剖切视图中悬空。
+        if name.startswith(("餐厅画框", "抽象画底纸", "陶土色块", "画作", "主卧织物画", "主卧浮雕织物", "客厅艺术画")):
+            metadata = {**(metadata or {}), "cutaway_upper": True}
         if role == "floor" and (material is None or material.name.endswith("_oak")):
             material = self.parquet
         super().add(name, mesh, role, transform, metadata, material)
-
-    def open_rear_walls(self):
-        """Keep the two backdrop walls in the sample's authored dollhouse view."""
-        strips = []
-        for center, size in [
-            ([0, 1.4, -self.cz], [12, 3, 0.241]),
-            ([-self.cx, 1.4, 0], [0.241, 3, 12]),
-        ]:
-            strip = trimesh.creation.box(extents=size)
-            strip.apply_translation(center)
-            strips.append(strip)
-        backdrop = trimesh.boolean.union(strips, engine="manifold")
-        for (_, node), edge in self.scene.graph.transforms.edge_data.items():
-            meta = edge.get("metadata", {})
-            if meta.get("cutaway_full"):
-                full = self.scene.geometry[self.scene.graph[node][1]].copy()
-                full.merge_vertices(merge_tex=True, merge_norm=True)
-                retained = trimesh.boolean.intersection(
-                    [full, backdrop], engine="manifold"
-                )
-                if not len(retained.faces):
-                    continue
-                old = meta["cutaway_geometry"]
-                low = trimesh.Trimesh(
-                    vertices=np.array(old["positions"]).reshape(-1, 3),
-                    faces=np.array(old["indices"]).reshape(-1, 3),
-                )
-                preview = trimesh.boolean.union([low, retained], engine="manifold")
-                meta["cutaway_geometry"] = {
-                    "positions": np.round(preview.vertices, 6).reshape(-1).tolist(),
-                    "indices": preview.faces.reshape(-1).tolist(),
-                }
-            if meta.get("wall_id") in {"north", "west"}:
-                meta["cutaway_upper"] = False
 
     def pos(self, x, h, z):
         return [x - self.cx, h, z - self.cz]
@@ -344,6 +323,8 @@ class Showcase(Builder):
         self.smooth_detail(name, mesh, x, z, h, mat or self.materials[role])
 
     def smooth_detail(self, name, mesh, x, z, height, mat, angle=0, *, uv=None, metadata=None):
+        if name.startswith(("陶土色块", "主卧浮雕织物", "客厅艺术画")):
+            metadata = {**(metadata or {}), "cutaway_upper": True}
         mesh.visual = trimesh.visual.TextureVisuals(
             uv=mesh.vertices[:, [0, 2]] if uv is None else uv, material=mat)
         # Trimesh exports cached normals by default. glTF falls back to flat
@@ -422,7 +403,8 @@ class Showcase(Builder):
         sofa_support = sofa_triangles(self.scene)
         cloth, uv = draped_throw(sofa_support, self.cx, self.cz)
         throw = material("软装_鼠尾草针织毯", [139, 153, 132], 1)
-        throw.normalTexture = self.rug.normalTexture
+        scanned_finish(throw, "fabric")
+        self.scanned_material_names.add(throw.name)
         cloth.visual = trimesh.visual.TextureVisuals(uv=uv, material=throw)
         _ = cloth.vertex_normals
         self.scene.add_geometry(cloth, node_name="沙发垂落针织毯", geom_name="沙发垂落针织毯",
@@ -562,27 +544,25 @@ class Showcase(Builder):
 
     def window_curtains(self, name, x, start, end, *, wall_id):
         # Track is physically attached above the window; curtains clear the floor.
-        cut = wall_id not in {"north", "west"}
-        metadata = {"wall_id": wall_id, "cutaway_upper": cut}
+        metadata = {"wall_id": wall_id, "cutaway_upper": True}
         self.block(f"{name}窗帘细轨道", x, (start + end) / 2, .075, end - start + .64,
                    .025, 2.65, "white", self.paper, .008, metadata=metadata)
         for index, z in enumerate([start, end]):
             mesh, uv = curtain_panel(mirror=bool(index))
             self.smooth_detail(f"{name}连续亚麻窗帘_{index + 1}", mesh, x, z, .075,
                                self.curtain_linen, math.pi / 2, uv=uv, metadata=metadata)
-            if cut:
-                # Keep the original intact for the full view. A closed lower
-                # section follows the same horizontal cut as its supporting wall.
-                origin = [0, CUT_HEIGHT - .075, 0]
-                textured = mesh.slice_plane(origin, [0, -1, 0], cap=False)
-                lower = mesh.slice_plane(origin, [0, -1, 0], cap=True)
-                distance, nearest = cKDTree(textured.vertices).query(lower.vertices)
-                if distance.max() > 1e-7:
-                    raise ValueError("窗帘剖切纹理顶点不匹配")
-                self.smooth_detail(f"{name}剖切窗帘_{index + 1}", lower, x, z, .075,
-                                   self.curtain_linen, math.pi / 2,
-                                   uv=textured.visual.uv[nearest],
-                                   metadata={"wall_id": wall_id, "cutaway_only": True})
+            # Keep the original intact for the full view. A closed lower
+            # section follows the same horizontal cut as its supporting wall.
+            origin = [0, CUT_HEIGHT - .075, 0]
+            textured = mesh.slice_plane(origin, [0, -1, 0], cap=False)
+            lower = mesh.slice_plane(origin, [0, -1, 0], cap=True)
+            distance, nearest = cKDTree(textured.vertices).query(lower.vertices)
+            if distance.max() > 1e-7:
+                raise ValueError("窗帘剖切纹理顶点不匹配")
+            self.smooth_detail(f"{name}剖切窗帘_{index + 1}", lower, x, z, .075,
+                               self.curtain_linen, math.pi / 2,
+                               uv=textured.visual.uv[nearest],
+                               metadata={"wall_id": wall_id, "cutaway_only": True})
             # Small hanging tabs join the gathered header to its track.
             for dz in np.linspace(-.24, .24, 6):
                 self.block(f"{name}窗帘挂扣_{index}_{dz:.2f}", x, z + dz, .012, .009,
@@ -707,7 +687,7 @@ class Showcase(Builder):
                     mat["extras"] = {"surface_category": category}
                 if "normalTexture" in mat:
                     # 家具微表面的幅度已写入贴图，保持与单件素材预览一致。
-                    mat["normalTexture"]["scale"] = 1.0 if name.startswith("家居系列_") else 0.12
+                    mat["normalTexture"]["scale"] = 1.0 if name.startswith("家居系列_") or name in self.scanned_material_names else 0.12
 
         output.write_bytes(
             self.scene.export(file_type="glb", tree_postprocessor=extras)
@@ -725,7 +705,6 @@ if __name__ == "__main__":
     validate_generated_furnishing(Furnishing(items=doc["furniture"], notes=[]), layout)
     scene = Showcase(doc)
     scene.build(output)
-    scene.open_rear_walls()
     scene.decorate()
     path = ROOT / f"public/models/{SHOWCASE_ID}.glb"
     candidate = output / "showcase.glb"
@@ -743,6 +722,7 @@ if __name__ == "__main__":
         "revision": hashlib.sha256(candidate.read_bytes()).hexdigest()[:12],
         "description": "柚木花园会客厅 · 洞石与胡桃木 · 自然织物 · 温润光影",
         "geometry_verified": proof["geometry_verified"],
+        "furniture_version": json.loads((ROOT / "assets/furniture/catalog.json").read_text(encoding="utf-8"))["version"],
     }
     (ROOT / f"public/models/{SHOWCASE_ID}.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"

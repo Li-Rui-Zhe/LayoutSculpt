@@ -40,7 +40,7 @@ def load_glb(data):
     return scene
 
 
-def normalize_glb(data):
+def normalize_glb(data, *, preserve_fixtures=False):
     source = load_glb(data)
     bounds = source.bounds
     offset = [
@@ -49,12 +49,15 @@ def normalize_glb(data):
         (bounds[0, 2] + bounds[1, 2]) / 2,
     ]
     scene = trimesh.Scene()
+    metadata = {child: edge.get("metadata", {}) for (_, child), edge in source.graph.transforms.edge_data.items()}
     for index, node in enumerate(source.graph.nodes_geometry):
         transform, geometry = source.graph[node]
         mesh = source.geometry[geometry].copy()
         mesh.apply_transform(transform)
         mesh.apply_translation(-np.array(offset))
-        scene.add_geometry(mesh, node_name=f"part_{index}", geom_name=f"part_{index}")
+        # Only internal authored sample layers may retain emitter attributes.
+        fixture = {k: v for k, v in metadata.get(node, {}).items() if k.startswith("fixture_")} if preserve_fixtures else {}
+        scene.add_geometry(mesh, node_name=f"part_{index}", geom_name=f"part_{index}", metadata=fixture)
     return scene.export(file_type="glb"), (bounds[1] - bounds[0])[[0, 2, 1]].tolist()
 
 
@@ -70,8 +73,8 @@ def snapshot_file(root, asset_id):
     return path
 
 
-def save_snapshot(root, data):
-    normalized, dimensions = normalize_glb(data)
+def save_snapshot(root, data, *, preserve_fixtures=False):
+    normalized, dimensions = normalize_glb(data, preserve_fixtures=preserve_fixtures)
     digest = hashlib.sha256(normalized).hexdigest()
     folder = Path(root)
     folder.mkdir(parents=True, exist_ok=True)

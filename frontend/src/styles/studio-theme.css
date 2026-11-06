@@ -1,0 +1,680 @@
+/* 全站视觉层：只负责界面，不覆盖三维画布、模型材质及业务状态。
+   组件保留布局规则；这里统一导航、字阶、操作层级与工作台表面。 */
+:root {
+  --studio-ink: #243d35;
+  --studio-muted: #69766f;
+  --studio-paper: #f5f4ef;
+  --studio-line: #e2e5dd;
+  --studio-green: #244e40;
+  --studio-soft: #edf2eb;
+  --studio-gold: #a28250;
+  --studio-shadow: 0 4px 20px #263e3407;
+}
+
+.studio-shell {
+  --muted: var(--studio-muted);
+  --line: var(--studio-line);
+  --accent: var(--studio-green);
+  --accent-dark: var(--studio-soft);
+  --gold: var(--studio-gold);
+  --studio-nav-width: 84px;
+  color: var(--studio-ink);
+  background: var(--studio-paper);
+  font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+.studio-shell :is(.creation-workspace, .diy-page, .asset-library-page) {
+  --creative-ink: var(--studio-ink);
+  --creative-muted: var(--studio-muted);
+  --creative-line: var(--studio-line);
+  --creative-green: var(--studio-green);
+  --creative-soft: var(--studio-paper);
+}
+.studio-shell :is(button, a, input, textarea, select, summary):focus-visible {
+  outline: 2px solid #698f7a;
+  outline-offset: 3px;
+}
+.studio-shell :is(.primary-button, .secondary-button) {
+  min-height: 38px;
+  border-radius: 9px;
+  padding: 9px 14px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+.studio-shell .primary-button {
+  color: #fff;
+  border-color: var(--studio-green);
+  background: var(--studio-green);
+  box-shadow: 0 2px 5px #244e4014;
+}
+.studio-shell .primary-button:hover:not(:disabled) {
+  color: #fff;
+  background: #183e31;
+  border-color: #183e31;
+}
+.studio-shell .secondary-button {
+  color: var(--studio-ink);
+  border-color: #d6ded5;
+  background: #fff;
+}
+.studio-shell .secondary-button:hover:not(:disabled) {
+  color: #244e40;
+  background: #f0f4ed;
+  border-color: #a4b9a9;
+}
+.studio-shell
+  :is(.field, .ai-connection-panel, .surface-design-controls)
+  :is(
+    input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
+    textarea,
+    select
+  ) {
+  border-color: #d7dfd5;
+  border-radius: 8px;
+  background: #fcfdfb;
+}
+
+/* 固定而克制的品牌和导航，让视线留给空间。 */
+.studio-shell .factory-header {
+  height: 68px;
+  padding: 0 22px;
+  gap: 24px;
+  background: #fffefa;
+  border-bottom: 1px solid var(--studio-line);
+}
+.studio-shell .factory-brand {
+  min-width: 142px;
+  gap: 11px;
+}
+.studio-shell .brand-symbol {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--studio-green);
+  color: #f0e8d4;
+}
+.studio-shell .factory-brand strong {
+  display: block;
+  font-size: 19px;
+  letter-spacing: 1px;
+}
+.studio-shell .factory-brand strong span {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.7px;
+  color: var(--studio-muted);
+}
+.studio-shell .project-heading-host {
+  border: 0;
+  padding-left: 0;
+}
+.studio-shell .project-heading-host > strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.studio-shell .connection {
+  font-size: 11px;
+}
+.studio-shell .connection.online {
+  padding: 7px 10px;
+  border-radius: 20px;
+  background: #eef3eb;
+}
+.studio-shell .navigation-strip {
+  width: var(--studio-nav-width);
+  padding: 17px 8px;
+  gap: 9px;
+  background: #213f34;
+  border-right: 0;
+}
+.studio-shell .navigation-strip button {
+  position: relative;
+  width: 66px;
+  min-height: 64px;
+  border-radius: 12px;
+  color: #bfcdc3;
+  font-size: 11px;
+  gap: 7px;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+.studio-shell .navigation-strip button > span {
+  white-space: nowrap;
+}
+.studio-shell .navigation-strip button:hover:not(:disabled) {
+  background: #ffffff0d;
+  color: #fff;
+}
+.studio-shell .navigation-strip button.active {
+  color: #fff4dc;
+  background: #ffffff14;
+}
+.studio-shell .navigation-strip button.active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  width: 3px;
+  height: 23px;
+  border-radius: 0 3px 3px 0;
+  background: #d3b782;
+}
+.studio-shell .navigation-strip button:focus-visible {
+  outline-color: #e0c895;
+}
+.studio-shell .factory-body .task-rail {
+  left: var(--studio-nav-width);
+  width: 310px;
+}
+.studio-shell .rail-backdrop {
+  left: var(--studio-nav-width);
+}
+.studio-shell .task-card {
+  border-radius: 10px;
+  background: #f7f8f3;
+}
+.studio-shell .task-card.selected {
+  border-color: #92ad99;
+  background: #edf3e9;
+}
+.studio-shell .rail-title h2,
+.studio-shell .rail-title > svg,
+.studio-shell .sample-entry strong { color: var(--studio-ink); }
+.studio-shell .factory-workspace {
+  padding: 20px;
+  background: var(--studio-paper);
+}
+.studio-shell .factory-workspace.creation-workspace {
+  padding: 20px;
+  background: var(--studio-paper);
+}
+
+/* 预览和人工设计：画布是主角，工具与信息保持清楚的边界。 */
+.studio-shell .workspace-columns {
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+.studio-shell .workspace-columns.preview-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+.studio-shell .design-column {
+  border-radius: 15px;
+  box-shadow: var(--studio-shadow);
+}
+.studio-shell .workspace-tabs {
+  border-radius: 15px 15px 0 0;
+  height: 50px;
+}
+.studio-shell .workspace-tabs > button {
+  font-size: 13px;
+}
+.studio-shell .work-surface {
+  border-radius: 0 0 15px 15px;
+}
+.studio-shell .inspector {
+  border-radius: 15px;
+  border: 1px solid var(--studio-line);
+  box-shadow: var(--studio-shadow);
+}
+.studio-shell .overview-panel {
+  padding: 22px 18px;
+}
+.studio-shell .overview-heading h2 {
+  font-size: 19px;
+  line-height: 1.5;
+  letter-spacing: -0.4px;
+}
+.studio-shell .overview-heading p {
+  color: var(--studio-muted);
+  line-height: 1.7;
+}
+.studio-shell .overview-heading .eyebrow {
+  color: var(--studio-gold);
+  letter-spacing: 2px;
+}
+.studio-shell .sample-overview {
+  margin-top: 18px;
+  padding: 17px;
+  border: 1px solid #e5dfd1;
+  border-radius: 12px;
+  background: #f5f1e7;
+}
+.studio-shell .sample-overview h3 {
+  font-size: 26px;
+  letter-spacing: 1px;
+}
+.studio-shell .sample-overview p {
+  font-size: 11px;
+  line-height: 1.7;
+}
+.studio-shell .sample-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 10px;
+}
+.studio-shell .sample-features span {
+  padding: 3px 6px;
+  border: 1px solid #e0ddce;
+  border-radius: 4px;
+}
+.studio-shell .sample-palette {
+  margin-top: 0;
+  padding: 4px 0 10px;
+}
+.studio-shell .overview-actions {
+  margin: 16px 0;
+  padding-top: 0;
+  gap: 8px;
+}
+.studio-shell .overview-actions .primary-button {
+  min-height: 42px;
+  font-size: 13px;
+}
+.studio-shell .overview-actions .secondary-button {
+  min-height: 36px;
+  font-size: 12px;
+}
+.studio-shell .overview-stats {
+  margin: 16px 0 10px;
+  padding: 14px 0;
+}
+.studio-shell .overview-stats strong {
+  font-size: 26px;
+}
+.studio-shell .overview-count-note {
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--studio-muted);
+}
+.studio-shell .edit-toolbar {
+  background: #fcfdf9;
+}
+.studio-shell .manual-editor :is(.edit-properties, .edit-rooms) {
+  background: #fffefa;
+}
+.studio-shell .edit-section {
+  border-radius: 10px;
+}
+.studio-shell .edit-save-bar {
+  background: #fffefa;
+  box-shadow: 0 -3px 12px #243d3505;
+}
+.studio-shell .editor-plan-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  flex: none;
+  margin-bottom: 10px;
+}
+.studio-shell .editor-plan-tools .editor-tools-disclosure {
+  margin: 0;
+}
+.studio-shell .editor-plan-tools .editor-tools-disclosure[open],
+.studio-shell .editor-plan-tools .edit-drawing-bar {
+  grid-column: 1 / -1;
+}
+.studio-shell .editor-plan-tools .edit-drawing-bar {
+  order: 1;
+}
+.studio-shell .manual-editor .edit-object-list button {
+  padding: 10px 9px;
+  background: #f6f7f2;
+}
+.studio-shell .manual-editor .edit-object-list button > span {
+  font-size: 12px;
+}
+.studio-shell .manual-editor .edit-object-list button > small {
+  font-size: 11px;
+  color: var(--studio-muted);
+}
+.studio-shell .manual-editor .edit-object-list button[aria-pressed="true"] {
+  background: #eaf1e7;
+  border-color: #8ba993;
+}
+.studio-shell .manual-editor .edit-inspector .inspector-heading {
+  background: #f5f6f0;
+}
+.studio-shell .manual-editor .edit-save-bar {
+  padding: 10px 12px;
+  border: 1px solid var(--studio-line);
+  border-radius: 10px;
+  margin-top: 8px;
+}
+
+@media (min-width: 981px) {
+  .studio-shell .manual-editor .edit-library fieldset {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .studio-shell .manual-editor .edit-library .edit-object-list {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 0;
+    align-content: start;
+  }
+  .studio-shell .manual-editor .edit-feedback {
+    display: grid;
+    grid-template-columns: minmax(200px, auto) minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .studio-shell .manual-editor .dimension-status {
+    padding: 11px 10px;
+    border: 0;
+  }
+  .studio-shell .manual-editor .edit-feedback:has(.dimension-status[open]) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-shell .manual-editor .edit-feedback > .edit-issues {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 新建：突出上传和风格，弱化辅助设置，不增加操作步骤。 */
+.studio-shell .workspace-breadcrumb {
+  display: none;
+}
+.studio-shell .new-task-page {
+  padding: 8px 8px 24px;
+  max-width: 1380px;
+}
+.studio-eyebrow {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--studio-gold);
+}
+.studio-shell .new-task-page .page-heading {
+  align-items: center;
+  padding-bottom: 24px;
+}
+.studio-shell .new-task-page .page-heading h1 {
+  font-size: clamp(22px, 2.2vw, 32px);
+  line-height: 1.45;
+  letter-spacing: -0.8px;
+  margin-bottom: 8px;
+  text-wrap: balance;
+  word-break: keep-all;
+}
+.studio-shell .new-task-page .page-heading p {
+  font-size: 13px;
+  color: var(--studio-muted);
+}
+.studio-shell .new-task-page > form {
+  border-color: var(--studio-line);
+  border-radius: 18px;
+  box-shadow: var(--studio-shadow);
+}
+.studio-shell .new-task-page .upload-card {
+  background: #fafaf6;
+}
+.studio-shell .new-task-page .upload-drop {
+  border-radius: 14px;
+  border-color: #b6c7b8;
+}
+.studio-shell .new-task-page .section-heading h2 > span {
+  color: #fff;
+  background: var(--studio-green);
+  border: 0;
+}
+
+/* 素材库：提高缩略图与名称的可读性，选中状态保持稳定。 */
+.studio-shell .library-workspace.asset-library-page {
+  border-radius: 15px;
+  box-shadow: var(--studio-shadow);
+}
+.studio-shell .library-workspace .library-heading {
+  padding: 20px 22px;
+  background: #fffefa;
+}
+.studio-shell .library-workspace .library-heading h1 {
+  font-size: 23px;
+  letter-spacing: -0.5px;
+}
+.studio-shell .library-workspace .library-browser {
+  background: #f7f7f2;
+  padding: 18px;
+}
+.studio-shell .library-workspace .library-card {
+  border-radius: 12px;
+  border-color: var(--studio-line);
+  padding: 8px 8px 13px;
+}
+.studio-shell .library-workspace .library-card:hover:not(:disabled) {
+  padding: 8px 8px 13px;
+  transform: none;
+  border-color: #a6b8a9;
+  box-shadow: 0 4px 14px #243d350a;
+}
+.studio-shell .library-workspace .library-card[aria-pressed="true"] {
+  border-color: var(--studio-green);
+  box-shadow: 0 0 0 1px var(--studio-green);
+}
+.studio-shell .library-workspace .library-card strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--studio-ink);
+}
+.studio-shell
+  .library-workspace
+  .library-card
+  :is(small, .library-card-dimensions) {
+  font-size: 11px;
+  color: var(--studio-muted);
+}
+.studio-shell .library-workspace .library-result-label {
+  font-size: 12px;
+}
+.studio-shell .library-workspace .library-result-label h2 {
+  font-size: 13px;
+}
+.studio-shell
+  .library-workspace
+  :is(.library-search input, .library-filter-main select) {
+  font-size: 12px;
+}
+.studio-shell .library-workspace .library-selection-actions button {
+  font-size: 12px;
+}
+.studio-shell .library-workspace .library-inspector {
+  padding: 18px;
+  border-color: var(--studio-line);
+}
+
+/* DIY 与连接设置沿用同一工作台表面，保留材质样本自身颜色。 */
+.studio-shell .diy-page .diy-page-heading {
+  padding: 14px 22px;
+  background: #fffefa;
+}
+.studio-shell .diy-page .diy-page-heading h1 {
+  font-size: 24px;
+}
+.studio-shell .diy-page .diy-page-heading p {
+  font-size: 13px;
+}
+.studio-shell .diy-page .diy-page-heading .creative-eyebrow {
+  display: none;
+}
+.studio-shell .diy-page :is(.diy-library, .diy-properties) {
+  padding: 18px;
+}
+.studio-shell .diy-page .diy-examples button {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.studio-shell .diy-page .diy-request-shell {
+  border-color: var(--studio-line);
+  border-radius: 11px;
+}
+.studio-shell .diy-hub-nav > [role="tablist"] {
+  background: #e8ece3;
+}
+.studio-shell .surface-studio {
+  background: #f8f8f3;
+  border-radius: 15px;
+}
+.studio-shell
+  :is(.surface-base-list, .surface-design-controls, .surface-design-preview) {
+  border-color: var(--studio-line);
+  box-shadow: var(--studio-shadow);
+}
+.studio-shell .ai-connections {
+  border-color: var(--studio-line);
+  border-radius: 15px;
+  box-shadow: var(--studio-shadow);
+}
+.studio-shell .ai-simple .ai-page-heading {
+  background: #f4f3ea;
+  padding: 28px;
+  border-bottom: 1px solid var(--studio-line);
+}
+.studio-shell .ai-provider-card {
+  border-radius: 13px;
+  border-color: var(--studio-line);
+}
+.studio-shell .ai-provider-card[aria-pressed="true"] {
+  border-color: #789482;
+  background: #f2f6ee;
+}
+.studio-shell :is(.empty-state, .diy-inspector-empty, .library-empty) {
+  color: var(--studio-muted);
+  line-height: 1.8;
+}
+
+@media (max-width: 1100px) {
+  .studio-shell .factory-brand {
+    min-width: 122px;
+  }
+  .studio-shell .header-meta .connection {
+    max-width: 190px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .studio-shell .factory-header {
+    gap: 16px;
+  }
+  .studio-shell .new-task-page .page-heading {
+    align-items: flex-start;
+  }
+}
+@media (max-width: 1000px) {
+  .studio-shell {
+    --studio-nav-width: 72px;
+  }
+  .studio-shell .navigation-strip {
+    padding: 14px 6px;
+  }
+  .studio-shell .navigation-strip button {
+    width: 58px;
+    min-height: 60px;
+  }
+  .studio-shell .navigation-strip button.active::before {
+    left: -6px;
+  }
+  .studio-shell .workspace-columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .studio-shell .factory-workspace,
+  .studio-shell .factory-workspace.creation-workspace {
+    padding: 14px;
+  }
+  .studio-shell .new-task-page .page-heading {
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+}
+@media (max-width: 700px) {
+  .studio-shell {
+    --studio-nav-width: 56px;
+  }
+  .studio-shell .factory-header {
+    height: 60px;
+    padding: 0 10px;
+    gap: 10px;
+  }
+  .studio-shell .factory-brand {
+    min-width: 32px;
+  }
+  .studio-shell .factory-brand strong {
+    display: none;
+  }
+  .studio-shell .brand-symbol {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+  .studio-shell .navigation-strip {
+    padding: 10px 4px;
+    gap: 5px;
+    overflow-y: auto;
+  }
+  .studio-shell .navigation-strip button {
+    width: 48px;
+    min-height: 58px;
+    font-size: 10px;
+    gap: 6px;
+    border-radius: 9px;
+  }
+  .studio-shell .navigation-strip button.active::before {
+    left: -4px;
+  }
+  .studio-shell .factory-body .task-rail {
+    width: min(310px, calc(100vw - var(--studio-nav-width)));
+  }
+  .studio-shell .factory-workspace,
+  .studio-shell .factory-workspace.creation-workspace {
+    padding: 8px;
+  }
+  .studio-shell .workspace-tabs {
+    height: 44px;
+  }
+  .studio-shell .workspace-tabs > button {
+    font-size: 11px;
+  }
+  .studio-shell .new-task-page {
+    padding: 8px 2px 16px;
+  }
+  .studio-shell .editor-plan-tools {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .studio-shell .new-task-page .page-heading {
+    padding-bottom: 18px;
+  }
+  .studio-shell .new-task-page .page-heading h1 {
+    font-size: 23px;
+  }
+  .studio-shell .new-task-page .page-heading p {
+    font-size: 12px;
+  }
+  .studio-shell .new-task-page :is(.upload-card, .generation-options) {
+    padding: 18px 16px;
+  }
+  .studio-shell .library-workspace .library-heading {
+    padding: 16px;
+  }
+  .studio-shell .library-workspace .library-browser {
+    padding: 12px;
+  }
+  .studio-shell .library-workspace .library-cards {
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 10px;
+  }
+  .studio-shell .ai-simple .ai-page-heading {
+    padding: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-shell :is(button, a, input, select, textarea) {
+    transition: none;
+  }
+}

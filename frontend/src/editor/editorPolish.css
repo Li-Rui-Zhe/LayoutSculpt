@@ -87,8 +87,6 @@
   color: #75887a;
 }
 .manual-editor .edit-inspector {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd7cd transparent;
   background: #fff;
   border-radius: 12px;
 }
@@ -565,4 +563,11 @@
 .dimension-status p {
   margin: 7px 0 0;
   line-height: 1.6;
+}
+.manual-editor .edit-save-bar .editor-next-step {
+  display: block;
+  margin-top: 4px;
+  color: #637267;
+  font-size: 11px;
+  line-height: 1.5;
 }

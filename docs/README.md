@@ -22,6 +22,7 @@
 | [开始使用](getting-started.md) | Windows / macOS、启动、开发端口、配置与备份 |
 | [AI 接入](ai-connections.md) | 连接来源、保存模型、密钥状态、Codex 登录与更新 |
 | [设计工作流](design-workflows.md) | 上传、三维初稿、人工调整、素材复用与成果保存 |
+| [全站 UI 统一](ui-design-20261106.md) | 导航、工作台视觉、编辑空间与响应式验收 |
 | [原图定位与精细识别](source-evidence-recognition.md) | 精细读图、叠加对照、结构分歧与校对边界 |
 | [三维直接编辑](live-3d-editing.md) | 家具、门扇与灯具的变换、热更新及保存 |
 | [室内漫游](room-tour.md) | 进入空间、房间热点、站位避让与模型兼容边界 |
@@ -60,6 +61,10 @@
 - [2026-11-03 草稿自动恢复、保存状态与质量验收](reliability-polish-20261103.md)
 - [2026-11-05 家具摆放与 DIY 使用优化](placement-diy-polish-20261105.md)
 - [2026-11-05 家具建模与实时观感优化](visual-polish-20261105.md)
+- [2026-11-06 操作流程优化](usability-20261106.md)
+- [2026-11-06 编辑预览衔接与工作流验收](workflow-usability-20261106.md)
+- [2026-11-06 生成质量与缺项续作验收](generation-acceptance-20261106.md)
+- [2026-11-06 家具、真实材质与生成质量验收](furniture-quality-20261106.md)
 - [示例空间与交互体验更新](optimization-20261027.md)
 - [全站优化实施与验收记录](optimization-progress.md)
 - [生成体验与断点恢复优化（2026-10-26）](progressive-generation-20261026.md)

@@ -5,10 +5,12 @@ import math
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
-from .schemas import LightFixture, validate_furnishing
-from .placement_geometry import walls_at_height
 from .architecture import structure_issues
-from .shower_layout import SHOWER_KINDS, entrance, placement_issues as shower_issues
+from .furnishing_quality import functional_gaps
+from .placement_geometry import walls_at_height
+from .schemas import LightFixture, validate_furnishing
+from .shower_layout import SHOWER_KINDS, entrance
+from .shower_layout import placement_issues as shower_issues
 
 
 def footprint(item):
@@ -165,13 +167,22 @@ def validate_generated_furnishing(plan, layout):
     return plan
 
 
-def prepare_generated_furnishing(plan, layout):
+def prepare_generated_furnishing(plan, layout, *, assets=None, fixed_items=()):
     """Fit generated furniture locally without changing any confirmed structure.
 
     This is deliberately not used for manual edits. Missing space omits only the
     affected item with a visible note, rather than failing the entire house.
     """
-    result = plan.model_copy(deep=True)
+    from .furnishing_quality import (
+        attach_countertop_items,
+        mounted_on_wall,
+        normalize_catalog_sizes,
+    )
+
+    assets = assets or {}
+    result = normalize_catalog_sizes(plan, assets)
+    # 补充阶段以已通过检查的家具作为不可移动障碍物。
+    attach_countertop_items(result, assets, fixed_items)
     for item in result.items:
         item.size_reference = None  # AI 生成不等于用户核实过商品尺寸。
     rooms = {room.id: room for room in layout.rooms}
@@ -180,12 +191,22 @@ def prepare_generated_furnishing(plan, layout):
         for key, room in rooms.items()
     }
     solids, doors = solid_walls(layout), door_clearances(layout, with_height=True)
-    accepted = []
+    accepted = [(item, footprint(item)) for item in fixed_items]
     fitted = {}
     notes = []
+    wall_cache = {}
 
     def usable(item):
         shape = footprint(item)
+        surface = assets.get(item.asset_id, {}).get("placement_surface")
+        if surface == "wall" and not mounted_on_wall(item, layout):
+            return False
+        if surface == "countertop" and not any(
+            abs(other.elevation + other.height - item.elevation) < .02
+            and other.kind in {"desk", "table", "counter", "tv_console", "cabinet"}
+            and other_shape.buffer(.015).covers(shape) for other, other_shape in accepted
+        ):
+            return False
         if shower_issues(item, layout):
             return False
         if (
@@ -198,14 +219,10 @@ def prepare_generated_furnishing(plan, layout):
         if not (-60 <= item.x <= 60 and -60 <= item.y <= 60):
             return False
         if item.kind != "rug":
-            if (
-                shape.intersection(
-                    walls_at_height(
-                        layout, item.elevation, item.elevation + item.height
-                    )
-                ).area
-                > 1e-6
-            ):
+            span = (item.elevation, item.elevation + item.height)
+            if span not in wall_cache:
+                wall_cache[span] = walls_at_height(layout, *span)
+            if shape.intersection(wall_cache[span]).area > 1e-6:
                 return False
             if any(
                 min(item.elevation + item.height, top)
@@ -254,10 +271,10 @@ def prepare_generated_furnishing(plan, layout):
                 item.room_id = room_id
                 notes.append(f"已将{label}归属到{rooms[room_id].name}，保留原位置")
         placed = None
-        for scale in (1, 0.95, 0.9):
+        for scale in ((1,) if item.asset_id else (1, 0.95, 0.9)):
             if min(item.width * scale, item.depth * scale) < 0.1:
                 continue
-            candidates = ((dx, dy, angle) for angle in ([0, 90, -90, 180] if item.kind in SHOWER_KINDS else [0]) for dx, dy in offsets)
+            candidates = ((dx, dy, angle) for angle in ([0, 90, -90, 180] if item.kind in SHOWER_KINDS or assets.get(item.asset_id, {}).get("placement_surface") == "wall" else [0]) for dx, dy in offsets)
             for dx, dy, angle in candidates:
                 candidate = item.model_copy(update={
                     "x": round(item.x + dx, 6) if dx else item.x,
@@ -276,7 +293,7 @@ def prepare_generated_furnishing(plan, layout):
             if placed.model_dump() != item.model_dump():
                 notes.append(f"已微调{label}的位置、尺寸或朝向，避让墙体、门窗及相邻家具（平移不超过 0.25 米，缩小不超过 10%）")
         else:
-            reason = "局部空间不足或缺少合适的安装墙面 / 入口" if item.kind in SHOWER_KINDS else "局部空间不足"
+            reason = "局部空间不足或缺少合适的安装支撑 / 入口" if item.kind in SHOWER_KINDS or assets.get(item.asset_id, {}).get("placement_surface") in {"wall", "countertop"} else "局部空间不足"
             notes.append(f"暂未放置{label}：{reason}，已保留完整户型，可在人工设计中补充")
     result.items = [fitted[index] for index in sorted(fitted)]
     validate_furnishing(result, layout)
@@ -302,7 +319,7 @@ def finish_design(layout, plan, *, automatic=True):
                 (item.rotation + delta + 180) % 360 - 180 for delta in [-90, 90]
             ]
 
-            def back_distance(angle):
+            def back_distance(angle, item=item):
                 a = math.radians(angle)
                 return Point(
                     item.x + math.sin(a) * item.width / 2,
@@ -359,17 +376,28 @@ def finish_design(layout, plan, *, automatic=True):
         for room in layout.rooms:
             polygon = Polygon([(p.x, p.y) for p in room.polygon])
             if len(layout.lights) >= 12 or any(
-                polygon.covers(Point(l.x, l.y)) for l in layout.lights
+                polygon.covers(Point(l.x, l.y)) and l.kind in {"ceiling", "pendant", "downlight", "bulb"} for l in layout.lights
             ):
                 continue
             if room.kind in {"other", "balcony"} or polygon.area < 1:
                 continue
-            # A centroid can lie outside a concave room. Choose a valid interior point.
-            point = polygon.centroid
-            if not polygon.buffer(-0.15).covers(point):
-                point = polygon.representative_point()
             # 栏板、窗台矮墙不能当作室内层高，否则全屋吊灯会落到人腰部。
-            ceiling = min((w.height for w in layout.walls if w.height >= 2.0), default=2.7)
+            nearby = [w.height for w in layout.walls if w.height >= 2.0
+                      and polygon.boundary.distance(LineString([(w.start.x, w.start.y), (w.end.x, w.end.y)])) < .2]
+            ceiling = min(nearby, default=2.7)
+            # 以灯具外廓（吸顶灯半径 28 cm）选择净空，而非只验证中心点。
+            free = polygon.difference(walls_at_height(layout, ceiling - .15, ceiling))
+            safe = free.buffer(-.30)
+            kind = "ceiling"
+            if safe.is_empty:
+                safe = free.buffer(-.10)
+                kind = "downlight"
+            if safe.is_empty:
+                changes.append(f"{room.name}顶部净空不足，未强行放置主灯")
+                continue
+            regions = [safe] if safe.geom_type == "Polygon" else list(safe.geoms)
+            region = max(regions, key=lambda part: part.area)
+            point = polygon.centroid if region.covers(polygon.centroid) else region.representative_point()
             used = {light.id for light in layout.lights}
             identifier = f"auto_{len(layout.lights) + 1}"
             while identifier in used:
@@ -378,10 +406,10 @@ def finish_design(layout, plan, *, automatic=True):
                 LightFixture(
                     id=identifier,
                     name=f"{room.name}主灯",
-                    kind="pendant",
+                    kind=kind,
                     x=round(point.x, 3),
                     y=round(point.y, 3),
-                    elevation=max(0.5, ceiling - 0.35),
+                    elevation=max(0.5, ceiling - 0.12),
                     lumens=min(2400, max(500, round(polygon.area * 160))),
                     temperature=4000
                     if room.kind in {"kitchen", "bathroom", "study"}
@@ -399,5 +427,6 @@ def finish_design(layout, plan, *, automatic=True):
         "furniture_count": len(plan.items),
         "light_count": len(layout.lights),
         "scale_note": layout.scale_note,
+        "functional_gaps": functional_gaps(layout, plan),
     }
     return layout, plan, report

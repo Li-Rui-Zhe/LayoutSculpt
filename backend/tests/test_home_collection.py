@@ -76,7 +76,12 @@ def test_daybed_has_a_continuous_unobstructed_lounging_surface():
 
 def test_catalog_categories_variants_and_files_are_consistent():
     entries = json.loads(CATALOG.read_text(encoding="utf-8"))["items"]
-    assert len(entries) == 83
+    from tools.home_collection import SPECS, LEGACY
+    from tools.household_essentials import SPECS as ESSENTIALS
+    external = json.loads((CATALOG.parent / "external-sources.json").read_text("utf-8"))["items"]
+    required = {spec[0] for spec in SPECS} | set(LEGACY) | {item["key"] for item in external}
+    assert {entry["kind"] for entry in entries} == required
+    assert {spec[0] for spec in ESSENTIALS} <= required
     assert len({e["id"] for e in entries}) == len(entries)
     assert len({e["kind"] for e in entries}) == len(entries)
     assert {e["category"] for e in entries} == set(

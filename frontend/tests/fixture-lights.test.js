@@ -6,6 +6,47 @@ import {
   updateFixtureLights,
 } from "../src/viewer/fixtureLights.js";
 import { presets } from "../src/catalog.js";
+import { bindLiveLayers, syncLiveLayers } from "../src/editor/liveLayers.js";
+
+test("示例陈设层移动、隐藏时光源和照射目标同步", () => {
+  const model = new THREE.Group();
+  const marker = new THREE.Mesh(new THREE.SphereGeometry(.1), new THREE.MeshStandardMaterial());
+  marker.position.set(1, 2, 1);
+  marker.userData = { fixture_id: "sample", fixture_kind: "pendant", fixture_lumens: 300, presentation_layer_id: "decor" };
+  model.add(marker);
+  installFixtureLights(model);
+  const doc = { layout: { outline: [{x: 0, y: 0}, {x: 4, y: 4}],
+    presentation_layers: [{id: "decor", x: 3, y: 3, elevation: 0, visible: true}] } };
+  const groups = bindLiveLayers(model, doc);
+  const {light} = model.userData.designLights[0];
+  const before = light.getWorldPosition(new THREE.Vector3());
+  doc.layout.presentation_layers[0].x += 2;
+  syncLiveLayers(groups, doc);
+  assert.equal(light.getWorldPosition(new THREE.Vector3()).x, before.x + 2);
+  assert.equal(light.parent, marker.parent);
+  assert.equal(light.target.parent, marker.parent);
+  doc.layout.presentation_layers[0].visible = false;
+  syncLiveLayers(groups, doc);
+  assert.equal(light.parent.visible, false);
+});
+
+test("吸顶灯向下柔光，隐藏外形仍保留光照，亮度调节保持线性", () => {
+  const model = new THREE.Group();
+  const marker = new THREE.Mesh(new THREE.SphereGeometry(.1), new THREE.MeshStandardMaterial());
+  marker.position.set(2, 2.6, 3);
+  marker.userData = { fixture_id: "ceiling", fixture_kind: "ceiling", fixture_lumens: 1200, fixture_visual_placeholder: true };
+  model.add(marker);
+  installFixtureLights(model);
+  const fixture = model.userData.designLights[0];
+  assert.equal(fixture.light.isSpotLight, true);
+  assert.equal(marker.visible, false);
+  assert.ok(fixture.light.target.position.y < fixture.light.position.y);
+  updateFixtureLights(model, true, 1);
+  const full = fixture.light.intensity;
+  assert.ok(full > 0);
+  updateFixtureLights(model, true, .5);
+  assert.equal(fixture.light.intensity, full / 2);
+});
 
 test("落地灯只对自身灯罩使用柔光近似，保留其他光源与墙体的投影", () => {
   for (const metadata of [false, true]) {

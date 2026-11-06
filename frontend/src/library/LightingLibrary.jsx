@@ -87,8 +87,8 @@ export default function LightingLibrary({
         </div>
         <p>{selected.description}</p>
         <p className="library-note">
-          {["bulb", "pendant"].includes(kind)
-            ? "为避免遮挡空间，设计预览默认隐藏灯泡和吊灯外形，照明仍生效，可从对象列表选中调整。素材库始终显示完整模型。"
+          {["bulb", "pendant", "ceiling", "downlight"].includes(kind)
+            ? "为避免遮挡空间，设计预览默认隐藏顶部灯具外形，照明仍生效，可从对象列表选中调整。素材库始终显示完整模型。"
             : "设计时显示真实灯具。生成后切换夜晚，可查看照明效果。"}
         </p>
         {!!onSelectProject && (

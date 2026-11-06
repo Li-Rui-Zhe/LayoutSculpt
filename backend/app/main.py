@@ -737,6 +737,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "render_style": previous["result"].get("render_style"),
             "style_scheme": previous["result"].get("style_scheme", {}),
             "rebuild_of": previous["id"],
+            "source_kind": previous["result"].get("consistency", {}).get("source_kind", "uploaded_plan"),
         }
         inherited = previous["result"].get("consistency", {}).get("confirmation")
         if (
@@ -749,11 +750,25 @@ def create_app(settings=None, *, client=None, model_builder=None):
             seed["restructure_of"] = previous["id"]
         elif replan:
             seed["refine_of"] = previous["id"]
+            # “继续布置”只补缺项，完整方案的“重新规划”仍可重新设计。
+            seed["furnishing_resume"] = bool(
+                previous["result"].get("quality", {}).get("furnishing_complete") is False
+                and furniture.items
+                and previous["result"].get("quality", {}).get("functional_gaps")
+            )
+            if seed["furnishing_resume"]:
+                quality = previous["result"]["quality"]
+                seed["furnishing_targets"] = quality.get("pending_furniture", [
+                    gap["room_id"] for gap in quality["functional_gaps"]
+                ])
         else:
             seed["preserve_design"] = bool(
                 previous["result"].get("edited_of")
                 or previous["result"].get("design_mode") == "manual"
             )
+            if previous["result"].get("quality", {}).get("furnishing_complete") is False:
+                seed["furnishing_status"] = "incomplete"
+                seed["furnishing_targets"] = previous["result"]["quality"].get("pending_furniture", [])
         (workspace / "rebuild-seed.json").write_text(
             json.dumps(seed, ensure_ascii=False), encoding="utf-8"
         )
@@ -800,6 +815,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "furniture": document.furniture.model_dump(),
             "rebuild_of": previous["id"],
             "edited_of": previous["id"],
+            "source_kind": previous["result"].get("consistency", {}).get("source_kind", "uploaded_plan"),
         }
         inherited = previous["result"].get("consistency", {}).get("confirmation")
         if inherited and inherited["structure_hash"] == structure_hash(document.layout):

@@ -2,6 +2,24 @@
 // The exported GLB retains full walls and openings for the complete view.
 import * as THREE from "three";
 
+export function isWallAirConditioner(data = {}) {
+  const kind = data.kind || data.furniture_kind || data.builtin_kind;
+  if (kind === "aircon_tower" || data.placement_surface === "floor") return false;
+  if (kind === "aircon_wall") return true;
+  // Older saved GLBs may only identify the appliance by its authored name.
+  const name = data.name || data.furniture_name || "";
+  return /空调/.test(name) && !/立式|柜式|落地/.test(name) &&
+    (data.placement_surface === "wall" || /壁挂|挂壁|挂式|挂机/.test(name));
+}
+
+// Selection belongs to the editor session, never to the saved GLB or document.
+const editingSelections = new WeakMap();
+export function setCutawaySelection(model, furnitureGroup) {
+  if (!model) return;
+  if (furnitureGroup) editingSelections.set(model, furnitureGroup);
+  else editingSelections.delete(model);
+}
+
 export function installCutaway(model) {
   const sources = [];
   model.traverse((obj) => {
@@ -59,10 +77,18 @@ export function installCutaway(model) {
 export function updateCutaway(
   model,
   camera,
-  { enabled = true, top = false } = {},
+  { enabled = true, top = false, furnitureOnly = false } = {},
 ) {
   if (!model) return;
+  const selectedParts = new Set();
+  const selectedGroup = editingSelections.get(model);
+  if (selectedGroup?.visible) selectedGroup.traverse((part) => selectedParts.add(part));
   model.traverse((obj) => {
+    if (obj.userData.furniture_index != null && isWallAirConditioner(obj.userData)) {
+      obj.visible = !enabled || selectedParts.has(obj);
+      return;
+    }
+    if (furnitureOnly) return;
     if (obj.userData.cutaway_only) {
       obj.visible = enabled;
       return;

@@ -156,8 +156,6 @@
 .library-workspace.asset-library-page .library-browser {
   padding: 14px 18px 18px;
   background: #f7f9f5;
-  scrollbar-width: thin;
-  scrollbar-color: #cbd6c7 transparent;
 }
 .library-workspace.asset-library-page .library-result-label {
   margin-bottom: 12px;
@@ -223,8 +221,6 @@
   gap: 12px;
   border-color: #e1e8dc;
   background: #fff;
-  scrollbar-width: thin;
-  scrollbar-color: #cbd6c7 transparent;
 }
 .library-workspace.asset-library-page .library-selection h2 {
   margin: 7px 0 5px;

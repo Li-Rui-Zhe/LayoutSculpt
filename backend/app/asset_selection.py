@@ -59,6 +59,9 @@ def dimensions(item):
         )
     ):
         return None
+    # 与可编辑家具契约一致，避免把不可表示的巨大模型发给 AI 后再强行压缩。
+    if not (.1 <= size[0] <= 6 and .1 <= size[1] <= 6 and .02 <= size[2] <= 3):
+        return None
     return size
 
 
@@ -120,17 +123,21 @@ def select_candidates(items, layout, style="natural", notes="", *, per_family=3)
         )
         family = item.get("family") or item.get("kind")
         structural = item.get("catalog_kind")
+        purpose = structural if structural in STRUCTURAL_VARIANTS else ""
+        if item.get("kind") == "bed" and not purpose:
+            # 儿童/单人床不能挤掉成人双人床候选；占地最小不等于用途可替代。
+            purpose = "double_bed" if w >= 1.35 else "single_bed"
         group = (
             item.get("kind"),
             family,
-            structural if structural in STRUCTURAL_VARIANTS else "",
+            purpose,
         )
         groups[group].append(
-            (not fits, style not in item["styles"], w * d, str(identity), item)
+            (not fits, style not in item["styles"], item.get("quality_tier") != "detailed", w * d, str(identity), item)
         )
     selected = {item.get("asset_id") or item["kind"]: item for item in requested}
     for variants in groups.values():
-        variants.sort(key=lambda v: v[:4])
+        variants.sort(key=lambda v: v[:5])
         choices = variants[: max(1, per_family - 1)]
         if style == "custom":
             # 自定义描述由同一次家具规划 AI 理解，先保留不同基调的代表款。
@@ -144,7 +151,7 @@ def select_candidates(items, layout, style="natural", notes="", *, per_family=3)
             if len(choices) < 2:
                 choices.extend(v for v in variants[:2] if v not in choices)
         # 风格最接近的两款之外，至少提供一款占地较小的备选。
-        smallest = min(variants, key=lambda v: (v[0], v[2], v[3]))
+        smallest = min(variants, key=lambda v: (v[0], v[3], v[4]))
         for row in [*choices, smallest]:
             item = row[-1]
             selected[item.get("asset_id") or item["kind"]] = item

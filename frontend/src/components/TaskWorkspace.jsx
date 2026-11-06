@@ -2,6 +2,7 @@ import OperationStatus from "./OperationStatus.jsx";
 import TaskProgress from "./TaskProgress.jsx";
 import InitialPreviewStatus from "./InitialPreviewStatus.jsx";
 import EnvironmentPicker from "./EnvironmentPicker.jsx";
+import CutawayHint from "./CutawayHint.jsx";
 import ProgressBoundary from "./ProgressBoundary.jsx";
 import { lazy, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -479,6 +480,7 @@ export default function TaskWorkspace({
             ))}
           <button
             className="secondary-button export-button"
+            aria-label="导出成果"
             onClick={() => setTab("assets")}
           >
             <Download size={15} /> <span>导出成果</span>
@@ -841,6 +843,7 @@ export default function TaskWorkspace({
                         </button>
                       ))}
                     </div>
+                    {settings.cutaway && <CutawayHint />}
                   </div>
                   <div className="room-view-tools">
                     <select
@@ -1195,6 +1198,55 @@ export default function TaskWorkspace({
                     </div>
                   </div>
                 )}
+                <div className="overview-actions">
+                  {!job && (
+                    <button
+                      className="primary-button full-width"
+                      onClick={onCreate}
+                    >
+                      <Plus size={16} />
+                      生成我的户型
+                    </button>
+                  )}
+                  {!job && (
+                    <button
+                      className="secondary-button full-width"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          const value = await api("/projects/sample", {
+                            method: "POST",
+                          });
+                          await projects.refresh();
+                          projects.select(value);
+                        } catch (e) {
+                          setActionError(e.message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      {busy ? "正在准备独立副本…" : "复制示例，开始我的设计"}
+                    </button>
+                  )}
+                  <button
+                    className="secondary-button full-width"
+                    onClick={() => setPanel("design")}
+                  >
+                    <SlidersHorizontal size={16} />
+                    调整外观
+                  </button>
+                  {job?.status === "succeeded" && (
+                    <button
+                      className="text-button full-width"
+                      disabled={busy}
+                      onClick={() => setImproving(true)}
+                    >
+                      改进方案 <ArrowRight size={14} />
+                    </button>
+                  )}
+                </div>
                 <div className="overview-stats">
                   <div>
                     <strong>
@@ -1224,9 +1276,12 @@ export default function TaskWorkspace({
                       <span
                         className={`review-dot ${currentResult.consistency?.source_reviewed ? "verified" : "pending"}`}
                       />
-                      {currentResult.consistency?.source_reviewed
-                        ? "原图结构已人工核对"
-                        : "原图结构待人工核对"}
+                      {currentResult.consistency?.source_kind ===
+                      "authored_sample"
+                        ? "原创设计示例 · 非图片识别结果"
+                        : currentResult.consistency?.source_reviewed
+                          ? "原图结构已人工核对"
+                          : "原图结构待人工核对"}
                     </p>
                     <p>
                       <span
@@ -1247,55 +1302,6 @@ export default function TaskWorkspace({
                     )}
                   </div>
                 )}
-                <div className="overview-actions">
-                  {!job && (
-                    <button
-                      className="secondary-button full-width"
-                      disabled={busy}
-                      onClick={async () => {
-                        setBusy(true);
-                        try {
-                          const value = await api("/projects/sample", {
-                            method: "POST",
-                          });
-                          await projects.refresh();
-                          projects.select(value);
-                        } catch (e) {
-                          setActionError(e.message);
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                    >
-                      复制示例，开始我的设计
-                    </button>
-                  )}
-                  {!job && (
-                    <button
-                      className="primary-button full-width"
-                      onClick={onCreate}
-                    >
-                      <Plus size={16} />
-                      生成我的户型
-                    </button>
-                  )}
-                  <button
-                    className="secondary-button full-width"
-                    onClick={() => setPanel("design")}
-                  >
-                    <SlidersHorizontal size={16} />
-                    调整外观
-                  </button>
-                  {job?.status === "succeeded" && (
-                    <button
-                      className="text-button full-width"
-                      disabled={busy}
-                      onClick={() => setImproving(true)}
-                    >
-                      改进方案 <ArrowRight size={14} />
-                    </button>
-                  )}
-                </div>
                 <p className="overview-footnote">
                   {job ? "当前任务与成果保存在本机" : "示例空间可自由探索"}
                 </p>
@@ -1363,9 +1369,12 @@ export default function TaskWorkspace({
                           <Check size={14} />
                         </div>
                         <p className="verification-state">
-                          {currentResult.consistency?.source_reviewed
-                            ? "原图结构已人工核对"
-                            : "原图结构尚未人工核对"}{" "}
+                          {currentResult.consistency?.source_kind ===
+                          "authored_sample"
+                            ? "原创设计示例 · 非图片识别结果"
+                            : currentResult.consistency?.source_reviewed
+                              ? "原图结构已人工核对"
+                              : "原图结构尚未人工核对"}{" "}
                           ·{" "}
                           {currentResult.consistency?.geometry_verified
                             ? "模型截面校验通过"
@@ -1373,7 +1382,9 @@ export default function TaskWorkspace({
                         </p>
                         <p className="field-note">
                           {currentResult.quality.furniture_count} 件家具 ·{" "}
-                          {currentResult.quality.light_count} 盏灯
+                          {currentResult.quality.decorative_light_count != null
+                            ? `${currentResult.quality.editable_light_count} 盏独立灯具 · ${currentResult.quality.decorative_light_count} 处装饰光源`
+                            : `${currentResult.quality.light_count} 盏灯`}
                         </p>
                         <p className="field-note">
                           {currentResult.quality.issues.length

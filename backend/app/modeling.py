@@ -10,6 +10,7 @@ from pathlib import Path
 from .config import ROOT, Settings
 from .schemas import Furnishing, Layout
 from .consistency import verify_export
+from .lighting_summary import model_lighting_summary
 
 
 async def build_model(
@@ -60,5 +61,6 @@ async def build_model(
         raise RuntimeError("建模程序未输出有效 GLB 或家具报告")
     result = json.loads(report.read_text(encoding="utf-8"))
     result["consistency"] = await asyncio.to_thread(verify_export, document, model)
+    result["lighting"] = model_lighting_summary(model, (light.id for light in layout.lights))
     report.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result

@@ -62,3 +62,27 @@ def test_project_zip_includes_every_layer_snapshot(tmp_path):
     layout, _, _, _, snapshots, _ = read_project_archive(output.getvalue())
     assert len(layout.presentation_layers) == 2
     assert len(snapshots) == 3
+
+
+def test_shipped_sample_copy_keeps_all_lights_through_snapshot_and_rebuild(tmp_path):
+    from scripts.build_showcase import ROOT, SHOWCASE_ID, document
+
+    source = ROOT / f"public/models/{SHOWCASE_ID}.glb"
+    original = trimesh.load(source, force="scene")
+    emitters = lambda scene: {
+        edge["metadata"]["fixture_id"]: edge["metadata"]["fixture_lumens"]
+        for edge in scene.graph.transforms.edge_data.values()
+        if edge.get("metadata", {}).get("fixture_id")
+    }
+    expected = emitters(original)
+    assert len(expected) == 13
+    library = tmp_path / "library"
+    data = preserve_sample(document(), source, library)
+    assert preserve_sample(document(), source, library) == data
+    builder = SimpleNamespace(document=data, scene=trimesh.Scene(), library_dir=library,
+                              cx=4.8, cz=4.8, asset_hashes={})
+    add_presentation_layers(builder)
+    assert emitters(builder.scene) == expected
+    assert all(edge["metadata"].get("presentation_layer_id")
+               for edge in builder.scene.graph.transforms.edge_data.values()
+               if edge.get("metadata", {}).get("fixture_id"))

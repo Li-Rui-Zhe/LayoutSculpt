@@ -1,10 +1,76 @@
 {
-  "version": "3.3.0",
+  "version": "3.4.0",
   "blender_version": "4.5.9 LTS",
   "library": "habitat-furniture.blend",
   "sha256": "18e4d9a512ab37cf0ce26c9636377fe4ab823c87e3b293ecc26a4e790943ce09",
-  "license": "本项目原创几何与程序纹理，可随项目使用和修改；无第三方模型依赖。",
+  "license": "原创家具与开放授权家具；外部模型、纹理的许可和来源见各项记录及 THIRD_PARTY.md。",
   "items": [
+    {
+      "id": "habitat_aircon_tower",
+      "kind": "aircon_tower",
+      "furniture_kind": "model",
+      "name": "圆柱立式空调",
+      "dimensions": [
+        0.4,
+        0.4,
+        1.78
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 6272,
+      "sha256": "7f1fe6b995a41f6ce8e6f4d5a86bd45b6db201c3fe4e818e0aa8e78b91d45937",
+      "category": "客厅",
+      "family": "空调",
+      "variant": "立式圆柱",
+      "style": "原木自然",
+      "tags": [
+        "客厅",
+        "空调",
+        "立式圆柱"
+      ],
+      "rooms": [
+        "客厅"
+      ],
+      "description": "立式圆柱，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_aircon_wall",
+      "kind": "aircon_wall",
+      "furniture_kind": "model",
+      "name": "壁挂分体空调",
+      "dimensions": [
+        0.86,
+        0.22,
+        0.3
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 1600,
+      "sha256": "f461388423c5756f88cd7daf9b0027a257c18c7e2ef089e3dd2807b2b96efd9f",
+      "category": "卧室",
+      "family": "空调",
+      "variant": "壁挂分体",
+      "style": "原木自然",
+      "tags": [
+        "卧室",
+        "空调",
+        "壁挂分体"
+      ],
+      "rooms": [
+        "客厅",
+        "卧室",
+        "书房"
+      ],
+      "description": "壁挂分体，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。需安装在完整实墙上，避开门窗。",
+      "placement_surface": "wall",
+      "default_elevation": 2.1
+    },
     {
       "id": "habitat_armchair",
       "kind": "armchair",
@@ -30,7 +96,9 @@
         "客厅",
         "卧室"
       ],
-      "description": "木扶手款，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "木扶手款，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_balcony_chair",
@@ -42,12 +110,12 @@
         0.7,
         0.82
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2688,
-      "sha256": "1cd4313ca7624494315ed008427f3d72e73eade5d160803e0421e6c96f5212bf",
+      "sha256": "9293d94aa88cbc54ea87702bdda4695cbbeec6b80fa3ad8b6a42cf795aab4605",
       "category": "阳台",
       "family": "户外椅",
       "variant": "木条扶手椅",
@@ -60,7 +128,9 @@
       "rooms": [
         "阳台"
       ],
-      "description": "木条扶手椅，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "木条扶手椅，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_balcony_table",
@@ -72,12 +142,12 @@
         0.6,
         0.68
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1344,
-      "sha256": "782d5f143606d99a226d857f21aee6a959f34e3d021f62f54015ae1545536bdf",
+      "sha256": "c5be83c5f1adc61e1a81c0eca0997dd29476ace1df67258a31eb6f7e463a9222",
       "category": "阳台",
       "family": "户外桌",
       "variant": "圆形小桌",
@@ -90,7 +160,9 @@
       "rooms": [
         "阳台"
       ],
-      "description": "圆形小桌，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。薄边圆桌面、三点外撇木腿与连接撑。"
+      "description": "圆形小桌，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。薄边圆桌面、三点外撇木腿与连接撑。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bar_stool",
@@ -102,12 +174,12 @@
         0.46,
         0.94
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1408,
-      "sha256": "4e31ed9ac3d8132e74be00112c291941d6fdb32d4e39c939a767747f9c58057c",
+      "sha256": "a314dcec0d93a79c214eb56fda71ad609a4a778167977112e3e01fecceeebc6b",
       "category": "餐厅",
       "family": "吧椅",
       "variant": "高脚吧椅",
@@ -120,7 +192,9 @@
       "rooms": [
         "餐厅"
       ],
-      "description": "高脚吧椅，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "高脚吧椅，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bath_tall",
@@ -132,12 +206,12 @@
         0.32,
         1.6
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1892,
-      "sha256": "9faf3893e608adac1cab8bc168d8bf92bb240466ae993ec3ef7af711e14c502d",
+      "sha256": "a56bf98186f54cedb391e06f48bb539304217b9bc9f935a481b392e6a66a8446",
       "category": "卫浴",
       "family": "浴室收纳",
       "variant": "窄型高柜",
@@ -150,7 +224,41 @@
       "rooms": [
         "卫浴"
       ],
-      "description": "窄型高柜，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "窄型高柜，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_bathroom_mirror_cabinet",
+      "kind": "bathroom_mirror_cabinet",
+      "furniture_kind": "cabinet",
+      "name": "双门浴室镜柜",
+      "dimensions": [
+        0.8,
+        0.16,
+        0.7
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 960,
+      "sha256": "b77963620968a3eb6944daf7bd0f6d1dd05cbbb407305e53390d807a608a65c2",
+      "category": "卫浴",
+      "family": "镜柜",
+      "variant": "壁挂镜柜",
+      "style": "原木自然",
+      "tags": [
+        "卫浴",
+        "镜柜",
+        "壁挂镜柜"
+      ],
+      "rooms": [
+        "卫浴"
+      ],
+      "description": "壁挂镜柜，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。需安装在完整实墙上，避开门窗。",
+      "placement_surface": "wall",
+      "default_elevation": 1.25
     },
     {
       "id": "habitat_bathtub",
@@ -176,7 +284,9 @@
       "rooms": [
         "卫浴"
       ],
-      "description": "独立椭圆，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "独立椭圆，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bed",
@@ -188,12 +298,12 @@
         2.1,
         1.1
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 35832,
-      "sha256": "67c18b9a4d383268ad81d61c4e7a014aaaba98b40eb6331700a0c5fcd9aca564",
+      "sha256": "099d75233cdbf48d7eea0d816b26506f2a23182b05f4fb05fc4d267fdd11e126",
       "category": "卧室",
       "family": "床",
       "variant": "1.8 米双人",
@@ -206,7 +316,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "1.8 米双人，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。"
+      "description": "1.8 米双人，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bed_bunk",
@@ -218,12 +330,12 @@
         2.05,
         1.8
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 33400,
-      "sha256": "5789f93a856eb115de9c7491d0fae470f08a99d5c05f56f1e48a602ec346d9c7",
+      "sha256": "0919747425f1c56e509e2b7440e820c2bf17e040f4b8ffeba838759aec36a1c8",
       "category": "儿童房",
       "family": "床",
       "variant": "上下铺",
@@ -237,7 +349,9 @@
         "儿童房",
         "卧室"
       ],
-      "description": "上下铺，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。上下独立床垫、侧面梯口、宽踏板与圆角护栏。床体尺寸不等同于床垫采购规格。用于空间布局展示，护栏、间距及承重需以实物产品为准。"
+      "description": "上下铺，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。上下独立床垫、侧面梯口、宽踏板与圆角护栏。床体尺寸不等同于床垫采购规格。用于空间布局展示，护栏、间距及承重需以实物产品为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bed_kids",
@@ -249,12 +363,12 @@
         1.9,
         0.82
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 28152,
-      "sha256": "23f72dc74f68cf173009df814555d35faf91582ee59b05c34441325b5857d34e",
+      "sha256": "93a926bdac1ffce4b20c1acc5820755a463556c046279a6110b67a1fd45cae90",
       "category": "儿童房",
       "family": "床",
       "variant": "儿童单人",
@@ -268,7 +382,9 @@
         "儿童房",
         "卧室"
       ],
-      "description": "儿童单人，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。用于空间布局展示，护栏、间距及承重需以实物产品为准。"
+      "description": "儿童单人，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。用于空间布局展示，护栏、间距及承重需以实物产品为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bed_platform",
@@ -280,12 +396,12 @@
         2.12,
         0.65
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 35832,
-      "sha256": "b550d812c476b27bb67f03c6a2df6f88c840dfdc72dd355b9609689e94b6ba40",
+      "sha256": "61696a4c4b8fd4c8d39200687f1ddc83b656fd505506faa6da26f18e293c947a",
       "category": "卧室",
       "family": "床",
       "variant": "低台床",
@@ -298,7 +414,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "低台床，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。"
+      "description": "低台床，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bed_queen",
@@ -310,12 +428,12 @@
         2.05,
         1.05
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 35832,
-      "sha256": "eb00d3faa5c9f5f7e5209065ad62f9ebb9f8349c155c35c10ddee8dc6ae46cc4",
+      "sha256": "672a04ed93b698d621fbe43c17836f160e96ac2966168479ab48406c7026e0dc",
       "category": "卧室",
       "family": "床",
       "variant": "1.5 米双人",
@@ -328,7 +446,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "1.5 米双人，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。"
+      "description": "1.5 米双人，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bed_single",
@@ -340,12 +460,12 @@
         2.05,
         0.95
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 28152,
-      "sha256": "08753edcbf226228d13844f95c2b87072a0ea372c77ddbfdd3104aa56ea1f4b3",
+      "sha256": "bb0049961e7661b8cfa8882a2032724aee0c4295f86b5406e6ecf98145d0a096",
       "category": "卧室",
       "family": "床",
       "variant": "1.2 米单人",
@@ -358,7 +478,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "1.2 米单人，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。"
+      "description": "1.2 米单人，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。床体尺寸不等同于床垫采购规格。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bench",
@@ -384,7 +506,9 @@
       "rooms": [
         "玄关"
       ],
-      "description": "换鞋凳，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "换鞋凳，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bookcase_low",
@@ -396,12 +520,12 @@
         0.32,
         0.85
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 4800,
-      "sha256": "f008bd5c009f9146bab899eb0463b52136b24a3401caf53db58ac41c45f2a56a",
+      "sha256": "887e09d2daf2888989a86e3cc2532c788fe2aecc0bb7384a4c61d9b7ddf7d6c8",
       "category": "儿童房",
       "family": "书柜与收纳架",
       "variant": "低矮绘本柜",
@@ -414,7 +538,9 @@
       "rooms": [
         "儿童房"
       ],
-      "description": "低矮绘本柜，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。用于空间布局展示，护栏、间距及承重需以实物产品为准。"
+      "description": "低矮绘本柜，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。用于空间布局展示，护栏、间距及承重需以实物产品为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bookcase_wide",
@@ -426,12 +552,12 @@
         0.32,
         2.1
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 5760,
-      "sha256": "0536ed6d6fc67eef474702aaf9889c394331257a359a50e43625e75507e8708e",
+      "sha256": "5a5faf1cdb6177cff06dbc888936105dd6db5069baa773bb6b86ad7e9ed9108d",
       "category": "书房",
       "family": "书柜与收纳架",
       "variant": "宽款开放",
@@ -444,7 +570,9 @@
       "rooms": [
         "书房"
       ],
-      "description": "宽款开放，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "宽款开放，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_bookshelf",
@@ -470,7 +598,9 @@
       "rooms": [
         "书房"
       ],
-      "description": "窄款开放，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "窄款开放，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_cabinet",
@@ -482,12 +612,12 @@
         0.6,
         2.15
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1856,
-      "sha256": "5c489011f0ecdd1d65fa7024ed094a89775974009bce92ed53175be247aac0a9",
+      "sha256": "7f5f4ab178cdcb2c84071df48ceb95adc45405695fd4344915cd9ab50957185e",
       "category": "卧室",
       "family": "衣柜",
       "variant": "双开门",
@@ -500,7 +630,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "双开门，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双开门，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_chair",
@@ -527,7 +659,9 @@
       "rooms": [
         "餐厅"
       ],
-      "description": "弧面软包款，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "弧面软包款，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_chest_drawers",
@@ -539,12 +673,12 @@
         0.45,
         1.1
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 3104,
-      "sha256": "36396afb0a67282f007ec51ae0f5665602c42c2712e456309f3dc5d9fe28511c",
+      "sha256": "ca57572412112842da507369d5f42ea93dcab4b50ef548b383ca5ce2b5620db3",
       "category": "卧室",
       "family": "斗柜",
       "variant": "五斗柜",
@@ -557,7 +691,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "五斗柜，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "五斗柜，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_cleaning_cabinet",
@@ -569,12 +705,12 @@
         0.55,
         1.9
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1856,
-      "sha256": "d9dcf34a7774c0c696a36f908dcde99ac07659c9c4feb1f5cb866683769bd57b",
+      "sha256": "f6c1fa5f7faa207cc0ec78241f05f75a4c3d9b410e59e92890c99c3067d8c839",
       "category": "阳台",
       "family": "家政柜",
       "variant": "家政高柜",
@@ -587,7 +723,9 @@
       "rooms": [
         "阳台"
       ],
-      "description": "家政高柜，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "家政高柜，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_coat_rack",
@@ -599,12 +737,12 @@
         0.52,
         1.72
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 864,
-      "sha256": "c4cd8ecf34b1909562639b580bb2c120c763317d1ac2deaf6274480857d5f558",
+      "sha256": "ceabed0ed1be5d6dcb52940b0d0398dcc3e1dd2a5929791c9b2c1addf34309ba",
       "category": "玄关",
       "family": "衣帽架",
       "variant": "独立衣帽架",
@@ -617,7 +755,9 @@
       "rooms": [
         "玄关"
       ],
-      "description": "独立衣帽架，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "独立衣帽架，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_coffee_nested",
@@ -629,12 +769,12 @@
         0.72,
         0.43
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2112,
-      "sha256": "b006e686cfd5a115034c2365aa89c2433c8c89861a64248d69f7466af54c416c",
+      "sha256": "4904e04ab6e01032fa6e0562133f1464db453ea900b55cba41618612bd7f54b7",
       "category": "客厅",
       "family": "茶几",
       "variant": "组合双几",
@@ -647,7 +787,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "组合双几，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "组合双几，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_coffee_round",
@@ -659,12 +801,12 @@
         0.85,
         0.38
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1056,
-      "sha256": "efd9a87b063b9e9a926e319ffb4e05ea276b2c24181016d6f7dcbb338c0c8165",
+      "sha256": "b797a4f74728db5627f57e6c2996d17d785c2ed6f5cea8c475f8f7585fba5097",
       "category": "客厅",
       "family": "茶几",
       "variant": "圆形",
@@ -677,7 +819,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "圆形，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "圆形，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_coffee_table",
@@ -689,12 +833,12 @@
         0.62,
         0.42
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1152,
-      "sha256": "9952fc92cd55471258cc8d05ed1931b6661eaff349e33376dc7f2974aa1f2196",
+      "sha256": "88c4f7a96c3cc8d76c974a82faafbd87a4f01bcb792e52858699f2d90d2aec32",
       "category": "客厅",
       "family": "茶几",
       "variant": "双层长方",
@@ -707,7 +851,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "双层长方，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。圆角岩板桌面、内收置物层与四点实木支撑。"
+      "description": "双层长方，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。圆角岩板桌面、内收置物层与四点实木支撑。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_counter",
@@ -733,7 +879,9 @@
       "rooms": [
         "厨房"
       ],
-      "description": "直排地柜，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "直排地柜，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_crib",
@@ -745,12 +893,12 @@
         1.4,
         1.03
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 10176,
-      "sha256": "645b3e3445dddc9fc9b1e1bbf1e9a9a386b9e442fa540e8e791fa8147c28ffed",
+      "sha256": "e55b40cdff7cba39aa0b563f5c751803d60f0f0fefa1f224d0435df1aa49b6a9",
       "category": "儿童房",
       "family": "床",
       "variant": "婴儿床",
@@ -764,7 +912,9 @@
         "儿童房",
         "卧室"
       ],
-      "description": "婴儿床，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。四面通透圆杆围栏、暖白框架与浅木扶手，床内仅保留贴合床垫。床体尺寸不等同于床垫采购规格。用于空间布局展示，护栏、间距及承重需以实物产品为准。"
+      "description": "婴儿床，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。四面通透圆杆围栏、暖白框架与浅木扶手，床内仅保留贴合床垫。床体尺寸不等同于床垫采购规格。用于空间布局展示，护栏、间距及承重需以实物产品为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_desk",
@@ -776,12 +926,12 @@
         0.62,
         0.76
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1600,
-      "sha256": "11192025f7db46d5edd38d36704bb5725f3e4a69946f0b46ea12ace2296d6dde",
+      "sha256": "0485e1e415eb5b7df3467a164c38979de51d6cd0846735da8e175af0d834ac7e",
       "category": "书房",
       "family": "书桌",
       "variant": "双抽书桌",
@@ -794,7 +944,9 @@
       "rooms": [
         "书房"
       ],
-      "description": "双抽书桌，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双抽书桌，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_desk_compact",
@@ -806,12 +958,12 @@
         0.48,
         0.75
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1600,
-      "sha256": "ff4a9a5ef91f4ce63ec28c58497309792ae2da38615e5667e62527400c25445d",
+      "sha256": "a7231dc00b7eaeb6bc3f75e586f4529649e4ab181ae249e73804be506b5c4bd5",
       "category": "书房",
       "family": "书桌",
       "variant": "窄型书桌",
@@ -824,7 +976,9 @@
       "rooms": [
         "书房"
       ],
-      "description": "窄型书桌，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "窄型书桌，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_desk_corner",
@@ -836,12 +990,12 @@
         1.2,
         0.75
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1120,
-      "sha256": "99fa97d0f229129109b73961368e004fbd3733b6e205f869d91591b7bccff167",
+      "sha256": "fe2350b4ff50413d6f7ab1ee409569bc7a661111c391f6a0111381a5abd9b900",
       "category": "书房",
       "family": "书桌",
       "variant": "转角桌",
@@ -854,7 +1008,9 @@
       "rooms": [
         "书房"
       ],
-      "description": "转角桌，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "转角桌，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_desk_standing",
@@ -866,12 +1022,12 @@
         0.7,
         0.75
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2304,
-      "sha256": "85e181df6da9cb9ce1b8f11d9ba820531081e5cbfb830bfe77498295560013eb",
+      "sha256": "0b971e41bad97ec87526b41df66f413199c7d17d84a2f78c37e1e11c553b587d",
       "category": "书房",
       "family": "书桌",
       "variant": "升降桌 · 坐姿",
@@ -884,7 +1040,9 @@
       "rooms": [
         "书房"
       ],
-      "description": "升降桌 · 坐姿，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。当前展示为坐姿高度，不含升降动画。"
+      "description": "升降桌 · 坐姿，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。当前展示为坐姿高度，不含升降动画。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_desktop_computer",
@@ -896,12 +1054,12 @@
         0.48,
         0.49
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 58294,
-      "sha256": "c7912c89f5336904c2df26b54fed5415aa4f50e9588686ad84d96b57a4cf7aa0",
+      "sha256": "f240443f15c3c4399350d503b7511acdc5d95fd414ff3901b60ddb78908fbbdd",
       "category": "书房",
       "family": "电脑",
       "variant": "台式电脑套装",
@@ -923,8 +1081,9 @@
       "rooms": [
         "书房"
       ],
-      "description": "台式电脑套装，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。窄边框显示器与内嵌壁纸、金属底座、侧透主机及内部风扇/显卡/主板、散热格栅、USB 接口、真实键位与字标、曲面鼠标；默认底部离地 75 cm，可调整以匹配桌面。",
-      "default_elevation": 0.75
+      "description": "台式电脑套装，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。窄边框显示器与内嵌壁纸、金属底座、侧透主机及内部风扇/显卡/主板、散热格栅、USB 接口、真实键位与字标、曲面鼠标；默认底部离地 75 cm，可调整以匹配桌面。需放在合适台面上，离地高度随台面调整。",
+      "default_elevation": 0.75,
+      "placement_surface": "countertop"
     },
     {
       "id": "habitat_dining_bench",
@@ -936,12 +1095,12 @@
         0.38,
         0.46
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 704,
-      "sha256": "f5b89b39e526918623bbb9c1935e5b82118c227385b496e149b452353c897ef7",
+      "sha256": "d4222c0c8c701f357adbd3ce03ab8df6f1d3594967fc290be4295c868b934a02",
       "category": "餐厅",
       "family": "餐凳",
       "variant": "双人长凳",
@@ -954,7 +1113,9 @@
       "rooms": [
         "餐厅"
       ],
-      "description": "双人长凳，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双人长凳，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_dishwasher",
@@ -980,7 +1141,9 @@
       "rooms": [
         "厨房"
       ],
-      "description": "独立洗碗机，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "独立洗碗机，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_drying_rack",
@@ -992,12 +1155,12 @@
         0.72,
         1.65
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2912,
-      "sha256": "724fac551c105186927e044a670d795875c8aa4ed8db6130965ba5457d496ce1",
+      "sha256": "6ad3a332568c2e4aa6c4d93b5a456651120e93acd2892788d9d01077cb032cb5",
       "category": "阳台",
       "family": "晾衣架",
       "variant": "X 型双杆晾衣架",
@@ -1010,7 +1173,9 @@
       "rooms": [
         "阳台"
       ],
-      "description": "X 型双杆晾衣架，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。两端 X 型交叉落地支架、顶部双挂衣横杆、中部连接撑与防滑脚套，适合使用衣架悬挂长衣。"
+      "description": "X 型双杆晾衣架，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。两端 X 型交叉落地支架、顶部双挂衣横杆、中部连接撑与防滑脚套，适合使用衣架悬挂长衣。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_drying_rack_single",
@@ -1022,12 +1187,12 @@
         0.55,
         1.65
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2432,
-      "sha256": "f1d1ee9c07779baf69cbf64df2cf796d7308f43d29ba13813c7a89ecfd42ab5f",
+      "sha256": "b22e63feaa3e38ddc5792beddf26a01bd081fb29e8fac0a6b68959f2673eaf66",
       "category": "阳台",
       "family": "晾衣架",
       "variant": "单杆晾衣架",
@@ -1040,7 +1205,9 @@
       "rooms": [
         "阳台"
       ],
-      "description": "单杆晾衣架，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。单根加粗挂衣横杆、双侧伸缩立柱、锁紧套与 T 型防滑底脚，保留衣物悬挂空间。"
+      "description": "单杆晾衣架，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。单根加粗挂衣横杆、双侧伸缩立柱、锁紧套与 T 型防滑底脚，保留衣物悬挂空间。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_entry_console",
@@ -1052,12 +1219,12 @@
         0.3,
         0.82
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1600,
-      "sha256": "222f5dafea3c3293f92e27d285350ddef3a37e87ff6e1d0e1660dc99e8fe857e",
+      "sha256": "e807b24ad0036942e7aca66970efab2ee20900716d3c30e9fc868ad8c74bcd25",
       "category": "玄关",
       "family": "玄关台",
       "variant": "玄关台",
@@ -1070,7 +1237,9 @@
       "rooms": [
         "玄关"
       ],
-      "description": "玄关台，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "玄关台，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_entry_tall",
@@ -1082,12 +1251,12 @@
         0.32,
         1.9
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1856,
-      "sha256": "37591f05151e66bd22847fe3e2de99c0143d9fc8562c7fdeb8a9f03e0f6767b4",
+      "sha256": "c354441505d6006fb532996d0beca56d95f803c0877fe923a12917ef042da782",
       "category": "玄关",
       "family": "鞋柜",
       "variant": "高柜",
@@ -1100,7 +1269,9 @@
       "rooms": [
         "玄关"
       ],
-      "description": "高柜，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "高柜，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_floor_mirror",
@@ -1112,12 +1283,12 @@
         0.4,
         1.65
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 832,
-      "sha256": "aba24ee40c670b031f49d3a7c3ab8f8f87c7a1b37f209c261d7032952e7db87e",
+      "sha256": "5fb360dff4825575203fa2d0c53ebd948009d02430ca886a90b1ba14fc0eb7a4",
       "category": "卧室",
       "family": "穿衣镜",
       "variant": "支架穿衣镜",
@@ -1130,7 +1301,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "支架穿衣镜，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。镜面为材质近似，实时预览不提供真实镜像反射。"
+      "description": "支架穿衣镜，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。镜面为材质近似，实时预览不提供真实镜像反射。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_fridge_four",
@@ -1142,12 +1315,12 @@
         0.7,
         1.85
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 3200,
-      "sha256": "a80eeb286bc0f3834c938acbb82c0f053a1bb51d8bd57dc2dc72f56836a225dc",
+      "sha256": "1dd62fbf9455856ecff42f6615cb49f8135aea4d77f625f043aea7e1221f194e",
       "category": "厨房",
       "family": "冰箱",
       "variant": "四门款",
@@ -1160,7 +1333,9 @@
       "rooms": [
         "厨房"
       ],
-      "description": "四门款，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "四门款，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_kids_chair",
@@ -1172,12 +1347,12 @@
         0.36,
         0.58
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1216,
-      "sha256": "fc12bf9ffb86e24d0623fb2607a827dc99ce6e30206e5d5a06130b5f692c1b50",
+      "sha256": "690f8169ceff966605b8387ee48c3e4e7fff931d9a159c8a1a78ea9b892f1f1c",
       "category": "儿童房",
       "family": "儿童椅",
       "variant": "儿童靠背椅",
@@ -1190,7 +1365,9 @@
       "rooms": [
         "儿童房"
       ],
-      "description": "儿童靠背椅，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。用于空间布局展示，护栏、间距及承重需以实物产品为准。"
+      "description": "儿童靠背椅，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。用于空间布局展示，护栏、间距及承重需以实物产品为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_kids_table",
@@ -1202,12 +1379,12 @@
         0.6,
         0.52
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 768,
-      "sha256": "972ec775b91c8c9899b898b261ed778b1375d37eeb3ef23ea772c88ef62f5a7a",
+      "sha256": "a69624ea2e96559a268648aeb580d00704b63b0d687fd0b0fe9ad7f2c9f0a1c3",
       "category": "儿童房",
       "family": "儿童桌",
       "variant": "活动桌",
@@ -1220,7 +1397,41 @@
       "rooms": [
         "儿童房"
       ],
-      "description": "活动桌，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。用于空间布局展示，护栏、间距及承重需以实物产品为准。"
+      "description": "活动桌，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。用于空间布局展示，护栏、间距及承重需以实物产品为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_kitchen_cart",
+      "kind": "kitchen_cart",
+      "furniture_kind": "model",
+      "name": "双层厨房推车",
+      "dimensions": [
+        0.6,
+        0.38,
+        0.85
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 3712,
+      "sha256": "0c6c4138280a58bf56001c6598f43581b2fbb0aab4a46a63d7bd827d259ca3aa",
+      "category": "厨房",
+      "family": "厨房推车",
+      "variant": "双层窄推车",
+      "style": "原木自然",
+      "tags": [
+        "厨房",
+        "厨房推车",
+        "双层窄推车"
+      ],
+      "rooms": [
+        "厨房"
+      ],
+      "description": "双层窄推车，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_kitchen_island",
@@ -1232,12 +1443,12 @@
         0.8,
         0.9
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2176,
-      "sha256": "b8789ea8fa84b12ab5545b468d5aea2bd6ccb50ca22dc7e538fbe1cd23a9ef85",
+      "sha256": "55d0c9f6c8c045669ff9c243d8c88f7ba73784c231f0b4394e445573de7e708b",
       "category": "厨房",
       "family": "厨房柜体",
       "variant": "独立岛台",
@@ -1250,7 +1461,41 @@
       "rooms": [
         "厨房"
       ],
-      "description": "独立岛台，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "独立岛台，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_kitchen_wall_cabinet",
+      "kind": "kitchen_wall_cabinet",
+      "furniture_kind": "cabinet",
+      "name": "双门厨房吊柜",
+      "dimensions": [
+        0.9,
+        0.34,
+        0.68
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 1152,
+      "sha256": "eb0d551366c370597f8584b9619fb2220eeb3c9721f480b180d287ed86685edc",
+      "category": "厨房",
+      "family": "厨房吊柜",
+      "variant": "双门吊柜",
+      "style": "原木自然",
+      "tags": [
+        "厨房",
+        "厨房吊柜",
+        "双门吊柜"
+      ],
+      "rooms": [
+        "厨房"
+      ],
+      "description": "双门吊柜，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。需安装在完整实墙上，避开门窗。",
+      "placement_surface": "wall",
+      "default_elevation": 1.5
     },
     {
       "id": "habitat_laptop",
@@ -1262,12 +1507,12 @@
         0.27,
         0.245
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 50134,
-      "sha256": "16dcdf3dbb5a4119e21151a9ff9e0ac15963466868da8756b10cad34eabf03ad",
+      "sha256": "01dba05a04abfb93a466b81fc03e05d99f6d8ec2de932b4fbb8c44f83c05d900",
       "category": "书房",
       "family": "电脑",
       "variant": "笔记本电脑",
@@ -1286,8 +1531,41 @@
       "rooms": [
         "书房"
       ],
-      "description": "笔记本电脑，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。轻薄圆角铝合金机身、窄边屏幕与内嵌壁纸、独立转轴、错位键盘及字标、玻璃触控板、扬声器开孔、散热口、USB-C/USB-A/HDMI 接口及摄像头；默认底部离地 75 cm，可调整以匹配桌面。",
-      "default_elevation": 0.75
+      "description": "笔记本电脑，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。轻薄圆角铝合金机身、窄边屏幕与内嵌壁纸、独立转轴、错位键盘及字标、玻璃触控板、扬声器开孔、散热口、USB-C/USB-A/HDMI 接口及摄像头；默认底部离地 75 cm，可调整以匹配桌面。需放在合适台面上，离地高度随台面调整。",
+      "default_elevation": 0.75,
+      "placement_surface": "countertop"
+    },
+    {
+      "id": "habitat_laundry_basket",
+      "kind": "laundry_basket",
+      "furniture_kind": "model",
+      "name": "布艺脏衣篮",
+      "dimensions": [
+        0.42,
+        0.34,
+        0.56
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 3200,
+      "sha256": "8c01f2010ad37220f0a4664d484c043abdf9bc146e6b9b9b2866664c7ab5cff2",
+      "category": "卫浴",
+      "family": "脏衣篮",
+      "variant": "木框布篮",
+      "style": "原木自然",
+      "tags": [
+        "卫浴",
+        "脏衣篮",
+        "木框布篮"
+      ],
+      "rooms": [
+        "卫浴"
+      ],
+      "description": "木框布篮，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_laundry_tower",
@@ -1299,12 +1577,12 @@
         0.68,
         1.75
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2176,
-      "sha256": "b5cda4b3a723dce1036e878b5f7b2e1f4abf54b9520564aae0984b9649a94005",
+      "sha256": "3e2899f529120049c0ecf76ec88a7998f9d9e399a54a8e2c543c27aa302ff4dd",
       "category": "阳台",
       "family": "洗衣机",
       "variant": "洗烘叠放",
@@ -1317,7 +1595,9 @@
       "rooms": [
         "阳台"
       ],
-      "description": "洗烘叠放，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "洗烘叠放，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_lounge_chair",
@@ -1329,12 +1609,12 @@
         0.86,
         0.8
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
-      "triangles": 5952,
-      "sha256": "6068ea6c158703dde0f5366bc56e47bb693ea376b7787997c1d172ad6e1c038d",
+      "triangles": 9024,
+      "sha256": "81cbe4280b50c225a7edb8de168eefcf515216ec0c4041c29c5665011f08b878",
       "category": "客厅",
       "family": "休闲座椅",
       "variant": "软包围合",
@@ -1348,7 +1628,41 @@
         "客厅",
         "卧室"
       ],
-      "description": "软包围合，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "软包围合，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_microwave",
+      "kind": "microwave",
+      "furniture_kind": "model",
+      "name": "台式微波炉",
+      "dimensions": [
+        0.49,
+        0.38,
+        0.29
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 2016,
+      "sha256": "6ce0db11a138edec6a48064b9a7917e2d2c858d7ba1d9435afdda470b763dce8",
+      "category": "厨房",
+      "family": "微波炉",
+      "variant": "台式",
+      "style": "原木自然",
+      "tags": [
+        "厨房",
+        "微波炉",
+        "台式"
+      ],
+      "rooms": [
+        "厨房"
+      ],
+      "description": "台式，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。需放在合适台面上，离地高度随台面调整。",
+      "placement_surface": "countertop",
+      "default_elevation": 0.85
     },
     {
       "id": "habitat_nightstand",
@@ -1360,12 +1674,12 @@
         0.4,
         0.52
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1856,
-      "sha256": "73e5a1b221057ef20817c719a6cfd2737f864d59763e65ff0c56378c0a0f5770",
+      "sha256": "ff220f4372b0c7daad8e1c2fd2d3f910648b8849c11227a478c2a056b09a3997",
       "category": "卧室",
       "family": "床头柜",
       "variant": "双抽款",
@@ -1378,7 +1692,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "双抽款，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双抽款，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_nightstand_slim",
@@ -1390,12 +1706,12 @@
         0.36,
         0.5
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1856,
-      "sha256": "265647bde3196ca5392208134ae30a634a01e5a3d5b77a4435ab2f6d3bb9e2a4",
+      "sha256": "d3bf028a81e0606da8bb587f12b19ca4c2a33b93aa8c36e84190c5a8b4f1bde5",
       "category": "卧室",
       "family": "床头柜",
       "variant": "窄款双抽",
@@ -1408,7 +1724,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "窄款双抽，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "窄款双抽，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_office_chair",
@@ -1420,12 +1738,12 @@
         0.64,
         1.12
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 10528,
-      "sha256": "48232fde7520cd01c771cf71f8c8e0eed242cc3a34521c4117804a44fa1e9b19",
+      "sha256": "55e925c4e283df2ac215e4945db5f115ddf6ffcf4085e98a843c417bc585714b",
       "category": "书房",
       "family": "办公椅",
       "variant": "网背扶手",
@@ -1438,7 +1756,9 @@
       "rooms": [
         "书房"
       ],
-      "description": "网背扶手，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "网背扶手，适合书房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_ottoman",
@@ -1450,12 +1770,12 @@
         0.56,
         0.42
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 704,
-      "sha256": "abb86c92e416159de1606ba7de8ed0648fa42589a2562c8f98b83713405c730c",
+      "sha256": "5e0f6f405b931b724363158dbf2be9afd900969df25718986d28ceb0231a3667",
       "category": "客厅",
       "family": "脚凳",
       "variant": "配套脚凳",
@@ -1468,7 +1788,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "配套脚凳，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "配套脚凳，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_oven",
@@ -1494,7 +1816,9 @@
       "rooms": [
         "厨房"
       ],
-      "description": "台柜式烤箱，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "台柜式烤箱，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_pantry",
@@ -1506,12 +1830,12 @@
         0.6,
         2.1
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1892,
-      "sha256": "e60d9597bb4dd6c42994178f13db441ba885c652f37db43b7657094078b339f7",
+      "sha256": "87170b877277b414b32e9e1031bf6c0a0501289bcbfab1dcaf1ee1330e36d185",
       "category": "厨房",
       "family": "厨房柜体",
       "variant": "食品高柜",
@@ -1524,7 +1848,176 @@
       "rooms": [
         "厨房"
       ],
-      "description": "食品高柜，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "食品高柜，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_ph_dining_chair_02",
+      "kind": "ph_dining_chair_02",
+      "name": "高背软包餐椅",
+      "furniture_kind": "chair",
+      "dimensions": [
+        0.4335707724094391,
+        0.5764201134443283,
+        0.9733776897192001
+      ],
+      "category": "餐厅",
+      "family": "餐椅",
+      "variant": "高背软包",
+      "style": "实景质感",
+      "styles": [
+        "modern"
+      ],
+      "rooms": [
+        "餐厅"
+      ],
+      "tags": [
+        "餐厅",
+        "餐椅",
+        "高背软包",
+        "精细模型"
+      ],
+      "description": "高背软包，保留完整纹理与真实比例。尺寸为模型外廓，用于布局参考，非具体商品采购规格。",
+      "revision": "3.4.0",
+      "generator": "external",
+      "source": "scripts/import_open_furniture.py",
+      "source_url": "https://polyhaven.com/a/dining_chair_02",
+      "authors": [
+        "James Ray Cock"
+      ],
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "format": "glb",
+      "triangles": 22013,
+      "sha256": "9f8b3b552dc2d0e4bc4aa81498b1f71e9eae5fe0a4f389834902f46abf8d4467",
+      "quality_tier": "detailed"
+    },
+    {
+      "id": "habitat_ph_modern_arm_chair_01",
+      "kind": "ph_modern_arm_chair_01",
+      "name": "木扶手高背软包休闲椅",
+      "furniture_kind": "armchair",
+      "dimensions": [
+        0.8203444182872772,
+        0.9865616858005524,
+        1.0228520567470696
+      ],
+      "category": "客厅",
+      "family": "休闲座椅",
+      "variant": "高背木扶手",
+      "style": "实景质感",
+      "styles": [
+        "modern",
+        "natural"
+      ],
+      "rooms": [
+        "客厅"
+      ],
+      "tags": [
+        "客厅",
+        "休闲座椅",
+        "高背木扶手",
+        "精细模型"
+      ],
+      "description": "高背木扶手，保留完整纹理与真实比例。尺寸为模型外廓，用于布局参考，非具体商品采购规格。",
+      "revision": "3.4.0",
+      "generator": "external",
+      "source": "scripts/import_open_furniture.py",
+      "source_url": "https://polyhaven.com/a/modern_arm_chair_01",
+      "authors": [
+        "Vibrant Nordic"
+      ],
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "format": "glb",
+      "triangles": 8916,
+      "sha256": "073a16c79efed8d1f72c42c46652c2302217310fe995292aff8b8861b6e6263f",
+      "quality_tier": "detailed"
+    },
+    {
+      "id": "habitat_ph_modern_wooden_cabinet",
+      "kind": "ph_modern_wooden_cabinet",
+      "name": "格栅实木长电视柜",
+      "furniture_kind": "tv_console",
+      "dimensions": [
+        2.4400004148483276,
+        0.5200000107288361,
+        0.6801425069570541
+      ],
+      "category": "客厅",
+      "family": "电视柜",
+      "variant": "格栅长柜",
+      "style": "实景质感",
+      "styles": [
+        "natural",
+        "modern"
+      ],
+      "rooms": [
+        "客厅"
+      ],
+      "tags": [
+        "客厅",
+        "电视柜",
+        "格栅长柜",
+        "精细模型"
+      ],
+      "description": "格栅长柜，保留完整纹理与真实比例。尺寸为模型外廓，用于布局参考，非具体商品采购规格。",
+      "revision": "3.4.0",
+      "generator": "external",
+      "source": "scripts/import_open_furniture.py",
+      "source_url": "https://polyhaven.com/a/modern_wooden_cabinet",
+      "authors": [
+        "Patrik Pangerl"
+      ],
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "format": "glb",
+      "triangles": 24976,
+      "sha256": "6b00e83ad2c70cb6d6d659f81aad0da355a9b8b13063918ba072318eb237c491",
+      "quality_tier": "detailed"
+    },
+    {
+      "id": "habitat_ph_side_table_01",
+      "kind": "ph_side_table_01",
+      "name": "实木双层方边几",
+      "furniture_kind": "side_table",
+      "dimensions": [
+        0.5500000715255737,
+        0.45000001788139343,
+        0.5506622816901654
+      ],
+      "category": "客厅",
+      "family": "边几",
+      "variant": "双层方形",
+      "style": "实景质感",
+      "styles": [
+        "natural",
+        "modern"
+      ],
+      "rooms": [
+        "客厅"
+      ],
+      "tags": [
+        "客厅",
+        "边几",
+        "双层方形",
+        "精细模型"
+      ],
+      "description": "双层方形，保留完整纹理与真实比例。尺寸为模型外廓，用于布局参考，非具体商品采购规格。",
+      "revision": "3.4.0",
+      "generator": "external",
+      "source": "scripts/import_open_furniture.py",
+      "source_url": "https://polyhaven.com/a/side_table_01",
+      "authors": [
+        "James Ray Cock"
+      ],
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "format": "glb",
+      "triangles": 2756,
+      "sha256": "c7cb680c4aebff12d7353ee13f48c89b56dd384bd484e07a3d7578fe6e49e66e",
+      "quality_tier": "detailed"
     },
     {
       "id": "habitat_plant",
@@ -1550,7 +2043,41 @@
       "rooms": [
         "装饰"
       ],
-      "description": "橄榄树，适合装饰空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "橄榄树，适合装饰空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_range_hood",
+      "kind": "range_hood",
+      "furniture_kind": "model",
+      "name": "薄型烟机",
+      "dimensions": [
+        0.9,
+        0.48,
+        0.55
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 1600,
+      "sha256": "b99d1b784be12c77ecacac7ec8b7f1f17fe6274bf714c195abb342f9d3d622d2",
+      "category": "厨房",
+      "family": "抽油烟机",
+      "variant": "顶吸烟机",
+      "style": "现代简约",
+      "tags": [
+        "厨房",
+        "抽油烟机",
+        "顶吸烟机"
+      ],
+      "rooms": [
+        "厨房"
+      ],
+      "description": "顶吸烟机，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。需安装在完整实墙上，避开门窗。",
+      "placement_surface": "wall",
+      "default_elevation": 1.5
     },
     {
       "id": "habitat_refrigerator",
@@ -1576,7 +2103,9 @@
       "rooms": [
         "厨房"
       ],
-      "description": "双门款，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双门款，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_rug",
@@ -1602,7 +2131,9 @@
       "rooms": [
         "装饰"
       ],
-      "description": "编织流苏，适合装饰空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "编织流苏，适合装饰空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_shoe_cabinet",
@@ -1628,7 +2159,9 @@
       "rooms": [
         "玄关"
       ],
-      "description": "百叶矮柜，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "百叶矮柜，适合玄关空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_shower",
@@ -1654,7 +2187,9 @@
       "rooms": [
         "卫浴"
       ],
-      "description": "封闭淋浴房，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "封闭淋浴房，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_shower_open",
@@ -1681,7 +2216,9 @@
       "rooms": [
         "卫浴"
       ],
-      "description": "开放花洒，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "开放花洒，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_shower_walk_in",
@@ -1708,7 +2245,9 @@
       "rooms": [
         "卫浴"
       ],
-      "description": "单屏步入式，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "单屏步入式，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_side_c_table",
@@ -1720,12 +2259,12 @@
         0.36,
         0.62
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1056,
-      "sha256": "b673270880602e54e6fd94e89ac2cfe21d33052b9b4c00c1a8eb63e778bc69e4",
+      "sha256": "c57709627197cdf595622682395ce5e5781148d8b2c499713b59585eea1bfdef",
       "category": "客厅",
       "family": "边几",
       "variant": "C 形边几",
@@ -1738,7 +2277,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "C 形边几，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。薄木圆角桌面与开口钢管底架，可用于沙发侧边。"
+      "description": "C 形边几，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。薄木圆角桌面与开口钢管底架，可用于沙发侧边。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_side_table",
@@ -1764,7 +2305,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "圆盘边几，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "圆盘边几，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_sideboard",
@@ -1776,12 +2319,12 @@
         0.42,
         0.85
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 3008,
-      "sha256": "293b8a58ab6f900238147aa64120473c6be62adbcb5558bfe2df0824d11f1102",
+      "sha256": "d11823f843421d5befc3b865add944c1f91c6f3f872d66612ab3c66b43871dec",
       "category": "餐厅",
       "family": "餐边柜",
       "variant": "双门双抽",
@@ -1794,7 +2337,9 @@
       "rooms": [
         "餐厅"
       ],
-      "description": "双门双抽，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双门双抽，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_sink",
@@ -1820,7 +2365,9 @@
       "rooms": [
         "卫浴"
       ],
-      "description": "台盆款，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "台盆款，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_sofa",
@@ -1832,12 +2379,12 @@
         0.95,
         0.88
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
-      "triangles": 17472,
-      "sha256": "ac706ebeec5db403213e968fef34d8b69c1c6e9647d96280a18996c50999c3f6",
+      "triangles": 26688,
+      "sha256": "a7197e65cec04b75207e34e340c22f54070ee4af1a5d0a474bf6e233daea802f",
       "category": "客厅",
       "family": "沙发",
       "variant": "三人直排",
@@ -1850,7 +2397,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "三人直排，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "三人直排，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_sofa_chaise_left",
@@ -1862,12 +2411,12 @@
         1.65,
         0.88
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
-      "triangles": 17984,
-      "sha256": "48e548966294fd42317376794a016827478722fd61ea993710df7806e2c09e58",
+      "triangles": 27200,
+      "sha256": "b2d35ac1ac4126eabc636ed28fb9c51d078d83b8795ba52fdba139127af9d47a",
       "category": "客厅",
       "family": "沙发",
       "variant": "左贵妃 · 面对沙发",
@@ -1880,7 +2429,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "左贵妃 · 面对沙发，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。左右以面对沙发时为准。"
+      "description": "左贵妃 · 面对沙发，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。左右以面对沙发时为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_sofa_chaise_right",
@@ -1892,12 +2443,12 @@
         1.65,
         0.88
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
-      "triangles": 17984,
-      "sha256": "2995159f7bd8405e8e44c310c3aca10a112830b8fe7135746252a37407065350",
+      "triangles": 27200,
+      "sha256": "7506687f9459161e3c01bf5ac57883cb7b42d462d67e9f5dfb69263671f9ea4b",
       "category": "客厅",
       "family": "沙发",
       "variant": "右贵妃 · 面对沙发",
@@ -1910,7 +2461,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "右贵妃 · 面对沙发，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。左右以面对沙发时为准。"
+      "description": "右贵妃 · 面对沙发，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。左右以面对沙发时为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_sofa_compact",
@@ -1922,12 +2475,12 @@
         0.86,
         0.82
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
-      "triangles": 12864,
-      "sha256": "7a476110abc04c4595ba2e3139ee5e06e194beb80acccfcf95b87a21e494c6f4",
+      "triangles": 19008,
+      "sha256": "6b3c1aa3a7d1a32a4e1dd15b8b800fa8092d1e985784de98f59bfdeae8253f82",
       "category": "客厅",
       "family": "沙发",
       "variant": "双人直排",
@@ -1940,7 +2493,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "双人直排，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双人直排，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_sofa_daybed",
@@ -1952,12 +2507,12 @@
         0.95,
         0.78
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 25244,
-      "sha256": "531b760ace563bc17a8658aac0e17349649870c4afe184f09fde9092e04a3ed6",
+      "sha256": "55d0963c6dee1ee5d27cc02e688edae8834ab96cd1fd4e8c352f78940b1b13f0",
       "category": "客厅",
       "family": "沙发",
       "variant": "整垫躺卧款",
@@ -1976,7 +2531,9 @@
         "卧室",
         "书房"
       ],
-      "description": "整张长软垫搭配通透木条围框、可移位头枕和床尾搭毯，适合靠坐或单人小憩。整体尺寸 210 × 95 × 78 cm，可在人工设计中调整。固定日床造型，不含展开动画。"
+      "description": "整张长软垫搭配通透木条围框、可移位头枕和床尾搭毯，适合靠坐或单人小憩。整体尺寸 210 × 95 × 78 cm，可在人工设计中调整。固定日床造型，不含展开动画。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_sofa_modular",
@@ -1988,12 +2545,12 @@
         1.02,
         0.8
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
-      "triangles": 22080,
-      "sha256": "25a7df6d41b3999ece32d769d25220c7fb268f70432eeb3572172050b06540dd",
+      "triangles": 34368,
+      "sha256": "3175c5afdb95fc96c1577eff7def7e74d922cd3abd03395977c834c1c6e08b2e",
       "category": "客厅",
       "family": "沙发",
       "variant": "四人模块",
@@ -2006,7 +2563,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "四人模块，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "四人模块，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_table",
@@ -2018,12 +2577,12 @@
         0.85,
         0.76
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 768,
-      "sha256": "ac68b6faceb5f98e9f4fc08daea3c2f8743b21d05510fc28a296eadeb24098a4",
+      "sha256": "09577f9cc2fa1851e10c59c495fcda053571c3244ecc67e24100d76ba582de56",
       "category": "餐厅",
       "family": "餐桌",
       "variant": "四人长桌",
@@ -2036,7 +2595,9 @@
       "rooms": [
         "餐厅"
       ],
-      "description": "四人长桌，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "四人长桌，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_table_compact",
@@ -2048,12 +2609,12 @@
         0.8,
         0.75
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 768,
-      "sha256": "50151011b3e20818aa1c635d32791617c1da50eb6680d07162cd316d0071337e",
+      "sha256": "a85fe83b0ea09891788089ac2dbce7f43dfbfb946e0dd3cab6b1965299a39ce0",
       "category": "餐厅",
       "family": "餐桌",
       "variant": "双人方桌",
@@ -2066,7 +2627,9 @@
       "rooms": [
         "餐厅"
       ],
-      "description": "双人方桌，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双人方桌，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_table_round",
@@ -2078,12 +2641,12 @@
         1.1,
         0.75
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1152,
-      "sha256": "a45a05ddb3e7a22d21a5f8bf87f2b82a55fb841e348cf81d0fa998f9fa2c12b1",
+      "sha256": "8682132f43c6f9cc8ae6260034350f6d512bf017f2eb3fd43ed4e9cf12409c16",
       "category": "餐厅",
       "family": "餐桌",
       "variant": "四人圆桌",
@@ -2096,7 +2659,9 @@
       "rooms": [
         "餐厅"
       ],
-      "description": "四人圆桌，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "四人圆桌，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_table_six",
@@ -2108,12 +2673,12 @@
         0.9,
         0.76
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 768,
-      "sha256": "2fabc7ddf3a2a486291e734cb42f4ff7364953651a666ac6ad83993ea847f614",
+      "sha256": "ab8f54f781708184b41bb9fbc73c2c8641c88ce914de94278855f3c2b13e09b4",
       "category": "餐厅",
       "family": "餐桌",
       "variant": "六人长桌",
@@ -2126,7 +2691,9 @@
       "rooms": [
         "餐厅"
       ],
-      "description": "六人长桌，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "六人长桌，适合餐厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_television",
@@ -2152,7 +2719,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "55 英寸支架款，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "55 英寸支架款，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_toilet",
@@ -2178,7 +2747,41 @@
       "rooms": [
         "卫浴"
       ],
-      "description": "一体裙包，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "一体裙包，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_towel_rail",
+      "kind": "towel_rail",
+      "furniture_kind": "model",
+      "name": "双杆毛巾架",
+      "dimensions": [
+        0.6,
+        0.12,
+        0.16
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 1024,
+      "sha256": "9adb510c8bc7e262335299d1567b5b1e34908849e4cb61276fe60b59cb81b37a",
+      "category": "卫浴",
+      "family": "毛巾架",
+      "variant": "双杆壁挂",
+      "style": "现代简约",
+      "tags": [
+        "卫浴",
+        "毛巾架",
+        "双杆壁挂"
+      ],
+      "rooms": [
+        "卫浴"
+      ],
+      "description": "双杆壁挂，适合卫浴空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。需安装在完整实墙上，避开门窗。",
+      "placement_surface": "wall",
+      "default_elevation": 1.1
     },
     {
       "id": "habitat_toy_storage",
@@ -2190,12 +2793,12 @@
         0.36,
         0.76
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 6400,
-      "sha256": "c96718638648ba029c9713b2e9b488fcfe454448f5367a0ea18e1a4a7dcdad7a",
+      "sha256": "03274622e1dcb4ab7feee6f580a89821d4b6ed95deb9a6bdec517bc6b07a52a3",
       "category": "儿童房",
       "family": "书柜与收纳架",
       "variant": "收纳盒款",
@@ -2208,7 +2811,9 @@
       "rooms": [
         "儿童房"
       ],
-      "description": "收纳盒款，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。用于空间布局展示，护栏、间距及承重需以实物产品为准。"
+      "description": "收纳盒款，适合儿童房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。用于空间布局展示，护栏、间距及承重需以实物产品为准。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_tv_console",
@@ -2220,12 +2825,12 @@
         0.4,
         0.52
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 17664,
-      "sha256": "3f62bb08c9926f3d68af39b248ebd7b45a71093571cb8cb4a25c7fdd209c6fca",
+      "sha256": "9acbc51a516661113fc6140722962f5a69f22c6833a23d6d25e690986ddefd16",
       "category": "客厅",
       "family": "电视柜",
       "variant": "格栅两抽",
@@ -2238,7 +2843,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "格栅两抽，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "格栅两抽，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_tv_console_long",
@@ -2250,12 +2857,12 @@
         0.42,
         0.48
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2272,
-      "sha256": "829c17bb3c99f2b9d8ed8ee7413a143c5542aaf47ce1445bed3dce5b2f38f500",
+      "sha256": "7ff708188275a82ba2122b09edd4fcfd644e92ed0efebf8ba98157fb05172392",
       "category": "客厅",
       "family": "电视柜",
       "variant": "长款三抽",
@@ -2268,7 +2875,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "长款三抽，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "长款三抽，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_utility_sink",
@@ -2280,12 +2889,12 @@
         0.6,
         0.9
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 3648,
-      "sha256": "2c6e4e12b74795da1ad09a2f1067a306142da6229357a8a7bb3417f9d4a546bc",
+      "sha256": "1c8e56454dcc1b2440405fa40ca72b6a2a361d79fc05abfe657ea07010a76c0c",
       "category": "阳台",
       "family": "洗衣柜",
       "variant": "洗衣盆柜",
@@ -2298,7 +2907,9 @@
       "rooms": [
         "阳台"
       ],
-      "description": "洗衣盆柜，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "洗衣盆柜，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_vanity",
@@ -2310,12 +2921,12 @@
         0.45,
         1.38
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 1888,
-      "sha256": "5b156fcec2af05f40ff007553fd3f49d6962e3bd2ad5c26932406f7747588fa6",
+      "sha256": "92f5cd5d2918a116e99a194f482b5e3e08ae1fc9f9e23890cf4dfcbcbcf1144a",
       "category": "卧室",
       "family": "梳妆台",
       "variant": "圆镜款",
@@ -2328,7 +2939,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "圆镜款，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "圆镜款，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_wall_television",
@@ -2354,7 +2967,9 @@
       "rooms": [
         "客厅"
       ],
-      "description": "55 英寸壁挂款，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "55 英寸壁挂款，适合客厅空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。需安装在完整实墙上，避开门窗。",
+      "placement_surface": "wall",
+      "default_elevation": 1.05
     },
     {
       "id": "habitat_wardrobe_sliding",
@@ -2366,12 +2981,12 @@
         0.63,
         2.2
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2496,
-      "sha256": "871b480661b6748342dafbaefc60cf58fbf8433cdb9e45659899c1a75e5162a7",
+      "sha256": "c03f576de7b17d4777a4212012bde358cd89f826b4afe23c4b3237fed21e5fa4",
       "category": "卧室",
       "family": "衣柜",
       "variant": "双移门",
@@ -2384,7 +2999,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "双移门，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "双移门，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_wardrobe_three",
@@ -2396,12 +3013,12 @@
         0.6,
         2.2
       ],
-      "revision": "3.3.0",
+      "revision": "3.4.0",
       "generator": "python",
       "source": "tools/home_collection.py",
       "format": "glb",
       "triangles": 2272,
-      "sha256": "82e852084e6c56af740804fd02c32d79a307800aca35d3dce6757e0929c18265",
+      "sha256": "e77e72dadb33e3c04ba8d6fa06ce07ba356760f39a5ddc03e1daddbd3d012f66",
       "category": "卧室",
       "family": "衣柜",
       "variant": "三开门",
@@ -2414,7 +3031,9 @@
       "rooms": [
         "卧室"
       ],
-      "description": "三开门，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "三开门，适合卧室空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     },
     {
       "id": "habitat_washing_machine",
@@ -2440,7 +3059,41 @@
       "rooms": [
         "阳台"
       ],
-      "description": "洗烘一体，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。"
+      "description": "洗烘一体，适合阳台空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
+    },
+    {
+      "id": "habitat_waste_bin",
+      "kind": "waste_bin",
+      "furniture_kind": "model",
+      "name": "脚踏垃圾桶",
+      "dimensions": [
+        0.28,
+        0.28,
+        0.4
+      ],
+      "revision": "3.4.0",
+      "generator": "python",
+      "source": "tools/home_collection.py",
+      "format": "glb",
+      "triangles": 1472,
+      "sha256": "0528dde2b7c7e0b77ee1f8f80ff5dda66440e4667ba0c8382b0f9e87fb6ccef5",
+      "category": "厨房",
+      "family": "垃圾桶",
+      "variant": "带盖脚踏",
+      "style": "现代简约",
+      "tags": [
+        "厨房",
+        "垃圾桶",
+        "带盖脚踏"
+      ],
+      "rooms": [
+        "厨房"
+      ],
+      "description": "带盖脚踏，适合厨房空间。尺寸为模型整体外廓的宽 × 深 × 高，可在人工设计中调整。",
+      "placement_surface": "floor",
+      "default_elevation": 0
     }
   ],
   "collection_source": "tools/home_collection.py",

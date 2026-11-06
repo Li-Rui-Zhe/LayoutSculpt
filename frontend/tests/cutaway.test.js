@@ -1,7 +1,68 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { installCutaway, updateCutaway } from "../src/viewer/cutaway.js";
+import { installCutaway, updateCutaway, setCutawaySelection } from "../src/viewer/cutaway.js";
+
+test("剖切选中空调时只临时显示该件，取消选择恢复隐藏且不改保存数据", () => {
+  const model = new THREE.Group();
+  const groups = ["空调一", "空调二"].map((name, index) => {
+    const group = new THREE.Group();
+    // A source index can differ from the current list index after deleting items.
+    for (let part = 0; part < 2; part++) {
+      const mesh = new THREE.Object3D();
+      mesh.userData = {furniture_index: index + 3, furniture_kind: "aircon_wall", furniture_name: name};
+      group.add(mesh);
+    }
+    model.add(group);
+    return group;
+  });
+  const savedData = JSON.stringify(groups.map(g => g.children.map(m => m.userData)));
+  const replacedWall = new THREE.Object3D();
+  replacedWall.userData = { cutaway_only: true };
+  replacedWall.visible = false; // Live architecture has replaced this saved wall.
+  model.add(replacedWall);
+  setCutawaySelection(model, groups[0]);
+  updateCutaway(model, null, {furnitureOnly: true});
+  assert.equal(replacedWall.visible, false);
+  assert.ok(groups[0].children.every(m => m.visible));
+  assert.ok(groups[1].children.every(m => !m.visible));
+  setCutawaySelection(model, groups[1]);
+  updateCutaway(model, null);
+  assert.ok(groups[0].children.every(m => !m.visible));
+  assert.ok(groups[1].children.every(m => m.visible));
+  groups[1].visible = false; // Explicitly hidden furniture must stay hidden.
+  updateCutaway(model, null);
+  assert.ok(groups[1].children.every(m => !m.visible));
+  setCutawaySelection(model, null);
+  updateCutaway(model, null);
+  assert.ok(groups.every(g => g.children.every(m => !m.visible)));
+  updateCutaway(model, null, {enabled: false});
+  assert.ok(groups.every(g => g.children.every(m => m.visible)));
+  assert.equal(groups[1].visible, false);
+  assert.equal(JSON.stringify(groups.map(g => g.children.map(m => m.userData))), savedData);
+});
+
+test("剖切只隐藏壁挂空调，电视、吊柜与落地空调保留，完整墙体恢复", () => {
+  const model = new THREE.Group();
+  const parts = [
+    { furniture_index: 0, placement_surface: "wall", furniture_kind: "aircon_wall" },
+    { furniture_index: 1, placement_surface: "wall", furniture_kind: "wall_television" },
+    { furniture_index: 2, furniture_name: "卧室壁挂空调" },
+    { furniture_index: 3, placement_surface: "floor", furniture_name: "立式空调" },
+    { furniture_index: 4, furniture_kind: "sofa" },
+    { furniture_index: 5, placement_surface: "wall", furniture_kind: "kitchen_wall_cabinet" },
+    { furniture_index: 6, furniture_name: "超薄壁挂电视" },
+    { furniture_index: 7, furniture_kind: "aircon_tower" },
+    { furniture_index: 8, placement_surface: "wall", furniture_name: "卧室空调" },
+    { furniture_index: 9, furniture_name: "浴室镜柜" },
+  ].map((userData) => { const mesh = new THREE.Object3D(); mesh.userData = userData; model.add(mesh); return mesh; });
+  updateCutaway(model, null);
+  assert.deepEqual(parts.map(p => p.visible), [false, true, false, true, true, true, true, true, false, true]);
+  updateCutaway(model, null, {enabled: false});
+  assert.ok(parts.every(p => p.visible));
+  updateCutaway(model, null);
+  assert.deepEqual(parts.map(p => p.visible), [false, true, false, true, true, true, true, true, false, true]);
+});
 
 test("完整墙体与封口剖切预览互斥显示，重复安装不会增加几何", () => {
   const model = new THREE.Group();

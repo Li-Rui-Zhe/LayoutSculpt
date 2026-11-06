@@ -67,6 +67,7 @@ const copy = (value) => structuredClone(value);
 export default function DiyStudio({
   onClose,
   onUse,
+  onLibrary,
   saveBeforeUse = false,
   initialDesign = null,
   placementSize = null,
@@ -592,7 +593,7 @@ export default function DiyStudio({
         json({ design: current, revision: asset?.revision || 0 }),
       );
       loadValue(value);
-      setNotice("已保存到素材库，可在人工设计中使用。");
+      setNotice(""); // 底部保存状态与应用按钮已说明下一步，不再重复弹提示。
       await refresh();
     });
   };
@@ -1503,7 +1504,7 @@ export default function DiyStudio({
             另存为新素材
           </button>
           <button
-            className="primary-button"
+            className={onUse ? "secondary-button" : "primary-button"}
             data-diy-save
             disabled={busy || generating || !design || !!issues.length}
             onClick={() => save()}
@@ -1559,7 +1560,22 @@ export default function DiyStudio({
                   });
               }}
             >
-              {useLabel}
+              {busy
+                ? "正在处理…"
+                : saveBeforeUse && !unsaved && asset?.status === "ready"
+                  ? "选择家具放置位置"
+                  : useLabel}
+            </button>
+          )}
+          {onLibrary && asset?.status === "ready" && (
+            <button
+              className="text-button"
+              disabled={busy || generating}
+              onClick={() =>
+                guard(() => onLibrary(asset.id), "舍弃未保存修改并查看素材库")
+              }
+            >
+              在素材库查看
             </button>
           )}
         </footer>
@@ -1577,8 +1593,7 @@ export default function DiyStudio({
         )}
         {!onUse && (
           <p className="diy-footnote">
-            保存后，在成功任务的「人工设计 → 家具 → DIY
-            素材库」放入户型；放入的是独立副本。
+            在上方选择一个已完成的目标户型，即可直接选择放置位置；也可先保存到素材库，稍后使用。
           </p>
         )}
       </div>

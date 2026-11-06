@@ -995,9 +995,11 @@ export default function AssetLibrary({
                           </p>
                         )}
                         <small>
-                          {selected.kind === "wall_television"
-                            ? "进入人工设计后点击墙边放置，自动贴合完整墙面；也可自动找空位。默认底部离地 1.05 米。"
-                            : "进入人工设计后预览占地并点击放下，也可自动找空位。确认前不会添加，放下后仍可拖动和精调。"}
+                          {(selected.kind === "wall_television" || selected.placement_surface === "wall")
+                            ? "进入人工设计后点击墙边放置，自动贴合完整墙面；也可自动找空位。可在右侧调整安装高度。"
+                            : selected.placement_surface === "countertop"
+                              ? "点击尺寸足够的桌面或台面放置，自动贴合台面高度；也可自动寻找合适台面。"
+                              : "进入人工设计后预览占地并点击放下，也可自动找空位。确认前不会添加，放下后仍可拖动和精调。"}
                         </small>
                       </div>
                     )}

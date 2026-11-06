@@ -98,7 +98,7 @@ class LibraryService:
                         "furniture_kind": registered.get("furniture_kind", path.stem) if registered else "model",
                         "catalog_kind": path.stem if registered else None,
                         **{key: registered.get(key) if registered else None for key in
-                           ("family", "variant", "style", "tags", "rooms", "description")},
+                           ("family", "variant", "style", "tags", "rooms", "description", "quality_tier", "placement_surface", "source_url", "license", "authors")},
                         "category": registered.get("category") if registered else None,
                         "revision": registered.get("revision") if registered else None,
                         "default_elevation": registered.get("default_elevation", 0) if registered else 0,
@@ -227,7 +227,8 @@ class LibraryService:
                 )
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 raise HTTPException(422, f"无法放置此模型：{exc}") from exc
-            content = {"kind": entry["item"]["furniture_kind"], "asset_id": asset_id}
+            content = {"kind": entry["item"]["furniture_kind"], "asset_id": asset_id,
+                       "placement_surface": entry["item"].get("placement_surface")}
             name = entry["item"]["name"]
             family = entry["item"].get("family")
             elevation = entry["item"].get("default_elevation", 0)
@@ -294,7 +295,7 @@ class LibraryService:
                     "source": item.get("source"),
                     "catalog_kind": item.get("catalog_kind"),
                     "styles": asset_styles(item),
-                    **{key: item.get(key) for key in ("family", "variant", "style", "tags", "rooms", "description")},
+                    **{key: item.get(key) for key in ("family", "variant", "style", "tags", "rooms", "description", "quality_tier", "placement_surface", "source_url", "license", "authors")},
                     "default_elevation": 1.05 if kind == "wall_television" else item.get("default_elevation", 0),
                 }
             )
@@ -317,7 +318,7 @@ class LibraryService:
                 else:
                     template = await self.placement(asset_id)
                     item.update(
-                        {key: template[key] for key in ["kind", "diy", "asset_id", "source_asset_id", "asset_family"]}
+                        {key: template[key] for key in ["kind", "diy", "asset_id", "source_asset_id", "asset_family", "placement_surface"]}
                     )
             items.append(item)
         return Furnishing.model_validate({"items": items, "notes": document["notes"]})

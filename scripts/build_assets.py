@@ -30,6 +30,9 @@ def find_blender():
     return next((str(p) for p in (ROOT / "tools" / "blender").glob("*/blender.exe")), "")
 
 if __name__ == "__main__":
+    catalog_path = ROOT / "assets/furniture/catalog.json"
+    prior = json.loads(catalog_path.read_text(encoding="utf-8")) if catalog_path.exists() else {"items": []}
+    external_entries = [item for item in prior["items"] if item.get("generator") == "external"]
     blender = find_blender()
     if not blender:
         raise SystemExit("未找到本地 Blender，请设置 .env 中的 BLENDER_PATH")
@@ -69,4 +72,16 @@ if __name__ == "__main__":
         load_glb(output.read_bytes())
     subprocess.run([sys.executable, str(ROOT / "scripts/render_asset_thumbnails.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/build_extra_assets.py")], check=True)
-    raise SystemExit(subprocess.call([sys.executable, str(ROOT / "scripts/build_home_collection.py")]))
+    subprocess.run([sys.executable, str(ROOT / "scripts/build_home_collection.py")], check=True)
+    # 基础 Blender 重建不能静默抹掉已经导入的开放素材，也不应强制联网下载。
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    entries = {item["kind"]: item for item in catalog["items"]}
+    for item in external_entries:
+        payload = (catalog_path.parent / "glb" / f"{item['kind']}.glb").read_bytes()
+        if hashlib.sha256(payload).hexdigest() != item["sha256"]:
+            raise SystemExit(f"开放素材摘要不一致：{item['kind']}")
+        load_glb(payload)
+        entries[item["kind"]] = item
+    catalog["items"] = sorted(entries.values(), key=lambda item: item["kind"])
+    catalog["license"] = "原创与 CC0 家具；外部来源见 THIRD_PARTY.md。"
+    catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -13,6 +13,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tools.home_collection import SPECS, LEGACY, VERSION, construct
+from tools.household_essentials import PLACEMENT
 from backend.app.library_models import load_glb
 from scripts.render_asset_thumbnails import render
 
@@ -86,6 +87,12 @@ def enrich(entry, room, family, variant, role="oak"):
         entry["tags"].extend(["电脑", "计算机", "办公设备", "桌面摆件"])
         entry["tags"].extend(["台式机", "显示器", "主机", "键盘", "鼠标"]
                              if entry["kind"] == "desktop_computer" else ["笔记本", "手提电脑"])
+    placement, elevation = PLACEMENT.get(entry["kind"], ("floor", 0))
+    entry.update(placement_surface=placement, default_elevation=elevation)
+    if placement != "floor":
+        entry["description"] += "需安装在完整实墙上，避开门窗。" if placement == "wall" else "需放在合适台面上，离地高度随台面调整。"
+    if entry["kind"] == "aircon_wall":
+        entry["rooms"] = ["客厅", "卧室", "书房"]
     if family == "床":
         entry["description"] += "床体尺寸不等同于床垫采购规格。"
     if room == "儿童房":

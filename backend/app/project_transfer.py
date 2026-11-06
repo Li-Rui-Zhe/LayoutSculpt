@@ -120,6 +120,9 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
 
         from scripts.build_showcase import document
         from .sample_layers import preserve_sample
+        from .quality import finish_design
+        from .consistency import verify_export
+        from .lighting_summary import model_lighting_summary
 
         data = await asyncio.to_thread(preserve_sample, document(), ROOT / "public/models/forest-home-v3.glb", settings.data_dir / "library")
         layout = Layout.model_validate(
@@ -178,6 +181,12 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
                 width=max(2, round(w["thickness"] * scale)),
             )
         image.save(workspace / "source.png")
+        _, _, quality = finish_design(layout, furniture, automatic=False)
+        quality.update(model_lighting_summary(workspace / "model.glb", (light.id for light in layout.lights)))
+        consistency = await asyncio.to_thread(verify_export, data, workspace / "model.glb")
+        consistency.update(source_reviewed=False, source_kind="authored_sample")
+        (workspace / "quality-report.json").write_text(json.dumps(quality, ensure_ascii=False), encoding="utf-8")
+        (workspace / "consistency-report.json").write_text(json.dumps(consistency, ensure_ascii=False), encoding="utf-8")
         await store.create(
             identifier,
             f"{layout.title.split(' · ')[0]} · 我的设计副本",
@@ -194,6 +203,10 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
                 "room_count": len(layout.rooms),
                 "model_url": f"/api/jobs/{identifier}/artifacts/model.glb",
                 "layout_url": f"/api/jobs/{identifier}/artifacts/layout.json",
+                "quality": quality,
+                "quality_url": f"/api/jobs/{identifier}/artifacts/quality-report.json",
+                "consistency": consistency,
+                "consistency_url": f"/api/jobs/{identifier}/artifacts/consistency-report.json",
             },
             message="已创建独立可编辑示例副本",
         )
