@@ -1,4 +1,5 @@
 import { frameMetrics } from "./frameMetrics.js";
+import { exportPixelRatio } from "./exportResolution.js";
 import { RoomTour } from "./RoomTour.js";
 import {
   estimatedModelBytes,
@@ -921,7 +922,7 @@ export class StudioScene {
         : this.camera.zoom * 100,
     );
   }
-  snapshot({ maxDimension = 0, type = "image/png", quality = 0.94 } = {}) {
+  snapshot({ maxDimension = 2048, type = "image/png", quality = 0.94 } = {}) {
     this.interactionQuality?.restore();
     // 导出所选环境的完整效果，而不是切换途中的混合帧。
     this.light(this.state?.preset);
@@ -931,12 +932,12 @@ export class StudioScene {
     });
     const originalRatio = this.renderer.getPixelRatio();
     const size = this.renderer.getSize(new THREE.Vector2());
-    const ratio = maxDimension
-      ? Math.max(
-          originalRatio,
-          Math.min(3, maxDimension / Math.max(1, size.x, size.y)),
-        )
-      : originalRatio;
+    const ratio = exportPixelRatio(
+      size.x,
+      size.y,
+      maxDimension,
+      this.renderer.capabilities.maxTextureSize,
+    );
     try {
       if (ratio !== originalRatio) {
         this.renderer.setPixelRatio(ratio);

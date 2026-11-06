@@ -19,7 +19,7 @@ from PIL import Image
 from shapely.geometry import Point, Polygon
 
 from .config import ROOT
-from .architecture import wall_sections, section_finish, BOUNDARY_GLASS
+from .architecture import wall_sections, section_finish, wall_footprint, BOUNDARY_GLASS
 from .balcony import add_boundary_frames
 from .opening_visuals import add_opening_variant
 from .wall_surfaces import add_wall_surfaces
@@ -273,7 +273,7 @@ class Builder:
                 role,
                 angle,
                 material,
-                {**(self.cut_metadata or {}), "cutaway_upper": low >= CUT_HEIGHT},
+                {**(self.cut_metadata or {}), "cutaway_upper": low >= CUT_HEIGHT and not (self.cut_metadata or {}).get("cutaway_keep")},
             )
 
     def cylinder(self, name, center, radius, height, role, metadata=None):
@@ -497,7 +497,20 @@ class Builder:
             "gray": (0.51, 0.56, 0.57),
         }
         groups = {}
+        from shapely.ops import unary_union
+        backdrop = unary_union([wall_footprint(w) for w in self.document["walls"] if w.get("cutaway_keep")])
+        retained = {}
         for bottom, top, finish, shape in wall_sections(self.document, CUT_HEIGHT):
+            if bottom >= CUT_HEIGHT and not backdrop.is_empty:
+                kept = shape.intersection(backdrop)
+                pieces = [kept] if kept.geom_type == "Polygon" else getattr(kept, "geoms", [])
+                for piece in pieces:
+                    if piece.geom_type != "Polygon" or piece.area < 1e-8:
+                        continue
+                    part = trimesh.creation.extrude_polygon(piece.simplify(1e-7, preserve_topology=True), top - bottom, engine="earcut")
+                    part.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0]))
+                    part.apply_translation([-self.cx, top, -self.cz])
+                    retained.setdefault(finish, []).append(part)
             color = colors.get(finish)
             material = (
                 trimesh.visual.material.PBRMaterial(
@@ -568,7 +581,8 @@ class Builder:
             lower = groups.get((finish, False), [])
             upper = groups.get((finish, True), [])
             mesh = trimesh.boolean.union(lower + upper, engine="manifold")
-            preview = trimesh.boolean.union(lower, engine="manifold") if lower else None
+            preview_parts = lower + retained.get(finish, [])
+            preview = trimesh.boolean.union(preview_parts, engine="manifold") if preview_parts else None
             self.add(
                 "墙体_连续结构",
                 mesh,
@@ -665,6 +679,7 @@ class Builder:
                 nx, nz = -nx, -nz
             self.cut_metadata = {
                 "wall_id": wall["id"],
+                "cutaway_keep": wall.get("cutaway_keep", False),
                 "wall_exterior": wall["exterior"]
                 and not (plus_inside and minus_inside),
                 "wall_normal": [nx, nz],

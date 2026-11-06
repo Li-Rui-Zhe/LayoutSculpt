@@ -26,6 +26,7 @@ from backend.app.glb_builder import Builder, CUT_HEIGHT
 from backend.app.schemas import Layout
 from backend.app.schemas import Furnishing
 from backend.app.quality import validate_generated_furnishing
+from backend.app.sample_objects import sample_object
 from scripts.showcase_textiles import draped_throw, sofa_triangles, upper_surface, curtain_panel
 from scripts.showcase_finishes import travertine_texture, cushion_mesh, vessel_mesh, olive_tree
 from scripts.showcase_garden import Garden
@@ -118,13 +119,14 @@ def document():
     item("armchair", "胡桃木阅读椅", "living", 4.57, 3.62, 0.78, 0.8, 0.86, 35)
     item("tv_console", "格栅电视低柜", "living", 5.61, 4.68, 1.46, 0.4, 0.48, 90)
     item("wall_television", "超薄壁挂电视", "living", 5.8, 4.68, 1.24, 0.1, 0.71, 90, 0.93)
-    for x in [4.15, 5.0]:
-        item("chair", "弧面软包餐椅", "dining", x, 0.59, 0.46, 0.5, 0.8)
-        item("chair", "弧面软包餐椅", "dining", x, 2.13, 0.46, 0.5, 0.8, 180)
+    # 窄餐区沿长向摆桌，椅子分居左右，避免北墙挤占拉椅空间。
+    for z in [.93, 1.78]:
+        item("chair", "弧面软包餐椅", "dining", 3.72, z, 0.46, 0.5, 0.8, 270)
+        item("chair", "弧面软包餐椅", "dining", 5.1, z, 0.46, 0.5, 0.8, 90)
     for name, room, x, z, h in [
         ("客厅橄榄树", "living", 0.65, 6.5, 1.75),
-        ("餐边绿植", "dining", 5.48, 0.6, 1.35),
-        ("卧室绿植", "bedroom", 9.1, 3.12, 1.15),
+        ("餐边绿植", "dining", 5.48, 0.4, 1.35),
+        ("卧室绿植", "bedroom", 9.1, 2.55, 1.15),
         ("露台橄榄树", "terrace", 5.30, 9.02, 1.8),
         ("露台绿植", "terrace", 4.25, 9.05, 1.15),
     ]:
@@ -157,6 +159,7 @@ def document():
                 "thickness": 0.24 if exterior else 0.2,
                 "height": 0.32 if id.startswith("terrace_") else 2.8,
                 "exterior": exterior,
+                "cutaway_keep": id in {"north", "west"},
                 "finish": finish,
             }
             for id, a, b, exterior, finish in walls
@@ -280,12 +283,17 @@ class Showcase(Builder):
         self.instances.append({"kind": kind, "room_id": item["room_id"], "asset_id": "showcase_olive" if kind == "plant" else f"builtin_{kind}", "dimensions": [item["width"], item["depth"], item["height"]]})
 
     def add(self, name, mesh, role, transform=None, metadata=None, material=None):
-        # 挂画随承托墙体隐藏，不让画框/画芯在剖切视图中悬空。
+        # 背景墙保留完整挂画；被剖低的墙面不留下悬空装饰。
         if name.startswith(("餐厅画框", "抽象画底纸", "陶土色块", "画作", "主卧织物画", "主卧浮雕织物", "客厅艺术画")):
-            metadata = {**(metadata or {}), "cutaway_upper": True}
+            wall_id = "west" if name.startswith("客厅") else "north"
+            metadata = {**(metadata or {}), **self.attached_cutaway(wall_id)}
         if role == "floor" and (material is None or material.name.endswith("_oak")):
             material = self.parquet
         super().add(name, mesh, role, transform, metadata, material)
+
+    def attached_cutaway(self, wall_id):
+        wall = next(w for w in self.document["walls"] if w["id"] == wall_id)
+        return {"wall_id": wall_id, "cutaway_upper": not wall.get("cutaway_keep", False)}
 
     def pos(self, x, h, z):
         return [x - self.cx, h, z - self.cz]
@@ -324,7 +332,8 @@ class Showcase(Builder):
 
     def smooth_detail(self, name, mesh, x, z, height, mat, angle=0, *, uv=None, metadata=None):
         if name.startswith(("陶土色块", "主卧浮雕织物", "客厅艺术画")):
-            metadata = {**(metadata or {}), "cutaway_upper": True}
+            wall_id = "west" if name.startswith("客厅") else "north"
+            metadata = {**(metadata or {}), **self.attached_cutaway(wall_id)}
         mesh.visual = trimesh.visual.TextureVisuals(
             uv=mesh.vertices[:, [0, 2]] if uv is None else uv, material=mat)
         # Trimesh exports cached normals by default. glTF falls back to flat
@@ -449,10 +458,10 @@ class Showcase(Builder):
         self.block("岛台下吸排烟口", 1.12, 1.68, .56, .035, .008, .957,
                    "dark", self.charcoal, .008)
         # Oval dining table and four chairs, all with space to pull out.
-        self.block("椭圆餐桌", 4.58, 1.36, 1.85, 0.9, 0.075, 0.74, "wood", radius=0.44)
+        self.block("椭圆餐桌", 4.58, 1.36, 1.85, 0.8, 0.075, 0.74, "wood", radius=0.39)
         for x in [4.15, 5.0]:
             self.disc("餐桌柱脚", x, 1.36, 0.17, 0.69, 0.05, "wood")
-            for z in [1.09, 1.63]:
+            for z in [1.14, 1.58]:
                 self.disc("亚麻餐垫", x, z, 0.17, 0.005, 0.816, "fabric")
                 self.disc("手作陶瓷餐盘", x, z, 0.12, 0.012, 0.822, "white")
                 self.disc("餐盘内沿", x, z, 0.095, 0.004, 0.835, "stone")
@@ -538,13 +547,22 @@ class Showcase(Builder):
                 radius=0.004,
                 metadata={"fixture_visual_placeholder": True},
             )
-        self.lamp("餐桌纸灯", 4.7, 1.42, 2.18, 0.32, 450)
+        self.lamp("餐桌纸灯", 4.43, 1.42, 2.18, 0.32, 450)
         self.lamp("书房台灯", 9.1, 4.75, 1.08, 0.12, 240)
         self.lamp("浴室壁灯", 6.8, 8.36, 1.4, 0.12, 240)
+        # 桌面和餐具使用同一刚体变换，外观细节完整保留。
+        pivot = self.pos(4.58, 0, 1.36)
+        pose = trimesh.transformations.translation_matrix([-.15, 0, 0]) @ trimesh.transformations.rotation_matrix(-math.pi / 2, [0, 1, 0], point=pivot)
+        metadata = {child: edge.get("metadata", {}) for (_, child), edge in self.scene.graph.transforms.edge_data.items()}
+        for node in list(self.scene.graph.nodes_geometry):
+            owner = sample_object(node)
+            if owner and owner[0] == "dining_table":
+                transform, geometry = self.scene.graph[node]
+                self.scene.graph.update(frame_to=node, geometry=geometry, matrix=pose @ transform, metadata=metadata.get(node, {}))
 
     def window_curtains(self, name, x, start, end, *, wall_id):
         # Track is physically attached above the window; curtains clear the floor.
-        metadata = {"wall_id": wall_id, "cutaway_upper": True}
+        metadata = self.attached_cutaway(wall_id)
         self.block(f"{name}窗帘细轨道", x, (start + end) / 2, .075, end - start + .64,
                    .025, 2.65, "white", self.paper, .008, metadata=metadata)
         for index, z in enumerate([start, end]):
@@ -553,16 +571,17 @@ class Showcase(Builder):
                                self.curtain_linen, math.pi / 2, uv=uv, metadata=metadata)
             # Keep the original intact for the full view. A closed lower
             # section follows the same horizontal cut as its supporting wall.
-            origin = [0, CUT_HEIGHT - .075, 0]
-            textured = mesh.slice_plane(origin, [0, -1, 0], cap=False)
-            lower = mesh.slice_plane(origin, [0, -1, 0], cap=True)
-            distance, nearest = cKDTree(textured.vertices).query(lower.vertices)
-            if distance.max() > 1e-7:
-                raise ValueError("窗帘剖切纹理顶点不匹配")
-            self.smooth_detail(f"{name}剖切窗帘_{index + 1}", lower, x, z, .075,
-                               self.curtain_linen, math.pi / 2,
-                               uv=textured.visual.uv[nearest],
-                               metadata={"wall_id": wall_id, "cutaway_only": True})
+            if metadata["cutaway_upper"]:
+                origin = [0, CUT_HEIGHT - .075, 0]
+                textured = mesh.slice_plane(origin, [0, -1, 0], cap=False)
+                lower = mesh.slice_plane(origin, [0, -1, 0], cap=True)
+                distance, nearest = cKDTree(textured.vertices).query(lower.vertices)
+                if distance.max() > 1e-7:
+                    raise ValueError("窗帘剖切纹理顶点不匹配")
+                self.smooth_detail(f"{name}剖切窗帘_{index + 1}", lower, x, z, .075,
+                                   self.curtain_linen, math.pi / 2,
+                                   uv=textured.visual.uv[nearest],
+                                   metadata={"wall_id": wall_id, "cutaway_only": True})
             # Small hanging tabs join the gathered header to its track.
             for dz in np.linspace(-.24, .24, 6):
                 self.block(f"{name}窗帘挂扣_{index}_{dz:.2f}", x, z + dz, .012, .009,

@@ -35,7 +35,7 @@ export default function PresentationLayers({ document, onChange, disabled }) {
         示例中的织物、摆件和庭院陈设会随设计保存。这里按区域成组调整；家具本体仍在对象列表中单独编辑。
       </p>
       <p>
-        调整房间或家具后，可按需要移动或隐藏对应陈设。删除和调整都可以撤销。
+        已绑定墙体的窗帘与挂画随墙移动；删除承托墙后会隐藏并保留，可重新显示或撤销。
       </p>
       <fieldset disabled={disabled}>
         {layers.map((layer) => (
@@ -54,9 +54,20 @@ export default function PresentationLayers({ document, onChange, disabled }) {
               document={document}
               item={layer}
               onChange={(parent_furniture_id) =>
-                update(layer.id, { parent_furniture_id })
+                update(layer.id, { parent_furniture_id, parent_wall_id: null })
               }
             />
+            {layer.parent_wall_id && (
+              <p>
+                随墙体移动 ·{" "}
+                <button
+                  type="button"
+                  onClick={() => update(layer.id, { parent_wall_id: null })}
+                >
+                  解除墙体联动
+                </button>
+              </p>
+            )}
             <div className="edit-number-grid">
               <NumberField
                 label={`${layer.name} X`}

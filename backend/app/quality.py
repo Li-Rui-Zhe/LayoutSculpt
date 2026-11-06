@@ -304,7 +304,7 @@ def prepare_generated_furnishing(plan, layout, *, assets=None, fixed_items=()):
     return result
 
 
-def finish_design(layout, plan, *, automatic=True):
+def finish_design(layout, plan, *, automatic=True, requirements=""):
     """Add editable lighting and face chairs toward nearby tables; preserve manual work."""
     layout, plan = layout.model_copy(deep=True), plan.model_copy(deep=True)
     changes = []
@@ -417,16 +417,23 @@ def finish_design(layout, plan, *, automatic=True):
                 )
             )
             changes.append(f"为{room.name}配置可编辑主灯")
+    from .usability import access_issues, improve_access
+    if automatic:
+        changes.extend(improve_access(plan, layout))
+        from .lighting_quality import add_task_lighting
+        changes.extend(add_task_lighting(layout, plan))
+    access = access_issues(plan, layout)
     report = {
         "version": 1,
         "changes": changes,
-        "issues": furnishing_issues(plan, layout) + structure_issues(layout),
+        "issues": furnishing_issues(plan, layout) + structure_issues(layout) + [issue["text"] for issue in access],
+        "access_issues": access,
         "room_count": len(layout.rooms),
         "wall_count": len(layout.walls),
         "opening_count": len(layout.openings),
         "furniture_count": len(plan.items),
         "light_count": len(layout.lights),
         "scale_note": layout.scale_note,
-        "functional_gaps": functional_gaps(layout, plan),
+        "functional_gaps": functional_gaps(layout, plan, requirements),
     }
     return layout, plan, report

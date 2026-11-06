@@ -37,7 +37,7 @@ class SurfaceDesign(BaseModel):
         return self
 
 
-def render_surface(design: SurfaceDesign, data_dir=None):
+def render_surface(design: SurfaceDesign, data_dir=None, *, size=2160):
     parameters = None
     item = MATERIALS.get(design.base_id, {})
     surface = item.get("surface") or {
@@ -45,7 +45,9 @@ def render_surface(design: SurfaceDesign, data_dir=None):
         "stone": "stone",
         "linen": "linen",
     }.get(item.get("texture"))
-    size = 720  # 可被 1..6 整除，避免密度为 5 时边界出现半块纹理。
+    # 720 用于编辑预览，2160 用于保存；均能整除 1..6，铺贴不留半块接缝。
+    if size not in {720, 2160}:
+        raise ValueError("不支持的材质分辨率")
     path = ROOT / f"public/materials/{surface}_color.png" if surface else None
     if design.base_id.startswith(("source:", "texture:")):
         root = data_dir if data_dir is not None else ROOT / "data"
@@ -67,7 +69,7 @@ def render_surface(design: SurfaceDesign, data_dir=None):
     if path:
         with Image.open(path) as source:
             tile = source.convert("RGB").resize(
-                (size // design.repeat, size // design.repeat)
+                (size // design.repeat, size // design.repeat), Image.Resampling.LANCZOS
             )
         image = Image.new("RGB", (size, size))
         for y in range(0, size, tile.height):

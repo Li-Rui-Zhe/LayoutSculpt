@@ -180,16 +180,6 @@ export default function App() {
                 ? "工作台未连接"
                 : "正在连接工作台"}
           </span>
-          {!!(activeCount || reviewCount) && (
-            <span className="local-tag">
-              {[
-                activeCount && `${activeCount} 个生成中`,
-                reviewCount && `${reviewCount} 个待核对`,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-          )}
         </div>
       </header>
       {helpOpen && <WorkspaceHelp onClose={() => setHelpOpen(false)} />}
@@ -230,6 +220,14 @@ export default function App() {
               <PanelLeftOpen size={20} />
             )}
             <span>我的方案</span>
+            {!!(activeCount || reviewCount) && (
+              <small
+                className="nav-task-count"
+                aria-label={`${activeCount} 个生成中，${reviewCount} 个待核对`}
+              >
+                {activeCount + reviewCount}
+              </small>
+            )}
           </button>
           <button
             aria-label="新建生成任务"

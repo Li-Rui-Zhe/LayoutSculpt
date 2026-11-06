@@ -26,3 +26,25 @@ export function nextDesignName(name, version) {
   const suffix = ` · V${version}`;
   return cleanVersionName(name).slice(0, 120 - suffix.length) + suffix;
 }
+
+// 过滤列表不改选择值；旧版本被选中时仍保留，避免误存到最新版。
+export function visibleTargets(
+  groups,
+  { query = "", history = false, selected = "" } = {},
+) {
+  const needle = query.trim().toLocaleLowerCase();
+  return groups
+    .map((group) => ({
+      ...group,
+      latestVersionId: group.versions[0]?.id,
+      versions: group.versions.filter(
+        (job, index) =>
+          job.id === selected ||
+          ((history || index === 0) &&
+            `${group.name} ${job.name || ""}`
+              .toLocaleLowerCase()
+              .includes(needle)),
+      ),
+    }))
+    .filter((group) => group.versions.length);
+}

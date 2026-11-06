@@ -78,13 +78,19 @@ export default function ModelFields({
               disabled={!selectableModel(item, models.requiresImage)}
             >
               {item.name}
-              {item.id === models.catalog.default_model ? " · 推荐默认" : ""}
+              {item.id === models.catalog.default_model &&
+              selectableModel(item, models.requiresImage)
+                ? " · 默认"
+                : ""}
               {item.available === false
                 ? " · 当前不可选"
                 : models.requiresImage !== false &&
                     item.supports_image === false
                   ? " · 不支持识图"
-                  : ""}
+                  : models.requiresImage !== false &&
+                      item.supports_image !== true
+                    ? " · 识图能力待检测"
+                    : ""}
               {item.source === "local_config" && item.available !== false
                 ? " · 本地配置"
                 : ""}

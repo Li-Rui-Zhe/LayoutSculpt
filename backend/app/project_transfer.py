@@ -114,12 +114,10 @@ def read_project_archive(content):
 def install_transfer_routes(app, store, settings, public, normalize_image):
     @app.post("/api/projects/sample", status_code=201)
     async def copy_sample():
-        import shutil
-
         from PIL import Image, ImageDraw
 
         from scripts.build_showcase import document
-        from .sample_layers import preserve_sample
+        from .sample_layers import preserve_sample, write_editable_sample
         from .quality import finish_design
         from .consistency import verify_export
         from .lighting_summary import model_lighting_summary
@@ -135,8 +133,9 @@ def install_transfer_routes(app, store, settings, public, normalize_image):
         workspace = settings.workspace(identifier)
         workspace.mkdir(parents=True)
         await asyncio.to_thread(
-            shutil.copyfile,
+            write_editable_sample,
             ROOT / "public/models/forest-home-v3.glb",
+            settings.data_dir / "library",
             workspace / "model.glb",
         )
         data = {

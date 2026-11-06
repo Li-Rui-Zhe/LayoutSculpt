@@ -26,7 +26,9 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
   const model = rt.group.children[0];
   if (!model || !rt.modelDocument) return;
   const signature = geometrySignature(document.layout);
-  const base = geometrySignature(liveSceneSnapshot(rt.modelDocument, document, liveCapabilities(rt)).layout);
+  const base = geometrySignature(
+    liveSceneSnapshot(rt.modelDocument, document, liveCapabilities(rt)).layout,
+  );
   const key = signature === base ? null : signature + cutaway + night;
   if (rt.architectureKey === key) return;
   rt.architectureKey = key;
@@ -133,7 +135,10 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
       length = Math.hypot(dx, dy);
     if (length < 0.001) continue;
     const angle = -Math.atan2(dy, dx),
-      height = cutaway ? Math.min(1.2, wall.height) : wall.height;
+      height =
+        cutaway && !wall.cutaway_keep
+          ? Math.min(1.2, wall.height)
+          : wall.height;
     const openings = document.layout.openings
       .map((o, index) => ({ ...o, index }))
       .filter((o) => o.wall_id === wall.id);
@@ -274,10 +279,7 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
       const partMaterials = {};
       for (const part of openingParts(o, wall.thickness)) {
         const low = part.position[1] - part.size[1] / 2;
-        const high = Math.min(
-          part.position[1] + part.size[1] / 2,
-          cutaway ? 1.2 : wall.height,
-        );
+        const high = Math.min(part.position[1] + part.size[1] / 2, height);
         if (high - low < 0.001) continue;
         const type = part.material;
         partMaterials[type] ||= new THREE.MeshStandardMaterial({
@@ -336,7 +338,7 @@ export function updateLiveArchitecture(rt, document, cutaway, night) {
         o.offset,
         o.offset + o.width,
         o.bottom,
-        Math.min(o.bottom + o.height, cutaway ? 1.2 : wall.height),
+        Math.min(o.bottom + o.height, height),
         Math.max(0.04, wall.thickness * 0.4),
         material,
         {

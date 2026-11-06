@@ -18,6 +18,9 @@ import {
   Palette,
   Table2,
   PanelsTopLeft,
+  BedDouble,
+  Sofa,
+  Library,
 } from "lucide-react";
 import ModelFields from "../components/ModelFields.jsx";
 import NumberField from "../editor/NumberField.jsx";
@@ -901,6 +904,10 @@ export default function DiyStudio({
                   ["table", "餐桌", Table2],
                   ["cabinet", "玄关柜", PanelsTopLeft],
                   ["chair", "餐椅", Armchair],
+                  ["bed", "双人床", BedDouble],
+                  ["sofa", "沙发", Sofa],
+                  ["desk", "书桌", Table2],
+                  ["shelf", "书架", Library],
                 ].map(([id, title, Icon]) => (
                   <button
                     key={id}
@@ -1302,26 +1309,29 @@ export default function DiyStudio({
                         onChange={(e) => patchPart("name", e.target.value)}
                       />
                     </label>
-                    <label>
-                      分组路径
-                      <input
-                        aria-label="部件分组路径"
-                        maxLength={120}
-                        placeholder="例如：椅子/支撑"
-                        value={part.edit_group || ""}
-                        onChange={(e) =>
-                          patchPart("edit_group", e.target.value)
-                        }
-                      />
-                    </label>
-                    {part.edit_group && (
-                      <GroupTransform
-                        design={design}
-                        group={part.edit_group}
-                        onCommit={commit}
-                        onError={setError}
-                      />
-                    )}
+                    <details>
+                      <summary>高级：部件分组与联动</summary>
+                      <label>
+                        分组路径
+                        <input
+                          aria-label="部件分组路径"
+                          maxLength={120}
+                          placeholder="例如：椅子/支撑"
+                          value={part.edit_group || ""}
+                          onChange={(e) =>
+                            patchPart("edit_group", e.target.value)
+                          }
+                        />
+                      </label>
+                      {part.edit_group && (
+                        <GroupTransform
+                          design={design}
+                          group={part.edit_group}
+                          onCommit={commit}
+                          onError={setError}
+                        />
+                      )}
+                    </details>
                     <label>
                       部件形状
                       <select
@@ -1337,18 +1347,38 @@ export default function DiyStudio({
                       </select>
                     </label>
                     <div className="edit-number-grid">
-                      {numbers.map(([label, key, min, max, unit = "m"]) => (
-                        <NumberField
-                          key={key}
-                          label={label}
-                          value={part[key]}
-                          min={min}
-                          max={max}
-                          unit={unit}
-                          onCommit={(n) => patchPart(key, n)}
-                        />
-                      ))}
+                      {numbers
+                        .slice(0, 3)
+                        .map(([label, key, min, max, unit = "m"]) => (
+                          <NumberField
+                            key={key}
+                            label={label}
+                            value={part[key]}
+                            min={min}
+                            max={max}
+                            unit={unit}
+                            onCommit={(n) => patchPart(key, n)}
+                          />
+                        ))}
                     </div>
+                    <details>
+                      <summary>精调：位置、朝向与质感</summary>
+                      <div className="edit-number-grid">
+                        {numbers
+                          .slice(3)
+                          .map(([label, key, min, max, unit = "m"]) => (
+                            <NumberField
+                              key={key}
+                              label={label}
+                              value={part[key]}
+                              min={min}
+                              max={max}
+                              unit={unit}
+                              onCommit={(n) => patchPart(key, n)}
+                            />
+                          ))}
+                      </div>
+                    </details>
                     <div className="diy-materials">
                       <button
                         disabled={part.edit_locked}

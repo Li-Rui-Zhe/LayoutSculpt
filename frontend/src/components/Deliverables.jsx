@@ -13,6 +13,7 @@ import {
 import { deliveryState, deliveryFingerprint } from "./deliveryState.js";
 import { api } from "../api.js";
 import OperationStatus from "./OperationStatus.jsx";
+import { downloadFile } from "../downloadFile.js";
 
 export default function Deliverables({
   job,
@@ -29,6 +30,16 @@ export default function Deliverables({
   const lock = useRef(false),
     downloaded = useRef(null);
   const pendingDesign = useRef(null);
+  const downloadRequest = useRef(null);
+  const alive = useRef(true);
+  const [downloading, setDownloading] = useState(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      downloadRequest.current?.abort();
+    };
+  }, []);
   async function readCurrent() {
     const [remote, layout] = await Promise.all([
       api(`/drafts/edit:${job.id}`),
@@ -59,27 +70,39 @@ export default function Deliverables({
   const waiting =
     pendingId &&
     !["succeeded", "failed", "cancelled"].includes(pending?.status);
-  const download = (id) => {
-    const link = document.createElement("a");
-    link.href = `/api/jobs/${id}/bundle`;
-    link.download = "";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  const download = async (id) => {
+    if (!alive.current || downloadRequest.current) return;
+    const controller = new AbortController();
+    downloadRequest.current = controller;
+    setDownloading(true);
+    setError("");
+    try {
+      await downloadFile(
+        `/api/jobs/${id}/bundle`,
+        `LayoutSculpt-${id.slice(0, 8)}.zip`,
+        { signal: controller.signal },
+      );
+    } catch (e) {
+      if (!controller.signal.aborted) setError(e.message);
+    } finally {
+      downloadRequest.current = null;
+      if (!controller.signal.aborted) setDownloading(false);
+    }
   };
   useEffect(() => {
     if (pending?.status === "succeeded" && downloaded.current !== pending.id) {
       downloaded.current = pending.id;
-      download(pending.id);
+      void download(pending.id);
     }
   }, [pending?.id, pending?.status]);
   const exportCurrent = async () => {
-    if (lock.current || waiting) return;
+    if (lock.current || waiting || downloading) return;
     lock.current = true;
     setBusy(true);
     setError("");
     try {
       const current = await readCurrent();
+      if (!alive.current) return;
       setDraftState(current);
       if (current.conflict)
         throw Error("草稿存在不同版本，请进入人工设计处理后再导出。");
@@ -88,11 +111,11 @@ export default function Deliverables({
         pending?.status === "succeeded" &&
         pendingDesign.current === fingerprint
       ) {
-        download(pending.id);
+        await download(pending.id);
         return;
       }
       if (!current.changed) {
-        download(job.id);
+        await download(job.id);
         return;
       }
       const item = await projects.edit(
@@ -163,20 +186,31 @@ export default function Deliverables({
         </p>
       )}
       <OperationStatus
-        active={busy || !!waiting}
+        active={busy || downloading || !!waiting}
         failed={!!error || pending?.status === "failed"}
         cancelled={pending?.status === "cancelled"}
         successLabel="成果已准备，已交给浏览器下载"
         progress={waiting ? pending?.progress : undefined}
-        label={busy ? "正在核对最新设计" : pending?.stage || "正在更新导出模型"}
+        label={
+          downloading
+            ? "正在打包并接收成果"
+            : busy
+              ? "正在核对最新设计"
+              : pending?.stage || "正在更新导出模型"
+        }
         detail="完成后下载成果包；离开此页也可在任务列表找到新版本。"
       />
       {pending?.status === "succeeded" && (
         <p className="workspace-note">
           新版本已完成。
-          <a href={`/api/jobs/${pending.id}/bundle`} download>
+          <button
+            type="button"
+            className="text-button"
+            disabled={downloading}
+            onClick={() => download(pending.id)}
+          >
             重新下载最新成果包
-          </a>
+          </button>
         </p>
       )}
       {["failed", "cancelled"].includes(pending?.status) && (
@@ -223,10 +257,14 @@ export default function Deliverables({
           className="primary-button"
           onClick={exportCurrent}
           disabled={
-            busy || !!waiting || draftState.loading || draftState.conflict
+            busy ||
+            downloading ||
+            !!waiting ||
+            draftState.loading ||
+            draftState.conflict
           }
         >
-          {busy || waiting
+          {busy || waiting || downloading
             ? "正在准备成果…"
             : draftState.changed
               ? "更新并导出成果包"

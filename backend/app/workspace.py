@@ -83,6 +83,7 @@ def install_workspace_routes(app, store, settings=None, library=None):
         from .disconnect import while_connected
 
         started = perf_counter()
+        timings = {"queue": 0.0, "build": 0.0}
         document = {
             **body.layout.model_dump(),
             "furniture": body.furniture.model_dump()["items"],
@@ -107,12 +108,16 @@ def install_workspace_routes(app, store, settings=None, library=None):
                 return (Path(folder) / "model.glb").read_bytes()
 
         async def bounded_build():
+            queued = perf_counter()
             async with asyncio.timeout(settings.model_timeout), preview_limit:
+                timings["queue"] = (perf_counter() - queued) * 1000
                 # 等待其他请求时，同一份草稿可能已完成构建。
                 cached = preview_cache.get(key)
                 if cached is not None:
                     return cached, "hit"
+                building = perf_counter()
                 result = await build()
+                timings["build"] = (perf_counter() - building) * 1000
                 preview_cache.put(key, result)
                 return result, "miss"
         try:
@@ -125,7 +130,7 @@ def install_workspace_routes(app, store, settings=None, library=None):
         return Response(result, media_type="model/gltf-binary", headers={
             "Cache-Control": "no-store",
             "X-Preview-Cache": cache_status,
-            "Server-Timing": f"preview;dur={(perf_counter() - started) * 1000:.1f}",
+            "Server-Timing": f"preview;dur={(perf_counter() - started) * 1000:.1f}, queue;dur={timings['queue']:.1f}, build;dur={timings['build']:.1f}",
         })
 
     def draft_key(key):

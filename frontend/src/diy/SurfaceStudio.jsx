@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { surfaceHistory, surfacePixelKey } from "./surfaceHistory.js";
 import { materials, materialCategories } from "../catalog.js";
 import { api } from "../api.js";
 import {
@@ -51,9 +52,21 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
       readJson(`surface-draft:${category}`),
     ),
   );
-  const [mode, setMode] = useState(initial.mode),
-    [drafts, setDrafts] = useState(initial.drafts);
+  const [mode, setMode] = useState(initial.mode);
+  const [history, dispatchHistory] = useReducer(surfaceHistory, {
+    present: initial.drafts,
+    past: [],
+    future: [],
+    time: 0,
+  });
+  const drafts = history.present;
+  const setDrafts = useCallback(
+    (value, group) =>
+      dispatchHistory({ type: "set", value, group, time: Date.now() }),
+    [],
+  );
   const draft = drafts[mode];
+  const pixelKey = surfacePixelKey(draft);
   const [paintVisited, setPaintVisited] = useState(initial.mode === "draw"),
     [paintSeed, setPaintSeed] = useState(null);
   const [paintImage, setPaintImage] = useState(""),
@@ -103,13 +116,17 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
     busy: busy || uploading,
   });
   const selectMode = (next) => {
+    if (next !== mode) dispatchHistory({ type: "reset" });
     paintIntent.current++;
     setMode(next);
     setError("");
     if (next === "draw") setPaintVisited(true);
   };
   const change = (patch) =>
-    setDrafts((all) => ({ ...all, [mode]: { ...all[mode], ...patch } }));
+    setDrafts(
+      (all) => ({ ...all, [mode]: { ...all[mode], ...patch } }),
+      `${mode}:${Object.keys(patch).sort().join(",")}`,
+    );
   const receivePaint = (image) => {
     if (latestPaint.current === image) return;
     latestPaint.current = image;
@@ -187,8 +204,9 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...draft,
-            name: draft.name.trim() || `我的${label}材质`,
+            ...JSON.parse(pixelKey),
+            name: "材质预览",
+            origin: "preset",
           }),
           signal: controller.signal,
         });
@@ -217,7 +235,7 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
       controller.abort();
       if (url) URL.revokeObjectURL(url);
     };
-  }, [draft, hasSource, label, previewRetry]);
+  }, [pixelKey, hasSource, previewRetry]);
 
   const onAiSelection = (job) => {
     setAiSelection(job);
@@ -249,6 +267,10 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
   const save = async (event, apply = false) => {
     event?.preventDefault();
     if (saveLock.current || saveReason) return;
+    if (currentSaved) {
+      if (apply) onApply?.(saved);
+      return;
+    }
     const snapshot = { ...draft },
       currentMode = mode;
     saveLock.current = true;
@@ -399,10 +421,14 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
             form="surface-design-form"
             type="submit"
             className="primary-button"
-            disabled={!!saveReason}
+            disabled={!!saveReason || currentSaved}
             title={saveReason || "保存当前预览的材质"}
           >
-            {busy ? "正在保存…" : "保存到素材库"}
+            {busy
+              ? "正在保存…"
+              : currentSaved
+                ? "已保存到素材库"
+                : "保存为新材质"}
           </button>
         </div>
       </header>
@@ -610,7 +636,9 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
                 )}
               </div>
               <h2>{draft.name || `我的${label}材质`}</h2>
-              <small>拖动旋转，滚轮缩放 · 预览与保存使用同一张贴图</small>
+              <small>
+                拖动旋转，滚轮缩放 · 轻量预览，保存使用 2160 像素高清贴图
+              </small>
               {draft.optics?.transmission > 0 && (
                 <small>
                   后方色块用于观察透光。整墙应用可作为玻璃隔断；单侧饰面仍有实体墙背衬。
@@ -683,6 +711,22 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
           onSubmit={save}
         >
           <h2>材质属性</h2>
+          <div className="surface-history-actions">
+            <button
+              type="button"
+              disabled={busy || !history.past.length}
+              onClick={() => dispatchHistory({ type: "undo" })}
+            >
+              撤销属性调整
+            </button>
+            <button
+              type="button"
+              disabled={busy || !history.future.length}
+              onClick={() => dispatchHistory({ type: "redo" })}
+            >
+              重做
+            </button>
+          </div>
           <fieldset disabled={busy}>
             <label>
               材质名称
@@ -840,13 +884,9 @@ export default function SurfaceStudio({ category, onLibrary, onApply }) {
           <p className="surface-save-hint">
             {saveReason || "保存后可用于户型生成和人工设计。"}
           </p>
-          <button
-            type="submit"
-            className="primary-button"
-            disabled={!!saveReason}
-          >
-            {busy ? "正在保存…" : "保存当前材质"}
-          </button>
+          <small>
+            调整完成后，使用页面上方的保存按钮。旧方案引用的材质会保留。
+          </small>
         </form>
       </div>
       <section className="surface-saved">

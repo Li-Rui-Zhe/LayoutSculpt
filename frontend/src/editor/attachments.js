@@ -1,4 +1,5 @@
 // 按稳定对象 ID 联动；新绑定保持当前位置，解除或删除父物体也不改变位置。
+import { followWallAttachments } from "./wallAttachments.js";
 const poseKeys = ["x", "y", "elevation", "rotation"];
 const unchangedPose = (a, b) =>
   poseKeys.every((k) => (a[k] || 0) === (b[k] || 0));
@@ -24,6 +25,7 @@ export function attachmentError(document) {
 }
 
 export function followAttachments(previous, changed) {
+  changed = followWallAttachments(previous, changed);
   if (
     ![
       ...changed.furniture.items,

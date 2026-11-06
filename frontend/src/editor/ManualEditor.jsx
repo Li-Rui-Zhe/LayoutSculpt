@@ -180,9 +180,13 @@ const floorColors = {
 function objects(doc, type) {
   return type === "furniture" ? doc.furniture.items : doc.layout[type];
 }
-function labelFor(item, type, index) {
+function labelFor(item, type, index, peers = []) {
+  const duplicate =
+    item.name && peers.filter((other) => other.name === item.name).length > 1;
   return type === "furniture"
-    ? item.name || `${furnitureNames[item.kind]} ${index + 1}`
+    ? item.name
+      ? `${item.name}${duplicate ? ` · #${index + 1}` : ""}`
+      : `${furnitureNames[item.kind]} ${index + 1}`
     : type === "lights"
       ? item.name
       : type === "walls"
@@ -236,7 +240,9 @@ function ManualEditorContent({
   const activeNow = useRef(isActive);
   activeNow.current = isActive;
   const [sidebarTab, setSidebarTab] = useState("objects");
-  const [focusCanvas, setFocusCanvas] = useState(false);
+  const [focusCanvas, setFocusCanvas] = useState(
+    () => window.matchMedia("(max-width: 600px)").matches,
+  );
   const [focusRequest, setFocusRequest] = useState(null);
   const focusSerial = useRef(0);
   const [displayUnit, setDisplayUnit] = useState("m");
@@ -1608,7 +1614,7 @@ function ManualEditorContent({
     (selected?.type === type && selected.index === index) ||
     (type === "furniture" && multi.includes(index));
   const selectedName = item
-    ? labelFor(item, selected.type, selected.index)
+    ? labelFor(item, selected.type, selected.index, document.furniture.items)
     : "选择一个对象";
   const changeWallPoint = (endpoint, axis, value) =>
     commitParameter(
@@ -2027,11 +2033,12 @@ function ManualEditorContent({
               type="button"
               className="secondary-button"
               aria-pressed={focusCanvas}
-              aria-label={focusCanvas ? "展开面板" : "专注画布"}
-              title={focusCanvas ? "展开面板" : "专注画布"}
+              aria-label={focusCanvas ? "打开工具与属性" : "专注画布"}
+              title={focusCanvas ? "打开工具与属性" : "专注画布"}
               onClick={() => setFocusCanvas(!focusCanvas)}
             >
               <Focus size={14} />
+              {focusCanvas && <span>工具与属性</span>}
             </button>
             <button
               title="撤销设计"
@@ -2362,7 +2369,7 @@ function ManualEditorContent({
                 <div className="edit-object-list" aria-label="设计对象列表">
                   {filteredEntries.map(({ object, index, type }) => (
                     <button
-                      key={index}
+                      key={`${type}:${object.edit_id || object.id || index}`}
                       aria-pressed={active(type, index)}
                       onClick={(e) => {
                         if (type === "furniture")
@@ -2376,7 +2383,14 @@ function ManualEditorContent({
                         select(type, index);
                       }}
                     >
-                      <span>{labelFor(object, type, index)}</span>
+                      <span>
+                        {labelFor(
+                          object,
+                          type,
+                          index,
+                          document.furniture.items,
+                        )}
+                      </span>
                       <small>
                         {type === "furniture"
                           ? document.layout.rooms.find(

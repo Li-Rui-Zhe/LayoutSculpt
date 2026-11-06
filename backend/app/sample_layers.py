@@ -6,6 +6,7 @@ never used as recognition evidence, and explicitly editable in the UI.
 import hashlib
 import io
 import json
+import struct
 from collections import defaultdict
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +16,7 @@ import trimesh
 from shapely.geometry import Point, Polygon
 
 from .library_models import save_snapshot, snapshot_file
+from .sample_objects import sample_object
 
 
 def atomic_write(path, content):
@@ -28,13 +30,13 @@ def atomic_write(path, content):
 
 def preserve_sample(document, source, library):
     raw = Path(source).read_bytes()
-    cache = Path(library) / ("sample-" + hashlib.sha256(raw).hexdigest() + "-v3.json")
+    cache = Path(library) / ("sample-" + hashlib.sha256(raw).hexdigest() + "-v5.json")
     if cache.exists():
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
             if len(data["furniture_assets"]) != len(document["furniture"]):
                 raise ValueError("示例家具缓存不完整")
-            for ref in data["furniture_assets"] + [p["asset_id"] for p in data["presentation_layers"]]:
+            for ref in data["furniture_assets"] + [p["asset_id"] for p in data["presentation_layers"]] + [p["asset_id"] for p in data["extra_furniture"]]:
                 snapshot_file(library, ref)
             for ref in data.get("floor_materials", {}).values():
                 texture = Path(library).parent / "materials" / (ref.split(":")[1] + ".png")
@@ -42,7 +44,7 @@ def preserve_sample(document, source, library):
                     raise ValueError("示例地板贴图缺失")
             return {**document, "presentation_layers": data["presentation_layers"],
                     "rooms": [{**r, **({"floor_material": data["floor_materials"][r["id"]]} if r["id"] in data.get("floor_materials", {}) else {})} for r in document["rooms"]],
-                    "furniture": [{**item, "asset_id": ref} for item, ref in zip(document["furniture"], data["furniture_assets"])]}
+                    "furniture": [{**item, "asset_id": ref} for item, ref in zip(document["furniture"], data["furniture_assets"])] + data["extra_furniture"]}
         except (ValueError, KeyError, TypeError, OSError):
             pass
     scene = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene")
@@ -51,6 +53,7 @@ def preserve_sample(document, source, library):
     cy = (min(p["y"] for p in document["outline"]) + max(p["y"] for p in document["outline"]))/2
     rooms = [(room, Polygon([(p["x"], p["y"]) for p in room["polygon"]])) for room in document["rooms"]]
     groups, furniture = defaultdict(trimesh.Scene), defaultdict(trimesh.Scene)
+    independent = defaultdict(trimesh.Scene)
     floor_materials = {}
     for node in scene.graph.nodes_geometry:
         transform, geometry = scene.graph[node]
@@ -79,10 +82,14 @@ def preserve_sample(document, source, library):
         if (any(key in meta for key in ("structure_kind", "architecture_network", "opening_index"))
                 or node.startswith(("未铺设地板的基层", "连续踢脚线"))):
             continue
+        owner = sample_object(node)
+        if owner:
+            independent[owner].add_geometry(mesh.copy(), node_name=node, transform=transform)
+            continue
         world_center = trimesh.transform_points([mesh.bounds.mean(axis=0)], transform)[0]
         point = Point(world_center[0]+cx, world_center[2]+cy)
         room = min(rooms, key=lambda pair: pair[1].distance(point))[0]
-        key = (room["id"], room["name"], bool(meta.get("cutaway_upper")), bool(meta.get("cutaway_only")))
+        key = (room["id"], room["name"], bool(meta.get("cutaway_upper")), bool(meta.get("cutaway_only")), meta.get("wall_id"))
         # Authored lamps belong to the sample's presentation layers. Keep their
         # emitter metadata so saving/rebuilding a copy retains its night lighting.
         groups[key].add_geometry(mesh.copy(), node_name=node, transform=transform,
@@ -93,20 +100,50 @@ def preserve_sample(document, source, library):
             raise ValueError("示例家具缺少可编辑网格")
         ref, _ = save_snapshot(library, furniture[i].export(file_type="glb"))
         references.append(ref)
-    layers = []
-    for number, ((room_id, name, upper, only), group) in enumerate(groups.items()):
+    layers, bindings = [], {}
+    for number, ((room_id, name, upper, only, wall_id), group) in enumerate(groups.items()):
         low, high = group.bounds
         ref, _ = save_snapshot(library, group.export(file_type="glb"), preserve_fixtures=True)
         layers.append({"id": f"sample-detail-{number}", "name": f"{name} · {'高处装饰' if upper else '剖切装饰' if only else '展示陈设'}",
                        "asset_id": ref, "x": float((low[0]+high[0])/2+cx), "y": float((low[2]+high[2])/2+cy),
                        "elevation": float(low[1]), "rotation": 0, "visible": True,
-                       "cutaway_upper": upper, "cutaway_only": only})
-    data = {"furniture_assets": references, "presentation_layers": layers, "floor_materials": floor_materials}
+                       "cutaway_upper": upper, "cutaway_only": only, "parent_wall_id": wall_id})
+        for node in group.graph.nodes_geometry:
+            bindings[node] = {"presentation_layer_id": layers[-1]["id"]}
+    extra_furniture = []
+    for (identifier, name, kind, room_id), group in independent.items():
+        low, high = group.bounds
+        ref, dimensions = save_snapshot(library, group.export(file_type="glb"))
+        extra_furniture.append({"edit_id": f"sample-{identifier}", "name": name, "kind": kind,
+            "room_id": room_id, "asset_id": ref, "x": float((low[0]+high[0])/2+cx),
+            "y": float((low[2]+high[2])/2+cy), "elevation": max(0, float(low[1])-.035),
+            "rotation": 0, "width": dimensions[0], "depth": dimensions[1], "height": max(.02, dimensions[2])})
+        for node in group.graph.nodes_geometry:
+            bindings[node] = {"furniture_index": len(document["furniture"]) + len(extra_furniture) - 1, "furniture_name": name, "room_id": room_id}
+    data = {"furniture_assets": references, "extra_furniture": extra_furniture, "presentation_layers": layers, "floor_materials": floor_materials, "model_bindings": bindings}
     cache.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(cache, json.dumps(data, ensure_ascii=False).encode("utf-8"))
     return {**document, "presentation_layers": layers,
             "rooms": [{**r, **({"floor_material": floor_materials[r["id"]]} if r["id"] in floor_materials else {})} for r in document["rooms"]],
-            "furniture": [{**item, "asset_id": ref} for item, ref in zip(document["furniture"], references)]}
+            "furniture": [{**item, "asset_id": ref} for item, ref in zip(document["furniture"], references)] + extra_furniture}
+
+
+def write_editable_sample(source, library, destination):
+    """只补原始 GLB 的对象索引，二进制网格、贴图和光照保持逐字节不变。"""
+    raw = Path(source).read_bytes()
+    cache = Path(library) / ("sample-" + hashlib.sha256(raw).hexdigest() + "-v5.json")
+    bindings = json.loads(cache.read_text(encoding="utf-8"))["model_bindings"]
+    size, chunk = struct.unpack_from("<II", raw, 12)
+    if raw[:4] != b"glTF" or chunk != 0x4E4F534A:
+        raise ValueError("示例 GLB 索引无效")
+    data = json.loads(raw[20:20+size])
+    for node in data.get("nodes", []):
+        if node.get("name") in bindings:
+            node["extras"] = {**node.get("extras", {}), **bindings[node["name"]]}
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    payload += b" " * (-len(payload) % 4)
+    rest = raw[20+size:]
+    atomic_write(Path(destination), struct.pack("<4sIIII", b"glTF", 2, 20+len(payload)+len(rest), len(payload), chunk) + payload + rest)
 
 
 def add_presentation_layers(builder):

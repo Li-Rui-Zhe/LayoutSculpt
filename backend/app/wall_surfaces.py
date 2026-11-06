@@ -100,6 +100,6 @@ def add_wall_surfaces(builder, cut_height):
                             "wall_id": wall["id"],
                             "wall_side": side,
                             "surface_overlay": True,
-                            "cutaway_upper": bottom >= cut_height,
+                            "cutaway_upper": bottom >= cut_height and not wall.get("cutaway_keep"),
                         },
                     )

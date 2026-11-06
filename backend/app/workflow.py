@@ -769,11 +769,14 @@ def create_graph(
             )
             traces = [trace]
         retained = Furnishing.model_validate(furniture)
-        gaps = functional_gaps(layout, retained)
-        # 仅为已尝试但放置失败的核心家具补救，不擅自补回用户没要求的用途。
-        recover = [gap for gap in gaps if (continuing and gap["room_id"] in state.get("furnishing_targets", [])) or (not continuing and any(
-            room == gap["room_id"] and kind in gap["kinds"] for room, kind in planned_rooms
-        ))]
+        gaps = functional_gaps(layout, retained, state["options"].get("notes", ""))
+        # 仅补明确用途的必需项；用户明确不要的项目已由检查器排除。
+        recover = [gap for gap in gaps if (
+            gap["room_id"] in state.get("furnishing_targets", []) if continuing else (
+                any(room == gap["room_id"] and kind in gap["kinds"] for room, kind in planned_rooms)
+                or any(asset.get("kind") in gap["kinds"] for asset in allowed_assets.values())
+            )
+        )]
         if recover:
             await store.update(state["job_id"], stage="完善家具方案", progress=72,
                                message="正在为放不下的主要家具寻找合适尺寸，已完成布置保持不动")
@@ -800,7 +803,7 @@ def create_graph(
                 if len(retained.items) + len(extra.items) <= 90:
                     retained.items.extend(extra.items)
                     retained.notes = list(dict.fromkeys([*extra.notes, *retained.notes]))[:20]
-                    remaining = {gap["room_id"] for gap in functional_gaps(layout, retained)}
+                    remaining = {gap["room_id"] for gap in functional_gaps(layout, retained, state["options"].get("notes", ""))}
                     resolved = [gap for gap in recover if gap["room_id"] not in remaining]
                     labels = {name for gap in resolved for room, kind, name in planned_names
                               if room == gap["room_id"] and kind in gap["kinds"]}
@@ -818,15 +821,14 @@ def create_graph(
                 retained.notes = ["局部补充未完成，已保留可用家具布置，可继续人工设计。", *retained.notes][:20]
         furniture = retained.model_dump()
         (settings.workspace(state["job_id"]) / "furnishing-quality.json").write_text(
-            json.dumps({"completion_requested": recover, "remaining": functional_gaps(layout, retained),
+            json.dumps({"completion_requested": recover, "remaining": functional_gaps(layout, retained, state["options"].get("notes", "")),
                         "notes": retained.notes, "furniture_count": len(retained.items)}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         if library:
             furniture = (await library.resolve_furnishing(furniture)).model_dump()
             validate_furnishing(Furnishing.model_validate(furniture), layout)
-        unresolved = [gap for gap in functional_gaps(layout, retained)
-                      if any(gap["room_id"] == target["room_id"] for target in recover)]
+        unresolved = functional_gaps(layout, retained, state["options"].get("notes", ""))
         if unresolved and furniture["items"]:
             room_names = {room.id: room.name for room in layout.rooms}
             missing = "、".join(f"{room_names[gap['room_id']]}的{gap['need']}" for gap in unresolved)
@@ -906,6 +908,7 @@ def create_graph(
             layout,
             Furnishing.model_validate(state["furniture"]),
             automatic=not bool(state.get("edited_of") or state.get("preserve_design") or state.get("furnishing_resume")),
+            requirements=state["options"].get("notes", ""),
         )
         if not (state.get("edited_of") or state.get("preserve_design") or state.get("furnishing_resume")):
             from .surface_design import apply_generation_surfaces

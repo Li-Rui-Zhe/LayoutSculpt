@@ -325,6 +325,7 @@ export default function TaskWorkspace({
   const [thumbs, setThumbs] = useState({});
   const [view, setView] = useState("perspective");
   const [capture, setCapture] = useState("");
+  const [captureError, setCaptureError] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [imported, setImported] = useState(null);
@@ -362,11 +363,8 @@ export default function TaskWorkspace({
   }, [job?.status]);
   useEffect(() => {
     if (captureRequested && tab === "design" && !loading && !modelError) {
-      const image = viewer.current?.snapshot();
-      if (image) {
-        setCapture(image);
-        setCaptureRequested(false);
-      }
+      exportImage();
+      setCaptureRequested(false);
     }
   }, [captureRequested, tab, loading, modelError]);
   const viewer = useRef(null),
@@ -420,9 +418,18 @@ export default function TaskWorkspace({
       actionLock.current = false;
     }
   };
-  const exportImage = () => {
-    const image = viewer.current?.snapshot();
-    if (image) setCapture(image);
+  const exportImage = (maxDimension = 2048) => {
+    try {
+      const image = viewer.current?.snapshot({ maxDimension });
+      if (!image) throw Error("模型尚未准备好，请稍后再导出。");
+      setCapture(image);
+      setCaptureError("");
+    } catch (error) {
+      const message =
+        "图片导出未完成，当前设计已保留。请稍后重试或使用较低清晰度。";
+      if (capture) setCaptureError(message);
+      else setActionError(message);
+    }
   };
   useEffect(
     () => () => {
@@ -800,7 +807,7 @@ export default function TaskWorkspace({
                     <IconButton
                       label="导出当前效果图"
                       icon={Camera}
-                      onClick={exportImage}
+                      onClick={() => exportImage()}
                       disabled={loading || !!modelError}
                     />
                     <IconButton
@@ -1082,6 +1089,7 @@ export default function TaskWorkspace({
               ))}
             {tab === "assets" && (
               <Deliverables
+                key={job.id}
                 onShare={() => {
                   setTab("design");
                   setShareRequested(true);
@@ -1775,6 +1783,22 @@ export default function TaskWorkspace({
             src={capture}
             alt="当前任务的三维效果图"
           />
+          <p className="field-note">
+            默认导出长边 2048 像素，可切换至
+            4K；保持当前构图，清晰度受设备纹理上限约束。
+          </p>
+          {captureError && (
+            <p role="alert" className="field-note">
+              {captureError}
+            </p>
+          )}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => exportImage(4096)}
+          >
+            生成 4K 图片
+          </button>
           <a
             className="primary-button"
             href={capture}

@@ -233,6 +233,11 @@ def create_app(settings=None, *, client=None, model_builder=None):
         return job
 
     def public(job):
+        from .source_provenance import source_kind
+        if job.get("status") == "succeeded" and job.get("result") and not job["result"].get("consistency", {}).get("source_kind"):
+            kind = source_kind(settings, job)
+            if kind == "authored_sample":
+                job = {**job, "result": {**job["result"], "consistency": {**job["result"].get("consistency", {}), "source_kind": kind}}}
         seed = settings.workspace(job["id"]) / "rebuild-seed.json"
         warning = None
         try:
@@ -737,7 +742,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "render_style": previous["result"].get("render_style"),
             "style_scheme": previous["result"].get("style_scheme", {}),
             "rebuild_of": previous["id"],
-            "source_kind": previous["result"].get("consistency", {}).get("source_kind", "uploaded_plan"),
+            "source_kind": public(previous)["result"].get("consistency", {}).get("source_kind", "uploaded_plan"),
         }
         inherited = previous["result"].get("consistency", {}).get("confirmation")
         if (
@@ -815,7 +820,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             "furniture": document.furniture.model_dump(),
             "rebuild_of": previous["id"],
             "edited_of": previous["id"],
-            "source_kind": previous["result"].get("consistency", {}).get("source_kind", "uploaded_plan"),
+            "source_kind": public(previous)["result"].get("consistency", {}).get("source_kind", "uploaded_plan"),
         }
         inherited = previous["result"].get("consistency", {}).get("confirmation")
         if inherited and inherited["structure_hash"] == structure_hash(document.layout):

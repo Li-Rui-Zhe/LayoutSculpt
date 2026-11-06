@@ -2,6 +2,7 @@
 
 import itertools
 import math
+import re
 from statistics import median
 
 from shapely.geometry import LineString, Polygon
@@ -114,14 +115,15 @@ def attach_countertop_items(plan, assets, fixed_items=()):
             item.elevation = round(support.elevation + support.height, 6)
 
 
-def functional_gaps(layout, plan):
+def functional_gaps(layout, plan, requirements=""):
     """只检查明确房间的核心用途；小房间不强塞配件。"""
     rules = {
-        "bedroom": ({"bed"}, "床"),
-        "living": ({"sofa", "armchair"}, "座椅"),
-        "kitchen": ({"counter"}, "厨房操作台"),
-        "bathroom": ({"toilet"}, "坐便器"),
-        "study": ({"desk", "table"}, "书桌"),
+        "bedroom": [({"bed"}, "床")],
+        "living": [({"sofa", "armchair"}, "座椅")],
+        "kitchen": [({"counter"}, "厨房操作台")],
+        "bathroom": [({"toilet"}, "坐便器"), ({"sink"}, "洗手台")],
+        "dining": [({"table"}, "餐桌")],
+        "study": [({"desk", "table"}, "书桌")],
     }
     gaps = []
     for room in layout.rooms:
@@ -130,10 +132,15 @@ def functional_gaps(layout, plan):
             or Polygon([(p.x, p.y) for p in room.polygon]).area < 2
         ):
             continue
-        kinds, label = rules[room.kind]
-        if not any(
-            item.room_id == room.id and item.kind in kinds for item in plan.items
-        ):
+        for kinds, label in rules[room.kind]:
+            # 仅识别清晰的否定要求，不从含糊描述推断用户意图。
+            aliases = {"坐便器": "坐便器|马桶", "洗手台": "洗手台|洗漱台|洗脸盆", "厨房操作台": "厨房操作台|操作台"}.get(label, label)
+            clauses = re.split(r"[，。；;\n]", requirements)
+            scope = rf"(?:(?:我|全屋|所有房间)\s*|{re.escape(room.name)}(?:里|内)?\s*)?"
+            if any(re.fullmatch(rf"{scope}(?:不需要|不放|不要|不设|无需)\s*(?:{aliases})[了的吧]?[！!。\s]*", clause.strip()) for clause in clauses):
+                continue
+            if any(item.room_id == room.id and item.kind in kinds and not item.edit_hidden for item in plan.items):
+                continue
             gaps.append(
                 {
                     "room_id": room.id,

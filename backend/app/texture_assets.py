@@ -75,7 +75,7 @@ def install_texture_routes(app, settings):
     @app.post("/api/materials/preview")
     async def preview(design: SurfaceDesign):
         try:
-            data = await asyncio.to_thread(render_surface, design, settings.data_dir)
+            data = await asyncio.to_thread(render_surface, design, settings.data_dir, size=720)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         return Response(data, media_type="image/png")

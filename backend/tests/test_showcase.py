@@ -81,20 +81,47 @@ def test_showcase_finishes_are_reproducible_and_foliage_uses_shared_parts():
     assert all(mesh.visual.material.metallicFactor == 0 for mesh in tree.geometry.values())
 
 
-def test_shipped_showcase_uses_uniform_cut_and_attached_decorations_follow_walls():
+def test_shipped_showcase_retains_backdrop_and_attached_decorations_follow_walls():
     scene = trimesh.load(ROOT / f"public/models/{SHOWCASE_ID}.glb", force="scene")
     curtains, pictures, walls = [], [], []
     for (_, node), edge in scene.graph.transforms.edge_data.items():
         meta = edge.get('metadata', {})
         if meta.get('cutaway_full'):
             points = np.asarray(meta['cutaway_geometry']['positions']).reshape(-1, 3)
-            assert points[:, 1].max() <= 1.20001
+            upper = points[points[:, 1] > 1.20001]
+            # 高墙只能出现在北/西背景墙范围，前侧及内部墙仍剖低。
+            assert all(x <= -4.68 + 1e-5 or z <= -4.68 + 1e-5 for x, _, z in upper)
             walls.append(node)
         if '连续亚麻窗帘' in node or '窗帘细轨道' in node:
             curtains.append(node)
-            assert meta.get('cutaway_upper') is True
+            assert meta.get('cutaway_upper') is (meta['wall_id'] == 'east')
         if any(word in node for word in ('画框', '画底纸', '织物画底', '浮雕织物', '艺术画色块')):
             pictures.append(node)
-            assert meta.get('cutaway_upper') is True
+            assert meta.get('cutaway_upper') is False
     assert walls and len(curtains) == 6 and len(pictures) >= 8
-    assert sum('剖切窗帘' in node for node in scene.graph.nodes_geometry) == 4
+    assert sum('剖切窗帘' in node for node in scene.graph.nodes_geometry) == 2
+    assert {w['id'] for w in document()['walls'] if w.get('cutaway_keep')} == {'north', 'west'}
+
+
+def test_backdrop_survives_layout_roundtrip_without_changing_full_structure():
+    from backend.app.glb_builder import Builder
+    from backend.app.consistency import structure_hash
+    doc = document()
+    layout = Layout.model_validate({k: v for k, v in doc.items() if k in Layout.model_fields})
+    regular = layout.model_copy(deep=True)
+    for wall in regular.walls:
+        wall.cutaway_keep = False
+    assert structure_hash(regular) == structure_hash(layout)
+    previews, volumes = [], []
+    for variant in [regular, layout]:
+        builder = Builder({**variant.model_dump(), 'furniture': [], 'style': 'natural'}, ROOT / 'assets/furniture/catalog.json')
+        builder.wall_network()
+        heights = []
+        for edge in builder.scene.graph.transforms.edge_data.values():
+            meta = edge.get('metadata', {})
+            if meta.get('cutaway_full'):
+                heights.extend(np.asarray(meta['cutaway_geometry']['positions']).reshape(-1, 3)[:, 1])
+        previews.append(max(heights))
+        volumes.append(sum(mesh.volume for mesh in builder.scene.geometry.values()))
+    assert previews == pytest.approx([1.2, 2.8])
+    assert volumes[0] == pytest.approx(volumes[1])

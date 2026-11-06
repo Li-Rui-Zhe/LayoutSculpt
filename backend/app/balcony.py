@@ -55,6 +55,7 @@ def add_boundary_frames(builder):
         length = math.hypot(dx, dz)
         builder.cut_metadata = {
             "wall_id": wall["id"],
+            "cutaway_keep": wall.get("cutaway_keep", False),
             "boundary_type": wall.get("boundary_type", "wall"),
         }
         for start, end, low, high in boundary_frame_parts(wall, openings):

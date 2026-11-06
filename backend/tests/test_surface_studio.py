@@ -42,7 +42,10 @@ def test_surface_preview_save_reopen_and_actual_model(tmp_path):
         saved = client.post("/api/materials/design", json=recipe())
         assert saved.status_code == 201, saved.text
         item = saved.json()
-        assert item["id"] == "texture:" + hashlib.sha256(preview.content).hexdigest()
+        # 预览保持轻量，保存的是独立高清资源；不是把预览的字节原样落盘。
+        stored = tmp_path / "materials" / (item["id"].split(":")[1] + ".png")
+        assert Image.open(stored).size == (2160, 2160)
+        assert item["id"] == "texture:" + hashlib.sha256(stored.read_bytes()).hexdigest()
         assert item["categories"] == ["floor"]
         assert item["recipe"] == recipe()
         assert (

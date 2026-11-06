@@ -255,7 +255,7 @@ export default function LivePreview({
                 {rotationOpen ? "收起旋转" : "旋转家具"}
               </button>
             )}
-          <button aria-pressed={!cutaway} onClick={() => setCutaway(!cutaway)}>
+          <button aria-pressed={cutaway} onClick={() => setCutaway(!cutaway)}>
             {cutaway ? "剖切墙体" : "完整墙体"}
           </button>
           {cutaway && (
@@ -348,6 +348,7 @@ export default function LivePreview({
         )}
       {model ? (
         <DiyPreview
+          frontDirection={1}
           movementFeedback={movementFeedback}
           managedLoading
           night={false}

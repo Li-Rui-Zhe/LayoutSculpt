@@ -88,7 +88,7 @@ export default forwardRef(function Viewport(
       isolateRoom: (id) => engine.current?.isolateRoom(id),
       reset: (top) => engine.current?.reset(top),
       zoom: (factor) => engine.current?.zoom(factor),
-      snapshot: () => engine.current?.snapshot(),
+      snapshot: (options) => engine.current?.snapshot(options),
       // 导出持有当前场景，页面切换后不可操作复用给其他项目的渲染器。
       captureSession: () => {
         const scene = engine.current,

@@ -85,6 +85,7 @@ class Wall(EditableObject):
     thickness: float = Field(ge=0.06, le=0.6)
     height: float = Field(ge=0.3, le=4.5, description="墙体实际高度，支持阳台栏板和矮隔墙；非防护规范校验")
     exterior: bool
+    cutaway_keep: bool = Field(default=False, description="仅控制展示：剖切时保留此背景墙，不改变实际结构")
     boundary_type: Literal["wall", "parapet", "glass_railing", "glazing"] = "wall"
     sill_height: float = Field(default=0, ge=0, le=4.5, description="玻璃围护下方实体基座高度，米；不改变总高度")
     load_bearing: bool = False
@@ -211,6 +212,7 @@ class PresentationLayer(StrictModel):
     name: str = Field(min_length=1, max_length=80)
     asset_id: str = Field(pattern=r"^snapshot:[a-f0-9]{64}$")
     parent_furniture_id: str | None = Field(default=None, min_length=1, max_length=100)
+    parent_wall_id: str | None = Field(default=None, min_length=1, max_length=40)
     x: Number
     y: Number
     elevation: Number
@@ -282,6 +284,11 @@ class Layout(StrictModel):
             ):
                 raise ValueError(f"{room.id} 房间超出外轮廓")
         walls = {w.id: w for w in self.walls}
+        for layer in self.presentation_layers:
+            if layer.parent_wall_id and layer.parent_wall_id not in walls:
+                raise ValueError("陈设关联的墙体已不存在，请解除墙体联动后保存")
+            if layer.parent_wall_id and layer.parent_furniture_id:
+                raise ValueError("同一陈设只能选择墙体或家具中的一种联动方式")
         for wall in self.walls:
             if math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y) < 0.05:
                 raise ValueError(f"{wall.id} 墙体长度不足")

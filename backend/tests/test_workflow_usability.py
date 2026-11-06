@@ -32,7 +32,9 @@ def test_sample_copy_reports_geometry_lights_and_preserves_origin_after_edit(tmp
         result = original['result']
         assert result['quality']['light_count'] == 13
         assert result['quality']['decorative_light_count'] == 13
-        assert not result['quality']['issues']
+        # 使用空间建议如实保留，不再把“几何通过”当成“没有使用建议”。
+        assert all(issue in [i['text'] for i in result['quality']['access_issues']]
+                   for issue in result['quality']['issues'])
         assert result['consistency']['geometry_verified']
         assert result['consistency']['source_kind'] == 'authored_sample'
         assert result['consistency']['source_reviewed'] is False
@@ -41,6 +43,10 @@ def test_sample_copy_reports_geometry_lights_and_preserves_origin_after_edit(tmp
         data = client.get(result['layout_url']).json()
         body = dict(name='流程验证副本', layout={k:v for k,v in data.items() if k in Layout.model_fields},
                     furniture=dict(items=deepcopy(data['furniture']), notes=[]))
+        check = client.post('/api/design/check', json=body).json()
+        assert result['quality']['access_issues'] == [i for i in check['issues'] if i['category'] == 'access']
+        assert any(i['name'] == '胡桃木椭圆餐桌' for i in data['furniture'])
+        assert any(layer.get('parent_wall_id') for layer in data['presentation_layers'])
         body['furniture']['items'][0]['rotation'] += 1
         edited = client.post(f"/api/jobs/{original['id']}/edit", json=body)
         assert edited.status_code == 201, edited.text

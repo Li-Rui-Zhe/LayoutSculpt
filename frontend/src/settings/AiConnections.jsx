@@ -111,7 +111,12 @@ export default function AiConnections() {
       const value = await api("/ai/settings", { signal: controller.signal });
       if (current !== sequence.current) return;
       setSettings(value);
-      const source = value.revision > 0 ? value.default_provider : "deepseek";
+      const source =
+        value.revision > 0
+          ? value.default_provider
+          : value.codex.available
+            ? "codex"
+            : "deepseek";
       setProvider(source);
       setKey("");
       setVisible(false);
@@ -120,10 +125,9 @@ export default function AiConnections() {
       setReloadNeeded(false);
       setNotice("");
       if (
-        value.revision > 0 &&
-        (source === "deepseek"
+        source === "deepseek"
           ? value.deepseek.configured
-          : value.codex.available)
+          : value.codex.available
       )
         void readSavedCatalog(source);
     } catch (e) {
@@ -281,7 +285,9 @@ export default function AiConnections() {
                   ? "请重新读取确认"
                   : settings.revision > 0
                     ? "已保存到本机"
-                    : "尚未完成设置"}
+                    : settings.codex.available
+                      ? "可沿用本机 Codex"
+                      : "尚未选择默认连接"}
               </span>
             </div>
             <dl>

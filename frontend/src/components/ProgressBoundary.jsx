@@ -17,11 +17,20 @@ export function useBoundaryLoad(loading, label, error) {
   return !!report;
 }
 
-function Pending({ report }) {
+function Pending({ report, label }) {
   useLayoutEffect(() => {
     report(true);
   }, [report]);
-  return null;
+  return (
+    <div className="page-placeholder" role="status" aria-label={label}>
+      <strong>{label}</strong>
+      <div className="page-placeholder-grid">
+        <i />
+        <i />
+        <i />
+      </div>
+    </div>
+  );
 }
 function Ready({ report, children }) {
   useLayoutEffect(() => {
@@ -44,7 +53,7 @@ export default function ProgressBoundary({ children, label }) {
         delay={350}
       />
       <PageLoadContext.Provider value={setContent}>
-        <Suspense fallback={<Pending report={setLoading} />}>
+        <Suspense fallback={<Pending report={setLoading} label={label} />}>
           <Ready report={setLoading}>{children}</Ready>
         </Suspense>
       </PageLoadContext.Provider>

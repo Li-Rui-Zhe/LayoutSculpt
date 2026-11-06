@@ -76,3 +76,34 @@ def access_issues(plan, layout):
             if obstructed(area, index):
                 warn("chair_access", f"{label}后方拉椅空间可能不足，建议留出约 50 cm", "furniture", index)
     return issues
+
+
+def improve_access(plan, layout):
+    """仅在首次自动生成时尝试最多 20cm 的局部修正，不动人工/联动对象。"""
+    from .quality import furnishing_issues
+    changes = []
+    initial = access_issues(plan, layout)
+    targets = {v["index"] for v in initial if v["type"] == "furniture"}
+    children = {item.parent_furniture_id for item in plan.items if item.parent_furniture_id}
+    for index in sorted(targets)[:8]:
+        item = plan.items[index]
+        if item.kind not in {"chair", "cabinet"} or item.edit_locked or item.edit_hidden or item.parent_furniture_id or item.edit_id in children or item.elevation > .05:
+            continue
+        baseline = access_issues(plan, layout)
+        hard = set(furnishing_issues(plan, layout))
+        if hard:
+            continue
+        origin = item.x, item.y
+        accepted = False
+        for step in (.1, .2):
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                item.x, item.y = round(origin[0]+dx*step, 6), round(origin[1]+dy*step, 6)
+                if not (set(furnishing_issues(plan, layout)) - hard) and len(access_issues(plan, layout)) < len(baseline):
+                    changes.append(f"{item.name or item.kind}微调 {round(step*100)} cm，为使用空间留出余量")
+                    accepted = True
+                    break
+            if accepted:
+                break
+        if not accepted:
+            item.x, item.y = origin
+    return changes

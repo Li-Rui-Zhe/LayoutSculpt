@@ -3,7 +3,137 @@ import { newPart } from "./design.js";
 const part = (name, values) => ({ ...newPart(), name, ...values });
 export function furnitureTemplate(kind) {
   let parts;
-  if (kind === "table") {
+  if (kind === "bed") {
+    parts = [
+      part("悬浮床架", {
+        shape: "rounded_box",
+        width: 1.62,
+        depth: 2.08,
+        height: 0.22,
+        z: 0.1,
+        color: "#8b674e",
+      }),
+      part("织物床垫", {
+        shape: "rounded_box",
+        width: 1.58,
+        depth: 2,
+        height: 0.22,
+        z: 0.32,
+        color: "#eee7dc",
+        roughness: 0.95,
+      }),
+      part("软包床头", {
+        shape: "rounded_box",
+        width: 1.7,
+        depth: 0.13,
+        height: 0.95,
+        y: -0.99,
+        z: 0.1,
+        color: "#c6b8a2",
+        roughness: 0.95,
+      }),
+      part("薄被", {
+        shape: "rounded_box",
+        width: 1.59,
+        depth: 1.2,
+        height: 0.06,
+        y: 0.35,
+        z: 0.54,
+        color: "#a8b4aa",
+        roughness: 0.95,
+      }),
+      ...[-0.4, 0.4].map((x) =>
+        part("枕头", {
+          shape: "rounded_box",
+          width: 0.65,
+          depth: 0.43,
+          height: 0.12,
+          x,
+          y: -0.67,
+          z: 0.54,
+          color: "#f3eee5",
+          roughness: 0.95,
+        }),
+      ),
+    ];
+  } else if (kind === "sofa") {
+    parts = [
+      part("底座", {
+        shape: "rounded_box",
+        width: 2.1,
+        depth: 0.9,
+        height: 0.18,
+        z: 0.12,
+        color: "#897765",
+      }),
+      ...[-0.45, 0.45].map((x) =>
+        part("座垫", {
+          shape: "rounded_box",
+          width: 0.88,
+          depth: 0.71,
+          height: 0.17,
+          x,
+          y: 0.06,
+          z: 0.3,
+          color: "#d9d1c5",
+          roughness: 0.94,
+        }),
+      ),
+      ...[-0.45, 0.45].map((x) =>
+        part("靠垫", {
+          shape: "rounded_box",
+          width: 0.88,
+          depth: 0.19,
+          height: 0.43,
+          x,
+          y: -0.35,
+          z: 0.42,
+          color: "#d9d1c5",
+          roughness: 0.94,
+        }),
+      ),
+      ...[-0.99, 0.99].map((x) =>
+        part("扶手", {
+          shape: "rounded_box",
+          width: 0.16,
+          depth: 0.89,
+          height: 0.38,
+          x,
+          z: 0.3,
+          color: "#c7bcac",
+          roughness: 0.94,
+        }),
+      ),
+      ...[-0.85, 0.85].flatMap((x) =>
+        [-0.31, 0.31].map((y) =>
+          part("木脚", {
+            width: 0.06,
+            depth: 0.06,
+            height: 0.12,
+            x,
+            y,
+            color: "#70533f",
+          }),
+        ),
+      ),
+    ];
+  } else if (kind === "shelf") {
+    parts = [
+      ...[-0.46, 0.46].map((x) =>
+        part("侧板", { x, width: 0.04, depth: 0.32, height: 1.8 }),
+      ),
+      ...[0.06, 0.48, 0.9, 1.32, 1.76].map((z) =>
+        part("层板", { width: 0.88, depth: 0.32, height: 0.04, z }),
+      ),
+      part("背板", {
+        width: 0.88,
+        depth: 0.02,
+        height: 1.76,
+        y: -0.15,
+        color: "#d8c2a0",
+      }),
+    ];
+  } else if (kind === "table" || kind === "desk") {
     parts = [
       part("圆角桌面", {
         shape: "rounded_box",
@@ -87,9 +217,15 @@ export function furnitureTemplate(kind) {
     ];
   }
   return {
-    name: { table: "圆角实木餐桌", cabinet: "双门玄关柜", chair: "软包餐椅" }[
-      kind
-    ],
+    name: {
+      table: "圆角实木餐桌",
+      cabinet: "双门玄关柜",
+      chair: "软包餐椅",
+      bed: "原木软包双人床",
+      sofa: "双人布艺沙发",
+      desk: "简约实木书桌",
+      shelf: "五层开放书架",
+    }[kind],
     category: "furniture",
     parts,
   };

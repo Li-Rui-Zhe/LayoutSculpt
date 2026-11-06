@@ -650,16 +650,22 @@
   font-size: 12px;
 }
 .edit-feedback > .edit-issues {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  right: 0;
+  z-index: 12;
+  box-shadow: 0 -6px 24px #303b2515;
   margin: -1px 0 0;
   max-height: min(180px, 30vh);
   padding: 10px 14px;
   background: #fffaf0;
   border-color: #dcc39b;
   color: #876632;
-  border-radius: 0 0 8px 8px;
+  border-radius: 8px 8px 0 0;
 }
 .edit-feedback:has(> .edit-issues) .edit-check-summary {
-  border-radius: 8px 8px 0 0;
+  border-radius: 0 0 8px 8px;
 }
 .edit-feedback .edit-issues :is(p, button) {
   font-size: 12px;
