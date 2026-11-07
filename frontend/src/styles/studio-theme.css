@@ -699,18 +699,6 @@
   background: linear-gradient(135deg, #eef2ed, #f7f8f4);
   border: 1px solid #e3e9e1;
 }
-.nav-task-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  border-radius: 10px;
-  background: #e1eadf;
-  color: #395d45;
-  font-size: 11px;
-  margin-left: 5px;
-}
 .project-target-picker {
   display: grid;
   gap: 6px;

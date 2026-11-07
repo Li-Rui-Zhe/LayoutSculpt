@@ -4,6 +4,9 @@ import math
 
 import numpy as np
 import trimesh
+from mapbox_earcut import triangulate_float64
+
+from tools.chair_mesh import loft
 
 
 def outline(w, d, radius, count=12):
@@ -447,74 +450,154 @@ def rack(m, w, d, h):
 
 
 def daybed(m, w, d, h, role):
-    """A continuous lounging surface on an open, connected timber frame."""
-    m.legs(w - 0.08, d - 0.08, 0.25, "oak", inset=0.09)
-    plate(m, "实木承重底座", [0, 0.28, 0], [w, 0.10, d], "oak", 0.055)
-    plate(
-        m, "内缩床垫托板", [0, 0.335, 0.01], [w - 0.10, 0.025, d - 0.09], "oak", 0.045
-    )
+    """Low timber deck, a reclined back rail and a continuous upholstered seat."""
+    for x in [-w * 0.416, w * 0.416]:
+        for z in [-d * 0.379, d * 0.379]:
+            m.box("圆边实木支脚", [x, 0.107, z], [0.063, 0.214, 0.063], "oak", 0.009)
+    m.box("跨中承托支脚", [0, 0.107, 0], [0.055, 0.214, 0.058], "oak", 0.007)
+    plate(m, "薄边实木底座", [0, 0.240, 0], [w, 0.072, d], "oak", 0.053)
 
-    mw, md, mz = w - 0.16, d - 0.13, 0.015
-    soft(m, "整张躺卧软垫", [0, 0.423, mz], [mw, 0.18, md], role, 0.34)
-    for y in [0.362, 0.484]:
-        piping(
-            m,
-            "软垫细滚边",
-            [0, y, mz],
-            mw - 0.024,
-            md - 0.024,
-            role,
-            radius=0.055,
-            thickness=0.002,
-        )
+    mw, md, seat_z = w - 0.115, d - 0.106, 0.021
+    cushion_sections = [
+        (0.270, 0.039, 0.065),
+        (0.282, 0.015, 0.064),
+        (0.307, 0.002, 0.068),
+        (0.411, 0.000, 0.070),
+        (0.429, 0.005, 0.073),
+        (0.446, 0.021, 0.076),
+        (0.454, 0.059, 0.081),
+    ]
+    rings = [
+        [(x, y, z + seat_z) for x, z in outline(mw - 2 * inset, md - 2 * inset, radius)]
+        for y, inset, radius in cushion_sections
+    ]
+    seat = loft("微鼓面布艺躺卧软垫", role, rings)
+    m.add(seat["name"], trimesh.Trimesh(seat["vertices"], seat["faces"]), role, smooth=True)
+    piping(m, "布套上缘同色包缝", [0, 0.411, seat_z], mw, md, role, radius=0.070, thickness=0.0022)
 
-    rear, front, side = -d / 2 + 0.035, d / 2 - 0.035, w / 2 - 0.035
-    top, arm = h - 0.025, 0.61
-    for x in [-side, side]:
-        m.box(
-            "后围框立柱",
-            [x, (0.30 + top) / 2, rear],
-            [0.05, top - 0.30, 0.05],
-            "oak",
-            0.008,
-        )
-        m.box(
-            "端部前立柱",
-            [x, (0.30 + arm) / 2, front],
-            [0.05, arm - 0.30, 0.05],
-            "oak",
-            0.008,
-        )
-        m.rod("圆润侧扶手", [x, arm, rear], [x, arm, front], 0.025, "oak")
-        m.box("侧围框下横撑", [x, 0.37, 0], [0.035, 0.04, d - 0.07], "oak", 0.007)
-        for z in [-d * 0.26, 0, d * 0.26]:
-            m.box("通透侧围木条", [x, 0.49, z], [0.025, 0.22, 0.028], "oak", 0.006)
-    m.rod("圆润后围扶手", [-side, top, rear], [side, top, rear], 0.025, "oak")
-    m.box("后围框下横撑", [0, 0.37, rear], [w - 0.07, 0.04, 0.035], "oak", 0.007)
-    for x in np.linspace(-side + 0.10, side - 0.10, 15):
-        m.box(
-            "通透靠背木条",
-            [x, (0.39 + top - 0.01) / 2, rear],
-            [0.026, top - 0.40, 0.028],
-            "oak",
-            0.006,
-        )
+    for x in [-w * 0.385, 0, w * 0.385]:
+        m.rod("后倾靠背承力柱", [x, 0.254, -d * 0.372], [x, h - 0.038, -d * 0.452], 0.024, "oak")
+    back_sections = [
+        (h - 0.185, 0.085, -d * 0.422, 0.041),
+        (h - 0.173, 0.062, -d * 0.430, 0.048),
+        (h - 0.011, 0.064, -d * 0.469, 0.048),
+        (h, 0.083, -d * 0.470, 0.038),
+    ]
+    rings = [
+        [(x, y, z + center_z) for x, z in outline(w - 2 * inset, depth, 0.019)]
+        for y, inset, center_z, depth in back_sections
+    ]
+    back = loft("一体圆边后倾实木靠背", "oak", rings)
+    m.add(back["name"], trimesh.Trimesh(back["vertices"], back["faces"]), "oak")
 
-    # Place the head pillow at one end instead of across the lounging surface.
-    soft(
-        m, "可移位头枕", [-w * 0.315, 0.575, mz], [0.46, 0.17, md * 0.73], "cream", 0.55
-    )
-    cloth(m, "床尾轻搭毯", 0.43, d - 0.10, 0.523, mz, "linen", drop=0.055, x=w * 0.28)
+    soft(m, "可拆长靠垫", [-w * 0.235, 0.575, -d * 0.290], [0.730, 0.282, 0.205], "linen", 0.47, tilt=-0.20)
+    soft(m, "低靠垫", [w * 0.105, 0.553, -d * 0.279], [0.605, 0.235, 0.184], "cream", 0.52, tilt=-0.19)
+    soft(m, "鼠尾草绿腰枕", [w * 0.302, 0.514, -d * 0.128], [0.392, 0.157, 0.172], "sage", 0.64, tilt=-0.15)
+
+
+def corner_desk(m, w, d, h, role):
+    left, right, back, front = -w / 2, w / 2, -d / 2, d / 2
+    wing_edge, main_edge = left + 0.56, back + 0.63
+    corners = np.array([
+        [left, back], [right, back], [right, main_edge],
+        [wing_edge, main_edge], [wing_edge, front], [left, front],
+    ])
+    radii = (0.034, 0.034, 0.048, 0.108, 0.048, 0.038)
+
+    def rounded_perimeter(inset):
+        points = []
+        for i, (corner, radius) in enumerate(zip(corners, radii, strict=True)):
+            incoming = corner - corners[i - 1]
+            outgoing = corners[(i + 1) % len(corners)] - corner
+            incoming /= np.linalg.norm(incoming)
+            outgoing /= np.linalg.norm(outgoing)
+            turn = incoming[0] * outgoing[1] - incoming[1] * outgoing[0]
+            inward = np.array([-incoming[1] - outgoing[1], incoming[0] + outgoing[0]])
+            offset_corner = corner + inward * inset
+            radius -= turn * inset
+            center = offset_corner + (outgoing - incoming) * radius
+            angle = math.atan2(-outgoing[1], -outgoing[0])
+            for theta in np.linspace(angle, angle + turn * math.pi / 2, 12):
+                points.append(center + radius * np.array([math.cos(theta), math.sin(theta)]))
+        return np.array(points)
+
+    # One slab, including the inward curve and a continuous bevel around its edge.
+    thickness, bevel = 0.039, 0.0038
+    cap = rounded_perimeter(bevel)
+    edge = rounded_perimeter(0)
+    rings = [
+        np.column_stack((points[:, 0], np.full(len(points), y), points[:, 1]))
+        for y, points in [(h - thickness, cap), (h - thickness + bevel, edge), (h - bevel, edge), (h, cap)]
+    ]
+    n = len(cap)
+    end_faces = triangulate_float64(cap, np.array([n], dtype=np.uint32)).reshape((-1, 3))
+    a, b, c = cap[end_faces[0]]
+    if np.linalg.det(np.stack((b - a, c - a))) < 0:
+        end_faces = end_faces[:, ::-1]
+    faces = [*end_faces.tolist(), *(end_faces[:, ::-1] + 3 * n).tolist()]
+    for layer in range(3):
+        for i in range(n):
+            a, b = layer * n + i, layer * n + (i + 1) % n
+            faces.extend([(a, b + n, b), (a, a + n, b + n)])
+    slab = trimesh.Trimesh(vertices=np.vstack(rings), faces=faces)
+    if not slab.is_volume:
+        raise ValueError("转角桌板轮廓无法形成完整实体")
+    m.add("一体倒圆 L 形木桌板", slab, role)
+
+    tube = 0.042
+    frame_top = h - 0.034
+    post_low = 0.014
+    post_h = frame_top - post_low
+    end_x, end_z = right - 0.076, front - 0.076
+    rear_z, inside_z = back + 0.074, main_edge - 0.063
+    outer_x, inside_x = left + 0.074, wing_edge - 0.066
+    posts = [(end_x, rear_z), (end_x, inside_z), (outer_x, end_z), (inside_x, end_z), (outer_x, rear_z)]
+    for x, z in posts:
+        m.box("粉末涂层方管立脚", [x, post_low + post_h / 2, z], [tube, post_h, tube], "charcoal", 0.004)
+        m.box("可调防滑脚垫", [x, 0.008, z], [0.043, 0.016, 0.043], "dark", 0.003)
+    for y in [0.047, h - 0.059]:
+        m.box("主桌门形脚横杆", [end_x, y, (rear_z + inside_z) / 2], [tube, tube, inside_z - rear_z + tube], "charcoal", 0.004)
+        m.box("副台门形脚横杆", [(outer_x + inside_x) / 2, y, end_z], [inside_x - outer_x + tube, tube, tube], "charcoal", 0.004)
+    m.box("背侧连续承托梁", [(outer_x + end_x) / 2, h - 0.058, rear_z], [end_x - outer_x + tube, 0.049, tube], "charcoal", 0.004)
+    m.box("转角外侧承托梁", [outer_x, h - 0.058, (rear_z + end_z) / 2], [tube, 0.049, end_z - rear_z + tube], "charcoal", 0.004)
+    m.box("主桌前侧围梁", [(wing_edge + end_x) / 2, h - 0.059, inside_z], [end_x - wing_edge + tube, 0.048, tube], "charcoal", 0.004)
+    m.box("桌角内侧连接片", [wing_edge - 0.043, h - 0.044, main_edge - 0.045], [0.18, 0.020, 0.16], "charcoal", 0.005)
+
+    drawer_x, drawer_z = right - 0.270, main_edge - 0.225
+    m.box("桌下浅抽内盒", [drawer_x, h - 0.090, drawer_z], [0.329, 0.106, 0.342], "charcoal", 0.008)
+    m.box("独立浅抽木前板", [drawer_x, h - 0.095, drawer_z + 0.174], [0.346, 0.094, 0.023], role, 0.006)
+    m.box("窄面金属抽拉手", [drawer_x, h - 0.095, drawer_z + 0.202], [0.128, 0.012, 0.009], "charcoal", 0.003)
+    for x in [drawer_x - 0.049, drawer_x + 0.049]:
+        m.box("浅抽拉手固定脚", [x, h - 0.095, drawer_z + 0.191], [0.011, 0.009, 0.017], "charcoal", 0.002)
+    m.box("背侧理线托槽底板", [w * 0.19, h - 0.138, rear_z + 0.066], [0.440, 0.014, 0.100], "charcoal", 0.004)
+    for z in [rear_z + 0.022, rear_z + 0.112]:
+        m.box("理线槽挡边", [w * 0.19, h - 0.112, z], [0.440, 0.061, 0.014], "charcoal", 0.004)
+    for x in [w * 0.19 - 0.164, w * 0.19 + 0.164]:
+        m.box("理线槽固定夹", [x, h - 0.084, rear_z + 0.019], [0.032, 0.044, 0.038], "charcoal", 0.003)
 
 
 def refined(m, spec):
     key, _, _, _, _, _, (w, d, h), shape, role = spec
     if shape == "daybed":
         daybed(m, w, d, h, role)
+    elif shape == "corner":
+        corner_desk(m, w, d, h, role)
     elif shape in {"bed", "platform"}:
         bed(m, w, d, h, shape, role)
     elif shape in {"bunk", "crib"}:
         nursery(m, w, d, h, shape)
+    elif shape == "pedestal_table":
+        m.disk("圆角实木桌面", [0, h - 0.020, 0], w / 2, 0.040, role)
+        profile = [
+            (0, 0), (0.252, 0), (0.274, 0.007), (0.285, 0.019),
+            (0.278, 0.036), (0.229, 0.049), (0.172, 0.070),
+            (0.134, 0.105), (0.116, 0.157), (0.112, 0.219),
+            (0.112, h - 0.079), (0.131, h - 0.055),
+            (0.148, h - 0.036), (0, h - 0.036),
+        ]
+        base = trimesh.creation.revolve(profile, sections=64)
+        base.apply_transform(trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0]))
+        m.add("一体圆柱承重底座", base, "paint")
     elif shape in {"coffee", "c_table", "round", "nested"}:
         table(m, key, w, d, h, shape, role)
     elif shape == "rack":

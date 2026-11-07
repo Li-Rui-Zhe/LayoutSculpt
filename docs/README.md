@@ -34,7 +34,9 @@
 | [墙面与地板创作](surface-creation.md) | 配方、手绘、参考图与材质保存 |
 | [建筑构件与阳台围护](balcony-boundaries.md) | 门窗、通道、栏板、玻璃与尺寸适配 |
 | [阳台高度](balcony-wall-height.md) | 普通墙与栏板高度的区别 |
-| [家具资产库](../assets/furniture/README.md) | 83 款家具、目录结构与资产构建 |
+| [家具资产库](../assets/furniture/README.md) | 97 款家具、目录结构与资产构建 |
+| [家具库实物核对](furniture-market-audit-20261107.md) | 国内商品原型、造型缺陷与模型修订 |
+| [97 款家具逐项复核](furniture-full-review-20261107.md) | 逐款商品参考、三面检查和结构修订 |
 
 ## 实现与维护
 

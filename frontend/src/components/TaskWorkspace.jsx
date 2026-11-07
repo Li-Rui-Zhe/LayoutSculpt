@@ -1152,7 +1152,13 @@ export default function TaskWorkspace({
               <X size={17} />
             </button>
           </div>
-          <div className="inspector-content">
+          <div
+            className="inspector-content"
+            data-panel={panel}
+            role={panel === "overview" ? "region" : undefined}
+            aria-label={panel === "overview" ? "方案概览内容" : undefined}
+            tabIndex={panel === "overview" ? 0 : undefined}
+          >
             {panel === "overview" ? (
               <div className="overview-panel">
                 <div className="overview-heading">

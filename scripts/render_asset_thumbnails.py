@@ -10,10 +10,12 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def render(path, output, size=320):
+def render(path, output, size=320, *, view=None):
     scene = trimesh.load(path, force="scene")
-    # GLB：Y 朝上、家具正面 +Z；统一从正前方右上侧取景。
-    direction = np.array([3, 2.6, 4], dtype=float)
+    # GLB：Y 朝上、家具正面 +Z。烟机从稍低处取景，展示安装后可见的进风腔。
+    if view is None:
+        view = (1.7, -1.55, 4) if Path(path).stem == "range_hood" else (3, 2.6, 4)
+    direction = np.array(view, dtype=float)
     direction /= np.linalg.norm(direction)
     right = np.cross([0, 1, 0], direction)
     right /= np.linalg.norm(right)

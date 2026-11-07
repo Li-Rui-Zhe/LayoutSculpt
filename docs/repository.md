@@ -30,7 +30,7 @@
 ## 保留
 
 - React / Three.js 前端、FastAPI 后端和项目 AI 契约。
-- 83 款运行时家具 GLB（45 个品类，目录 3.2.0）、当前首页设计示例、材质与上传演示户型。
+- 97 款运行时家具 GLB（54 个品类，目录 3.4.0）、当前首页设计示例、材质与上传演示户型。
 - pnpm 锁文件、Python 依赖及已验证环境的依赖快照。
 - 单元测试、真实 GLB 校验、浏览器检查及基准测试脚本。
 - 可选离线家具制作代码，用于重建本地源工程。
@@ -50,9 +50,9 @@
 
 ### README 展示素材
 
-README 使用轻量 SVG 横幅、四段重新录制的 GIF 与对应 WebP 静态封面。主线为「空间预览 → 材质搭配 → 家具创作 → 模型接入」，统一宽度、章节编号与字幕；接入页保留更高画幅，完整展示模型和保存按钮。浏览器偏好减少动态效果时展示静态封面；图片与动画都可单独打开。
+README 使用轻量 SVG 横幅、五段实机 GIF 与对应 WebP 静态封面。顺序为「空间预览 → 材质搭配 → 家具素材 → 家具创作 → 模型接入」，统一宽度、章节编号和字幕。接入页保留更高画幅以展示模型和保存按钮。浏览器偏好减少动态效果时展示静态封面。
 
-空间采用当前「林间光庭」；家具采用内置玄关柜模板。AI 接入页使用明确标注的示例模型、`DEMO` 密钥标识和浏览器内存中的演示设置，展示保存与未保存状态；不会读取真实凭据、保存本机 AI 设置或发起 AI 推理。用户任务、素材和草稿在录制上下文中隔离。原始帧、中间文件与检查报告保留在被忽略的 `data/readme-recording/`。
+空间采用当前「林间光庭」，家具素材组从仓库读取日床、转角桌和烟机的 GLB，家具创作组采用内置玄关柜模板。AI 接入页使用示例模型、`DEMO` 密钥标识和浏览器内存中的演示设置，展示保存与未保存状态。录制使用隔离的任务列表、素材列表与草稿。原始帧、中间文件和检查报告默认保存在 `data/readme-recording/`。
 
 更新演示时，先构建并启动当前项目，再从根目录执行：
 
@@ -62,7 +62,7 @@ node scripts/review/record_readme.mjs
 python scripts/build_readme_gifs.py
 ```
 
-Python 使用项目 `.venv`；Windows 可执行 `.venv\Scripts\python.exe scripts/build_readme_gifs.py`。录制默认连接 `http://127.0.0.1:8000`，可用 `STUDIO_BASE_URL` 指定已有项目服务。单独重录可在录制命令末尾加 `showcase`、`materials`、`diy` 或 `ai-connections`。每帧写入清单；整组通过后标记为 `complete`。编码器拒绝失败或不完整录制，并输出首、中、末帧及体积、时长报告。修复失败组后可单独重录；不发布不完整演示。字体优先使用 Windows 微软雅黑或 macOS 苹方。
+Python 使用项目 `.venv`，Windows 可执行 `.venv\Scripts\python.exe scripts/build_readme_gifs.py`。录制默认连接 `http://127.0.0.1:8000`，可用 `STUDIO_BASE_URL` 指定已有项目服务。单独重录可在命令末尾加 `showcase`、`materials`、`furniture`、`diy` 或 `ai-connections`。录制和编码可通过同一个 `README_RECORDING_DIR` 指定目录。整组通过后，清单标记为 `complete`，编码器据此生成 GIF、静态封面和检查报告。字体优先使用 Windows 微软雅黑或 macOS 苹方。
 
 详细用法移至 [设计工作流](design-workflows.md)，相关功能截图放在 `docs/images/` 并由文档引用。日常反馈与可选的私密报告入口见根目录 [SECURITY.md](../SECURITY.md)。
 

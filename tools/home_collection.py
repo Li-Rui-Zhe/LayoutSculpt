@@ -9,9 +9,10 @@ import trimesh
 from PIL import Image
 from trimesh.visual.material import PBRMaterial
 
-from tools.furniture_refinement import plate, refined, soft, piping
+from tools.furniture_refinement import piping, plate, refined, soft
 from tools.home_office import equipment
-from tools.household_essentials import SPECS as ESSENTIAL_SPECS, household
+from tools.household_essentials import SPECS as ESSENTIAL_SPECS
+from tools.household_essentials import household
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "3.4.0"
@@ -79,10 +80,10 @@ SPECS = [
         "sofa",
         "客厅",
         "沙发",
-        "整垫躺卧款",
+        "低木架 · 后倾靠背",
         (2.1, 0.95, 0.78),
         "daybed",
-        "sage",
+        "cream",
     ),
     (
         "ottoman",
@@ -295,7 +296,7 @@ SPECS = [
     ),
     (
         "nightstand",
-        "原木悬浮双抽床头柜",
+        "原木双抽床头柜",
         "nightstand",
         "卧室",
         "斗柜与床头柜",
@@ -354,9 +355,9 @@ SPECS = [
         "table",
         "餐厅",
         "餐桌",
-        "四人圆桌",
+        "单柱底座 · 四人圆桌",
         (1.1, 1.1, 0.75),
-        "round",
+        "pedestal_table",
         "oak",
     ),
     (
@@ -431,10 +432,10 @@ SPECS = [
         "desk",
         "书房",
         "书桌",
-        "转角桌",
+        "一体木桌板 · 方管脚架",
         (1.5, 1.2, 0.75),
         "corner",
-        "walnut",
+        "oak",
     ),
     (
         "desk_compact",
@@ -750,12 +751,12 @@ COLORS = {
 
 @lru_cache(maxsize=24)
 def material(role):
-    kwargs = dict(
-        name=f"家居系列_{role}",
-        baseColorFactor=[*COLORS[role], 255],
-        roughnessFactor=0.8 if role in {"linen", "cream", "sage"} else 0.45,
-        metallicFactor=0.75 if role in {"steel", "brass", "mirror", "aluminum"} else 0,
-    )
+    kwargs = {
+        "name": f"家居系列_{role}",
+        "baseColorFactor": [*COLORS[role], 255],
+        "roughnessFactor": 0.8 if role in {"linen", "cream", "sage"} else 0.45,
+        "metallicFactor": 0.75 if role in {"steel", "brass", "mirror", "aluminum"} else 0,
+    }
     texture = {
         "oak": "veneer_color.png",
         "walnut": "veneer_color.png",
@@ -861,6 +862,13 @@ class FurnitureMesh:
             role,
         )
 
+    def bar_pull(self, name, x, y, face_z, length=0.12, reach=0.017):
+        left, right = x - length / 2, x + length / 2
+        bar_z = face_z + reach
+        self.rod(name, [left, y, bar_z], [right, y, bar_z], 0.007, "brass")
+        for mount in (left + 0.009, right - 0.009):
+            self.rod("拉手固定脚", [mount, y, face_z - 0.003], [mount, y, bar_z], 0.0048, "brass")
+
     def disk(self, name, p, radius, height, role="oak"):
         bevel = min(0.008, height * 0.2, radius * 0.1)
         profile = [
@@ -893,7 +901,9 @@ class FurnitureMesh:
         role = "paint" if role == "cream" else role
         foot = 0.1 if h < 1.3 else 0.055
         self.legs(w, d, foot, "dark")
-        self.box("柜体", [0, (h + foot) / 2, 0], [w, h - foot, d - 0.025], role, 0.014)
+        sliding = mode == "sliding"
+        case_z, case_depth = (-0.026, d - 0.068) if sliding else (0, d - 0.025)
+        self.box("柜体", [0, (h + foot) / 2, case_z], [w, h - foot, case_depth], role, 0.014)
         self.box(
             "内缩踢脚", [0, foot / 2, 0], [w - 0.09, foot, d - 0.08], "dark", 0.006
         )
@@ -928,13 +938,13 @@ class FurnitureMesh:
                     role,
                     0.006,
                 )
-                self.rod(
-                    "抽屉拉手",
-                    [x - 0.06, h - 0.105, d / 2 + 0.024],
-                    [x + 0.06, h - 0.105, d / 2 + 0.024],
-                    0.007,
-                    "brass",
-                )
+                self.bar_pull("抽屉拉手", x, h - 0.105, d / 2 + 0.0075)
+            if sliding:
+                track_z = d / 2 - (0.015 if i == 0 else 0.043)
+                self.box("前轨移门" if i == 0 else "后轨移门", [x, y, track_z], [width + 0.014, height, 0.024], role, 0.004)
+                grip_x = x + (-1 if i == 0 else 1) * width * 0.38
+                self.box("移门窄边指扣", [grip_x, y, track_z + 0.011], [0.014, 0.112, 0.004], "charcoal", 0.003)
+                continue
             self.box(
                 "独立门板" if not drawers else "抽屉面板",
                 [x, y, d / 2 - 0.005],
@@ -957,26 +967,20 @@ class FurnitureMesh:
                     )
             else:
                 hx = x if drawers else x + width * 0.32
-                self.rod(
-                    "拉手",
-                    [hx - 0.06, y + (height * 0.32 if drawers else 0), d / 2 + 0.024],
-                    [hx + 0.06, y + (height * 0.32 if drawers else 0), d / 2 + 0.024],
-                    0.007,
-                    "brass",
-                )
-        if mode == "sliding":
-            for y in [foot + 0.01, h - 0.014]:
+                self.bar_pull("拉手", hx, y + (height * 0.32 if drawers else 0), d / 2 + 0.0075)
+        if sliding:
+            for y in [foot + 0.013, h - 0.013]:
                 self.box(
-                    "滑轨",
-                    [0, y, d / 2 + 0.006],
-                    [w - 0.02, 0.012, 0.016],
+                    "上下双轨槽",
+                    [0, y, d / 2 - 0.031],
+                    [w - 0.012, 0.016, 0.064],
                     "steel",
                     0.003,
                 )
 
 
 def construct(spec):
-    key, name, base, room, family, variant, (w, d, h), shape, role = spec
+    *_, (w, d, h), shape, role = spec
     m = FurnitureMesh()
     if household(m, spec) or equipment(m, spec) or refined(m, spec):
         pass
@@ -1074,58 +1078,44 @@ def construct(spec):
         "desk",
         "console",
         "standing",
-        "corner",
         "vanity",
     }:
         table_h = 0.75 if shape == "vanity" else h
         if shape == "standing":
             for x in [-w * 0.35, w * 0.35]:
-                m.box("T 型脚", [x, 0.028, 0], [0.08, 0.055, d * 0.88], "white", 0.014)
-                m.box(
-                    "升降立柱", [x, h * 0.48, 0], [0.075, h - 0.1, 0.075], "white", 0.01
-                )
-            m.box("升降横梁", [0, h - 0.11, 0], [w * 0.76, 0.07, 0.065], "dark", 0.01)
+                m.box("T 型脚", [x, 0.026, 0], [0.086, 0.052, d * 0.88], "white", 0.012)
+                m.box("伸缩柱外管", [x, 0.229, 0], [0.078, 0.36, 0.078], "white", 0.007)
+                m.box("伸缩柱内管", [x, (0.380 + h - 0.070) / 2, 0], [0.058, h - 0.450, 0.058], "aluminum", 0.004)
+                m.box("桌板承托臂", [x, h - 0.071, 0], [0.110, 0.048, d * 0.65], "white", 0.006)
+            m.box("升降横梁", [0, h - 0.095, 0], [w * 0.76, 0.057, 0.069], "dark", 0.008)
             m.box(
                 "控制面板",
-                [w * 0.28, h - 0.07, d / 2 - 0.03],
-                [0.14, 0.035, 0.025],
+                [w * 0.28, h - 0.064, d / 2 - 0.029],
+                [0.12, 0.036, 0.038],
                 "dark",
                 0.005,
             )
-        elif shape == "corner":
-            for x, z in [
-                (-w / 2 + 0.08, -d / 2 + 0.08),
-                (w / 2 - 0.08, -d / 2 + 0.08),
-                (w / 2 - 0.08, -d / 2 + 0.48),
-                (-w / 2 + 0.08, d / 2 - 0.08),
-                (-w / 2 + 0.48, d / 2 - 0.08),
-            ]:
-                m.rod("转角桌支脚", [x, 0, z], [x, h - 0.04, z], 0.023, "oak")
         else:
             m.legs(
                 w,
                 d,
-                table_h - 0.055,
+                table_h - 0.044,
                 "oak",
                 inset=0.09,
             )
-        if shape == "corner":
-            m.box("主桌面", [0, h - 0.025, -d / 2 + 0.28], [w, 0.05, 0.56], role, 0.025)
-            m.box(
-                "转角桌面",
-                [-w / 2 + 0.28, h - 0.025, 0.25],
-                [0.56, 0.05, d - 0.50],
-                role,
-                0.025,
-            )
-        else:
-            m.plate(
-                "圆角台面",
-                [0, table_h - 0.025, 0],
-                [w, 0.05, d],
-                role,
-                0.10,
-            )
+            leg_x = (w / 2 - 0.09) * 0.94
+            leg_z = (d / 2 - 0.09) * 0.94
+            for z in [-leg_z, leg_z]:
+                m.box("桌面下横围板", [0, table_h - 0.077, z], [2 * leg_x + 0.020, 0.062, 0.027], role, 0.005)
+            for x in [-leg_x, leg_x]:
+                m.box("桌面下侧围板", [x, table_h - 0.077, 0], [0.027, 0.062, 2 * leg_z + 0.020], role, 0.005)
+        m.plate(
+            "圆角台面",
+            [0, table_h - 0.025, 0],
+            [w, 0.05, d],
+            role,
+            0.10,
+        )
         if shape in {"desk", "console", "vanity"}:
             for x in [-w / 4, w / 4]:
                 m.box(
@@ -1135,13 +1125,7 @@ def construct(spec):
                     "oak",
                     0.009,
                 )
-                m.rod(
-                    "抽屉拉手",
-                    [x - 0.07, table_h - 0.12, d / 2],
-                    [x + 0.07, table_h - 0.12, d / 2],
-                    0.007,
-                    "brass",
-                )
+                m.bar_pull("抽屉拉手", x, table_h - 0.12, d / 2 - 0.03, length=0.14, reach=0.023)
         if shape == "vanity":
             m.rod(
                 "镜框支架",
@@ -1161,7 +1145,25 @@ def construct(spec):
                     rad,
                     mat,
                 )
-    elif shape in {"ottoman", "bench", "stool", "kids_chair", "outdoor"}:
+    elif shape == "outdoor":
+        seat_y = 0.425
+        side_x = w * 0.38
+        m.legs(w, d, seat_y - 0.008, inset=0.063)
+        for x in [-side_x, side_x]:
+            m.box("坐面侧框", [x, seat_y - 0.027, 0], [0.043, 0.049, d * 0.84], "oak", 0.007)
+            m.rod("后腿延伸靠背", [x, seat_y - 0.05, -d * 0.34], [x, h - 0.037, -d * 0.43], 0.023, "oak")
+            m.box("圆边扶手", [x, 0.622, -d * 0.016], [0.061, 0.036, d * 0.88], "oak", 0.010)
+            m.rod("扶手前撑", [x, seat_y - 0.021, d * 0.34], [x, 0.624, d * 0.34], 0.019, "oak")
+        for z in [-d * 0.36, d * 0.36]:
+            m.box("坐面横框", [0, seat_y - 0.026, z], [w * 0.80, 0.047, 0.039], "oak", 0.007)
+        slat_depth = d * 0.76 / 6
+        for i in range(6):
+            m.box("分体排水座板", [0, seat_y, (i - 2.5) * slat_depth], [w * 0.81, 0.026, slat_depth - 0.009], "oak", 0.007)
+        for i in range(4):
+            y = seat_y + 0.083 + i * 0.088
+            z = -d * (0.34 + 0.09 * (y - seat_y + 0.05) / (h - 0.037 - seat_y + 0.05))
+            m.box("排缝靠背板", [0, y, z], [w * 0.86, 0.059, 0.033], "oak", 0.006)
+    elif shape in {"ottoman", "bench", "stool", "kids_chair"}:
         sh = (
             h
             if shape in {"ottoman", "bench"}
@@ -1173,23 +1175,16 @@ def construct(spec):
         )
         m.legs(w, d, sh - 0.08, inset=0.065)
         m.box("座面", [0, sh - 0.055, 0], [w, 0.11, d], role, 0.045)
-        if shape in {"stool", "kids_chair", "outdoor"}:
+        if shape in {"stool", "kids_chair"}:
             for x in [-w * 0.38, w * 0.38]:
                 m.rod(
                     "靠背立柱",
-                    [x, sh, -d * 0.40],
-                    [x, h - 0.06, -d * 0.40],
+                    [x, sh - 0.033, -d * 0.385],
+                    [x, h - 0.06, -d * 0.385],
                     0.022,
                     "oak",
                 )
-            for yy in np.linspace(sh + 0.10, h - 0.05, 3 if shape == "outdoor" else 1):
-                m.box(
-                    "靠背横板",
-                    [0, yy, -d * 0.40],
-                    [w * 0.91, 0.085, 0.045],
-                    "oak",
-                    0.015,
-                )
+            m.box("靠背横板", [0, sh + 0.10, -d * 0.385], [w * 0.91, 0.085, 0.045], "oak", 0.015)
             if shape == "stool":
                 for z in [-d * 0.36, d * 0.36]:
                     m.rod(
@@ -1199,28 +1194,22 @@ def construct(spec):
                         0.016,
                         "steel",
                     )
-            if shape == "outdoor":
-                for x in [-w * 0.45, w * 0.45]:
-                    m.box("扶手", [x, 0.63, 0], [0.065, 0.045, d * 0.92], "oak", 0.018)
-                    m.rod(
-                        "扶手前撑",
-                        [x, 0.43, d * 0.35],
-                        [x, 0.63, d * 0.35],
-                        0.02,
-                        "oak",
-                    )
+                for x in [-w * 0.35, w * 0.35]:
+                    m.rod("实木脚侧撑", [x, 0.265, -d * 0.35], [x, 0.265, d * 0.35], 0.012, "oak")
     elif shape in {"shelf", "toys"}:
         m.box("背板", [0, h / 2, -d / 2 + 0.013], [w, h, 0.026], role, 0.006)
         for x in [-w / 2 + 0.015, w / 2 - 0.015]:
             m.box("侧板", [x, h / 2, 0], [0.03, h, d], role, 0.01)
         rows = 2 if h < 1 else 5
-        for yy in np.linspace(0.035, h - 0.018, rows + 1):
+        shelves = np.linspace(0.035, h - 0.018, rows + 1)
+        for yy in shelves:
             m.box("层板", [0, yy, 0], [w, 0.03, d], role, 0.008)
         for xx in [-w / 6, w / 6]:
             m.box("竖隔板", [xx, h / 2, 0], [0.026, h, d - 0.02], role, 0.008)
         if shape == "toys":
             for i, x in enumerate([-w / 3, 0, w / 3]):
-                for yy in [0.07, h / 2 + 0.05]:
+                for shelf in shelves[:-1]:
+                    yy = shelf + 0.014
                     m.box(
                         "彩色收纳盒",
                         [x, yy + 0.12, 0.01],
@@ -1230,41 +1219,56 @@ def construct(spec):
                     )
                     m.box(
                         "提手槽",
-                        [x, yy + 0.16, d / 2],
+                        [x, yy + 0.16, d / 2 - 0.006],
                         [0.07, 0.02, 0.005],
                         "dark",
                         0.006,
                     )
         else:
-            for i in range(7):
+            for i in range(5):
+                book_h = 0.16 + 0.019 * (i % 3)
                 m.box(
                     "书脊",
-                    [-w * 0.43 + i * 0.047, 0.17 + h / rows, -0.01],
-                    [0.035, 0.25, 0.20],
+                    [-w * 0.43 + i * 0.032, shelves[1] + 0.014 + book_h / 2, -0.017],
+                    [0.027, book_h, d * 0.63],
                     ["sage", "cream", "terracotta"][i % 3],
                     0.003,
                 )
     elif shape == "office":
         for a in np.linspace(0, 2 * math.pi, 5, endpoint=False):
             x, z = math.cos(a) * w * 0.44, math.sin(a) * d * 0.44
-            m.rod("五星脚", [0, 0.18, 0], [x, 0.06, z], 0.025, "dark")
-            m.disk("脚轮", [x, 0.035, z], 0.034, 0.065, "dark")
+            m.rod("五星脚", [0, 0.18, 0], [x, 0.071, z], 0.025, "dark")
+            m.box("脚轮支架", [x, 0.057, z], [0.029, 0.052, 0.029], "charcoal", 0.004)
+            axis = np.array([-math.sin(a), 0, math.cos(a)])
+            hub = np.array([x, 0.033, z])
+            m.rod("脚轮横轴", hub - axis * 0.025, hub + axis * 0.025, 0.009, "steel")
+            for side in [-1, 1]:
+                m.rod("双轮轮胎", hub + side * axis * 0.013, hub + side * axis * 0.028, 0.033, "dark")
         m.disk("气压柱", [0, 0.3, 0], 0.035, 0.3, "steel")
+        m.box("座下托板", [0, 0.445, -0.014], [w * 0.62, 0.046, d * 0.55], "charcoal", 0.010)
         m.soft("坐垫", [0, 0.48, 0], [w * 0.82, 0.10, d * 0.80], "charcoal", 0.045)
         for x in [-w * 0.43, w * 0.43]:
-            m.rod("扶手支架", [x, 0.48, 0], [x, 0.67, 0], 0.019, "dark")
+            m.rod("座下扶手连接", [x * 0.64, 0.446, 0.015], [x, 0.467, 0.015], 0.017, "dark")
+            m.rod("扶手支架", [x, 0.459, 0.015], [x, 0.67, 0.015], 0.019, "dark")
             m.box("扶手垫", [x, 0.68, 0], [0.07, 0.035, 0.26], "dark", 0.016)
-        m.box("靠背框", [0, 0.81, -d * 0.39], [w * 0.77, 0.54, 0.055], "dark", 0.025)
-        m.box(
-            "网背面", [0, 0.82, -d * 0.34], [w * 0.68, 0.46, 0.025], "charcoal", 0.012
-        )
-        for x in np.linspace(-w * 0.30, w * 0.30, 14):
-            m.rod(
-                "网背竖纹", [x, 0.61, -d * 0.31], [x, 1.01, -d * 0.31], 0.0025, "steel"
-            )
-        m.box("腰托", [0, 0.66, -d * 0.28], [w * 0.54, 0.085, 0.03], "dark", 0.014)
+        back_bottom, back_top = 0.535, 1.018
+        back_low_z, back_high_z = -d * 0.35, -d * 0.44
+        frame_x = w * 0.35
+        m.rod("椅背承力支架", [0, 0.445, -d * 0.19], [0, 0.615, -d * 0.375], 0.029, "charcoal")
+        for x in [-frame_x, frame_x]:
+            m.rod("倾斜靠背侧框", [x, back_bottom, back_low_z], [x, back_top, back_high_z], 0.018, "dark")
+        for y, z in [(back_bottom, back_low_z), (back_top, back_high_z)]:
+            m.rod("靠背横框", [-frame_x, y, z], [frame_x, y, z], 0.018, "dark")
+        for x in np.linspace(-frame_x, frame_x, 24)[1:-1]:
+            m.rod("网面纵丝", [x, back_bottom, back_low_z], [x, back_top, back_high_z], 0.00165, "charcoal")
+        for y in np.linspace(back_bottom, back_top, 22)[1:-1]:
+            z = np.interp(y, [back_bottom, back_top], [back_low_z, back_high_z])
+            m.rod("网面横丝", [-frame_x, y, z + 0.001], [frame_x, y, z + 0.001], 0.0015, "charcoal")
+        lumbar_z = np.interp(0.635, [back_bottom, back_top], [back_low_z, back_high_z])
+        m.rod("腰托横向支撑", [-frame_x, 0.635, lumbar_z], [frame_x, 0.635, lumbar_z], 0.012, "dark")
+        m.box("弧边腰托", [0, 0.635, lumbar_z + 0.012], [w * 0.48, 0.076, 0.030], "charcoal", 0.013)
         m.soft(
-            "头枕", [0, h - 0.055, -d * 0.35], [w * 0.42, 0.11, 0.08], "charcoal", 0.03
+            "头枕", [0, h - 0.055, back_high_z], [w * 0.42, 0.11, 0.08], "charcoal", 0.03
         )
     elif shape == "coat":
         m.disk("圆盘底座", [0, 0.025, 0], w / 2, 0.05, "oak")

@@ -9,13 +9,26 @@ const output = path.resolve(
   process.env.README_RECORDING_DIR || "data/readme-recording",
 );
 const requested = process.argv[2];
-const groups = ["showcase", "materials", "diy", "ai-connections"];
+const groups = ["showcase", "materials", "furniture", "diy", "ai-connections"];
 if (requested && !groups.includes(requested))
-  throw Error("请选择 showcase / materials / diy / ai-connections");
+  throw Error(`请选择 ${groups.join(" / ")}`);
 await mkdir(output, { recursive: true });
 const showcase = JSON.parse(
   await readFile("frontend/src/showcase.json", "utf8"),
 );
+const furnitureCatalog = JSON.parse(
+  await readFile("assets/furniture/catalog.json", "utf8"),
+);
+const featuredKinds = ["sofa_daybed", "desk_corner", "range_hood"];
+const publicFurniture = furnitureCatalog.items
+  .filter((entry) => featuredKinds.includes(entry.kind))
+  .map((entry) => ({
+    ...entry,
+    filename: `${entry.kind}.glb`,
+    source: "builtin",
+    model_url: `/readme-furniture/${entry.kind}.glb`,
+    thumbnail_url: `/readme-furniture/${entry.kind}.png`,
+  }));
 const browser = await launchReviewBrowser();
 const results = [];
 
@@ -99,6 +112,21 @@ async function record(name) {
       });
     });
   });
+  await page.route("**/readme-furniture/*", async (route) => {
+    const asset = new URL(route.request().url()).pathname;
+    const item = publicFurniture.find(
+      (entry) => entry.model_url === asset || entry.thumbnail_url === asset,
+    );
+    if (!item) return route.fulfill({ status: 404 });
+    const mesh = asset === item.model_url;
+    const filename = mesh
+      ? `glb/${item.filename}`
+      : `thumbnails/${item.kind}.png`;
+    return route.fulfill({
+      path: `assets/furniture/${filename}`,
+      contentType: mesh ? "model/gltf-binary" : "image/png",
+    });
+  });
   await page.route("**/api/**", async (route) => {
     const req = route.request(),
       url = new URL(req.url()),
@@ -125,6 +153,7 @@ async function record(name) {
       return json({ items: [], cursor: "public-demo", more: false });
     if (["/api/diy/assets", "/api/materials"].includes(p))
       return json({ items: [] });
+    if (p === "/api/library/assets") return json({ items: publicFurniture });
     if (p.startsWith("/api/drafts/")) {
       if (req.method() === "POST")
         drafts.set(p, {
@@ -216,16 +245,25 @@ async function record(name) {
     await expect(swatch).toHaveAttribute("aria-pressed", "true");
     await page.waitForTimeout(400);
   }
-  async function orbit(label, steps = 24, distance = 60) {
-    const box = await page
-      .locator(name === "diy" ? ".diy-preview-wrap canvas" : "#viewport canvas")
-      .boundingBox();
+  async function orbit(label, steps = 24, distance = 60, vertical = 0) {
+    const selector =
+      {
+        diy: ".diy-preview-wrap canvas",
+        furniture: ".library-inspector canvas",
+      }[name] || "#viewport canvas";
+    const box = await page.locator(selector).boundingBox();
     const x = box.x + box.width * 0.52,
       y = box.y + box.height * 0.53;
     await page.mouse.move(x, y);
     await page.mouse.down();
     for (let i = 1; i <= steps; i++) {
-      await page.mouse.move(x + (i * distance) / steps, y, { steps: 2 });
+      await page.mouse.move(
+        x + (i * distance) / steps,
+        y + (i * vertical) / steps,
+        {
+          steps: 2,
+        },
+      );
       await page.waitForTimeout(45);
       await shot(label, 80);
     }
@@ -276,6 +314,35 @@ async function record(name) {
       await page.getByRole("button", { name: "还原材质", exact: true }).click();
       await page.waitForTimeout(350);
       await shot("随时还原 · 其他房间保持各自搭配", 1000);
+    }
+    if (name === "furniture") {
+      await page.goto(`${base}/?project=sample&assetType=models#library`);
+      const inspector = page.locator(".library-inspector");
+      async function selectFurniture(kind) {
+        const entry = publicFurniture.find((item) => item.kind === kind);
+        await page
+          .locator(".library-card")
+          .filter({ hasText: entry.name })
+          .click();
+        await expect(inspector.locator("canvas")).toBeVisible();
+        await expect(inspector.locator(".library-metadata")).toContainText(
+          entry.triangles.toLocaleString("en-US"),
+        );
+        await expect(inspector.locator(".diy-preview-message")).not.toBeVisible(
+          {
+            timeout: 5000,
+          },
+        );
+      }
+      await selectFurniture("sofa_daybed");
+      await shot("木架日床 · 厚布垫与后倾靠背", 1400);
+      await orbit("转动查看日床 · 检查木框、布垫和靠背", 11, 64);
+      await selectFurniture("desk_corner");
+      await shot("L 形转角桌 · 一体木桌板与门形脚架", 1500);
+      await orbit("转动查看转角桌 · 观察浅抽与承托", 11, 58);
+      await selectFurniture("range_hood");
+      await shot("顶吸烟机 · 查看窄面触控区和罩体", 1700);
+      await orbit("转到罩体下方 · 查看进风格栅", 8, 22, -43);
     }
     if (name === "diy") {
       await page.goto(`${base}/#diy`);

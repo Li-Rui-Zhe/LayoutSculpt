@@ -12,8 +12,9 @@ TARGET = ROOT / "docs/images"
 GROUPS = {
     "showcase": ("01", "空间预览", "SPACE", "workbench.webp"),
     "materials": ("02", "材质搭配", "MATERIALS", "materials-poster.webp"),
-    "diy": ("03", "家具创作", "FURNITURE", "diy-poster.webp"),
-    "ai-connections": ("04", "模型接入", "CONNECTIONS", "ai-connections-poster.webp"),
+    "furniture": ("03", "家具素材", "CATALOG", "furniture-poster.webp"),
+    "diy": ("04", "家具创作", "FURNITURE", "diy-poster.webp"),
+    "ai-connections": ("05", "模型接入", "CONNECTIONS", "ai-connections-poster.webp"),
 }
 
 

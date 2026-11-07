@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="#preview">看演示</a> · <a href="#quickstart">开始使用</a> · <a href="docs/README.md">文档中心</a> · <a href="CONTRIBUTING.md">参与改进</a> · <a href="SECURITY.md">反馈问题</a>
+  <a href="#preview">看演示</a> · <a href="#furniture">家具素材</a> · <a href="#quickstart">开始使用</a> · <a href="docs/README.md">文档中心</a> · <a href="CONTRIBUTING.md">参与改进</a> · <a href="SECURITY.md">反馈问题</a>
 </p>
 
 ---
@@ -41,7 +41,7 @@
 | 理解空间 | 亲手设计 | 留下成果 |
 | :--- | :--- | :--- |
 | 户型识别、原图叠加、结构核对 | 平面 / 三维编辑、墙体、门窗与灯具 | GLB、效果图与成果包 |
-| 三维 / 俯视、剖切、晴天 / 日落 / 夜晚 | 墙地面搭配、家具 DIY、素材复用 | 草稿、版本与阶段恢复 |
+| 三维 / 俯视、剖切、室内漫游 | 墙地面搭配、家具 DIY、素材复用 | 高清效果图、草稿与阶段恢复 |
 
 <a id="materials"></a>
 
@@ -62,9 +62,28 @@
 
 [墙地面创作 →](docs/surface-creation.md)　[建筑构件与阳台围护 →](docs/balcony-boundaries.md)
 
+<a id="furniture"></a>
+
+## 03 / 选一件家具，转过来细看
+
+<p align="center">
+  <a href="docs/images/furniture.gif">
+    <picture>
+      <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/furniture-poster.webp" />
+      <img src="docs/images/furniture.gif" alt="素材库三维演示，转动查看木架软包日床、L 形转角工作桌和薄型顶吸烟机" width="100%" />
+    </picture>
+  </a>
+</p>
+
+<p align="center"><sub>日床的木架与厚布垫 · 转角桌的内弧、浅抽与钢架 · 顶吸烟机的罩体</sub></p>
+
+素材库提供 **97 款内置家具、54 个品类、10 个空间分类**。按用途、风格或外廓尺寸筛选，旋转检查结构，再放进方案试摆。日床、转角桌和烟机等模型参考了实物商品图，造型和比例按项目的布局尺寸建模。
+
+[97 款逐项复核 →](docs/furniture-full-review-20261107.md)　[家具选型与单件换款 →](docs/furniture-selection-and-replacement.md)
+
 <a id="diy"></a>
 
-## 03 / 家具，也可以自己造
+## 04 / 家具，也可以自己造
 
 <p align="center">
   <a href="docs/images/diy.gif">
@@ -79,13 +98,13 @@
 
 从模板或空白设计开始，也可以描述想法，让 AI 返回可编辑的家具部件。尺寸、位置、形状与材质都能继续调整；保存的素材可以放进不同户型复用。
 
-**83 款内置家具 / 45 个品类** · **家具、墙面、地板独立创作** · **GLB 导入与导出**
+**家具、墙面、地板独立创作** · **GLB 导入与导出**
 
 [家具与素材使用 →](docs/design-workflows.md)　[家具选型与单件换款 →](docs/furniture-selection-and-replacement.md)
 
 <a id="connections"></a>
 
-## 04 / 选好模型，再开始创作
+## 05 / 选好模型，再开始创作
 
 <p align="center">
   <a href="docs/images/ai-connections.gif">

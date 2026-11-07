@@ -5,7 +5,14 @@ export function furnitureTemplate(kind) {
   let parts;
   if (kind === "bed") {
     parts = [
-      part("悬浮床架", {
+      part("内收落地托座", {
+        shape: "rounded_box",
+        width: 1.3,
+        depth: 1.73,
+        height: 0.11,
+        color: "#684c3c",
+      }),
+      part("原木床架", {
         shape: "rounded_box",
         width: 1.62,
         depth: 2.08,
@@ -157,6 +164,12 @@ export function furnitureTemplate(kind) {
     ];
   } else if (kind === "cabinet") {
     parts = [
+      part("内收落地底座", {
+        width: 1.06,
+        depth: 0.28,
+        height: 0.105,
+        color: "#6e5647",
+      }),
       part("柜体", { width: 1.2, depth: 0.35, height: 0.85, z: 0.1 }),
       ...[-0.3, 0.3].map((x) =>
         part("柜门", {

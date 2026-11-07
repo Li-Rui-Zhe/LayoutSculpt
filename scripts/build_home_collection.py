@@ -79,6 +79,7 @@ def enrich(entry, room, family, variant, role="oak"):
         "desktop_computer": "窄边框显示器与内嵌壁纸、金属底座、侧透主机及内部风扇/显卡/主板、散热格栅、USB 接口、真实键位与字标、曲面鼠标；默认底部离地 75 cm，可调整以匹配桌面。",
         "laptop": "轻薄圆角铝合金机身、窄边屏幕与内嵌壁纸、独立转轴、错位键盘及字标、玻璃触控板、扬声器开孔、散热口、USB-C/USB-A/HDMI 接口及摄像头；默认底部离地 75 cm，可调整以匹配桌面。",
         "coffee_table": "圆角岩板桌面、内收置物层与四点实木支撑。",
+        "desk_corner": "带内弧的整块木桌板、两组门形钢架和转角支脚；主桌一侧设浅抽，背侧设理线槽。",
     }
     if entry["kind"] in details:
         entry["description"] += details[entry["kind"]]
@@ -105,10 +106,10 @@ def enrich(entry, room, family, variant, role="oak"):
         entry["description"] += "当前展示为坐姿高度，不含升降动画。"
     if entry["kind"] == "sofa_daybed":
         entry["rooms"] = ["客厅", "卧室", "书房"]
-        entry["tags"].extend(["日床", "躺卧", "整张软垫", "木条围框"])
+        entry["tags"].extend(["日床", "躺卧", "整张软垫", "后倾木靠背"])
         entry["description"] = (
-            "整张长软垫搭配通透木条围框、可移位头枕和床尾搭毯，适合靠坐或单人小憩。"
-            "整体尺寸 210 × 95 × 78 cm，可在人工设计中调整。固定日床造型，不含展开动画。"
+            "低矮实木框承托整张织物软垫，搭配后倾木靠背、两只靠垫和鼠尾草绿腰枕。"
+            "整体尺寸 210 × 95 × 78 cm，可在人工设计中调整。"
         )
     return entry
 

@@ -339,6 +339,12 @@ button:hover:not(:disabled) {
 .result-first .inspector-content {
   display: block;
 }
+.inspector-content[data-panel="overview"] {
+  scrollbar-width: none;
+}
+.inspector-content[data-panel="overview"]::-webkit-scrollbar {
+  display: none;
+}
 .result-first .inspector-section {
   padding: 20px;
   border-color: var(--line);
