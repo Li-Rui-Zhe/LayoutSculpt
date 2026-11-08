@@ -13,6 +13,7 @@ import {
   FolderDown,
   Download,
   Camera,
+  Sparkles,
   Focus,
   Scan,
   Undo2,
@@ -201,6 +202,9 @@ export default function TaskWorkspace({
   materialRequest,
   onMaterialConsumed,
   onMaterialContext,
+  onInteriorView,
+  interiorViewRequest,
+  onInteriorViewRequestConsumed,
   diyMode = null,
   onExitDiy,
   onDiyModeChange,
@@ -370,6 +374,32 @@ export default function TaskWorkspace({
   const viewer = useRef(null),
     picker = useRef(null),
     host = useRef(null);
+  useEffect(() => {
+    if (!active || !interiorViewRequest) return;
+    if (tab !== "design") {
+      setTab("design");
+      return;
+    }
+    const { room } = interiorViewRequest;
+    if (room && !modelError && (loading || !spaceVisible)) return;
+    onInteriorViewRequestConsumed();
+    if (room && !modelError && viewer.current?.startTour(room)) {
+      setRoomView(room);
+      setRoomIsolated(false);
+    } else if (!room) {
+      setNotice("调整好镜头后，点三维预览右上角的「用此视角出图」。");
+    }
+  }, [
+    active,
+    interiorViewRequest,
+    tab,
+    loading,
+    spaceVisible,
+    modelError,
+    onInteriorViewRequestConsumed,
+    setRoomView,
+    setTab,
+  ]);
   const settings = { ...defaultSettings, ...state.settings };
   const title =
     job?.name
@@ -429,6 +459,27 @@ export default function TaskWorkspace({
         "图片导出未完成，当前设计已保留。请稍后重试或使用较低清晰度。";
       if (capture) setCaptureError(message);
       else setActionError(message);
+    }
+  };
+  const selectInteriorView = () => {
+    try {
+      const image = viewer.current?.snapshot({
+        maxDimension: 1600,
+        type: "image/jpeg",
+        quality: 0.92,
+      });
+      if (!image?.startsWith("data:image/jpeg;base64,"))
+        throw Error("当前视角尚未就绪");
+      onInteriorView({
+        image,
+        projectId: id,
+        title,
+        room: tour?.room,
+        roomName: rooms.find((room) => room.id === (tour?.room || roomView))
+          ?.name,
+      });
+    } catch {
+      setNotice("当前视角无法截图，请等模型加载完成后重试。");
     }
   };
   useEffect(
@@ -766,6 +817,7 @@ export default function TaskWorkspace({
                       viewer={viewer}
                       preset={state.preset}
                       onPreset={(preset) => update({ preset })}
+                      onCaptureView={selectInteriorView}
                       onExit={() => {
                         viewer.current?.stopTour();
                         requestAnimationFrame(() =>
@@ -810,6 +862,17 @@ export default function TaskWorkspace({
                       onClick={() => exportImage()}
                       disabled={loading || !!modelError}
                     />
+                    <button
+                      type="button"
+                      className="icon-button interior-capture-entry"
+                      title="用此视角出图"
+                      aria-label="用当前视角生成效果图"
+                      onClick={selectInteriorView}
+                      disabled={loading || !!modelError}
+                    >
+                      <Sparkles size={15} aria-hidden="true" />
+                      <span>用此视角出图</span>
+                    </button>
                     <IconButton
                       label="全屏工作区"
                       icon={Maximize}

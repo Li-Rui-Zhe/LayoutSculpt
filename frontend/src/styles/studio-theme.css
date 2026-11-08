@@ -126,6 +126,7 @@
   width: var(--studio-nav-width);
   padding: 17px 8px;
   gap: 9px;
+  overflow-y: auto;
   background: #213f34;
   border-right: 0;
 }

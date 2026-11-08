@@ -9,6 +9,7 @@ import {
   PanelLeftOpen,
   Home,
   Sparkles,
+  ImagePlus,
   Armchair,
   Layers,
   Grid2X2,
@@ -18,6 +19,7 @@ import {
 import { useProjects } from "./hooks/useProjects.js";
 import TaskRail from "./components/TaskRail.jsx";
 import TaskWorkspace from "./components/TaskWorkspace.jsx";
+import InteriorImageWorkspace from "./components/InteriorImageWorkspace.jsx";
 import GenerationForm from "./components/GenerationForm.jsx";
 const AiConnections = lazy(() => import("./settings/AiConnections.jsx"));
 const SurfaceStudio = lazy(() => import("./diy/SurfaceStudio.jsx"));
@@ -35,15 +37,25 @@ import {
   useUrlContext,
 } from "./hooks/urlContext.js";
 
+const surfaceTitles = {
+  diy: "DIY 设计 · 家具与墙地面",
+  effects: "效果图 · 三维取景",
+  library: "素材库 · 模型与材质",
+  ai: "AI 接入 · 模型与连接",
+};
+
+function surfaceFromHash() {
+  const hash = location.hash.slice(1);
+  return Object.hasOwn(surfaceTitles, hash) ? hash : "workspace";
+}
+
 export default function App() {
   useCustomTextures();
   const projects = useProjects();
   const [helpOpen, setHelpOpen] = useState(false);
-  const [surface, setSurface] = useState(() =>
-    ["diy", "library", "ai"].includes(location.hash.slice(1))
-      ? location.hash.slice(1)
-      : "workspace",
-  );
+  const [surface, setSurface] = useState(surfaceFromHash);
+  const [interiorView, setInteriorView] = useState(null);
+  const [interiorViewRequest, setInteriorViewRequest] = useState(null);
   const [diyVisited, setDiyVisited] = useState(() => location.hash === "#diy");
   const [diyAssetId, setDiyAssetId] = useState(() =>
     readContext("diyAsset") ? { id: readContext("diyAsset") } : null,
@@ -80,9 +92,7 @@ export default function App() {
   };
   useEffect(() => {
     const change = () => {
-      const next = ["diy", "library", "ai"].includes(location.hash.slice(1))
-        ? location.hash.slice(1)
-        : "workspace";
+      const next = surfaceFromHash();
       setSurface(next);
       if (next !== "workspace") setCreating(false);
       if (next === "diy") setDiyVisited(true);
@@ -123,6 +133,24 @@ export default function App() {
     setCreating(false);
     setRailOpen(false);
   };
+  const chooseInteriorView = () => {
+    const sourceId = interiorView?.projectId;
+    const source = projects.jobs.find(
+      (job) => job.id === sourceId && job.status === "succeeded",
+    );
+    const job =
+      sourceId === "sample"
+        ? null
+        : source ||
+          (projects.job?.status === "succeeded" ? projects.job : null);
+    const projectId = job?.id || "sample";
+    if (projects.selectedId === projectId) navigate("workspace");
+    else select(job);
+    setInteriorViewRequest({
+      projectId,
+      room: projectId === sourceId ? interiorView.room : null,
+    });
+  };
   return (
     <main className="factory result-first studio-shell">
       <BuildNotice />
@@ -149,15 +177,7 @@ export default function App() {
         </a>
         <div className="project-heading-host" ref={setHeadingHost}>
           {creating && surface === "workspace" && <strong>新建户型</strong>}
-          {surface !== "workspace" && (
-            <strong>
-              {surface === "diy"
-                ? "DIY 设计 · 家具与墙地面"
-                : surface === "ai"
-                  ? "AI 接入 · 模型与连接"
-                  : "素材库 · 模型与材质"}
-            </strong>
-          )}
+          {surface !== "workspace" && <strong>{surfaceTitles[surface]}</strong>}
         </div>
         <div className="header-meta">
           <button className="text-button" onClick={() => setHelpOpen(true)}>
@@ -268,6 +288,16 @@ export default function App() {
             <span>DIY 创作</span>
           </button>
           <button
+            aria-label="打开效果图工作区"
+            title="效果图 · 三维取景与 AI 出图"
+            className={surface === "effects" ? "active" : ""}
+            aria-current={surface === "effects" ? "page" : undefined}
+            onClick={() => navigate("effects")}
+          >
+            <ImagePlus size={20} />
+            <span>效果图</span>
+          </button>
+          <button
             aria-label="打开素材库"
             title="素材库 · 模型与材质"
             className={surface === "library" ? "active" : ""}
@@ -310,8 +340,17 @@ export default function App() {
           onSelect={select}
         />
         <section
-          className={`factory-workspace ${surface === "diy" || surface === "library" || surface === "ai" ? "creation-workspace" : ""}`}
+          className={`factory-workspace ${surface !== "workspace" ? "creation-workspace" : ""}`}
         >
+          <InteriorImageWorkspace
+            active={surface === "effects"}
+            reference={interiorView}
+            health={projects.health}
+            offline={!projects.health && !!projects.error}
+            onChooseView={chooseInteriorView}
+            onConnections={() => navigate("ai")}
+            onRetryConnection={projects.recheck}
+          />
           {surface === "ai" && (
             <ProgressBoundary label="正在打开 AI 接入…">
               <AiConnections />
@@ -569,6 +608,17 @@ export default function App() {
               headingHost={headingHost}
               projects={projects}
               onConnections={() => navigate("ai")}
+              onInteriorView={(view) => {
+                setInteriorView(view);
+                navigate("effects");
+              }}
+              interiorViewRequest={
+                interiorViewRequest?.projectId ===
+                (projects.job?.id || "sample")
+                  ? interiorViewRequest
+                  : null
+              }
+              onInteriorViewRequestConsumed={() => setInteriorViewRequest(null)}
               placementRequest={
                 placementRequest?.jobId === projects.job?.id
                   ? placementRequest

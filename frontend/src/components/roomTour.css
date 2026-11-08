@@ -58,7 +58,8 @@
   text-shadow: 0 1px 5px #000;
 }
 .tour-back,
-.tour-map-toggle {
+.tour-map-toggle,
+.tour-image {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -69,6 +70,11 @@
   color: #fff;
   pointer-events: auto;
   backdrop-filter: blur(12px);
+}
+.room-tour-overlay .tour-image {
+  background: #edf3e9;
+  color: #244333;
+  font-weight: 650;
 }
 @media (max-width: 650px) {
   .tour-heading > div:nth-child(2) small {
@@ -349,7 +355,8 @@
     font-size: 9px;
   }
   .tour-back,
-  .tour-map-toggle {
+  .tour-map-toggle,
+  .tour-image {
     padding: 9px;
     font-size: 11px;
   }

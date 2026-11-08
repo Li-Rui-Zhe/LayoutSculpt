@@ -37,6 +37,7 @@ from .maintenance_routes import install_maintenance_routes
 from .runtime_identity import instance_id, project_id
 from .library import LibraryService, install_library_routes
 from .local_review import install_local_review_routes
+from .interior_image import install_interior_image_route
 from .project_transfer import install_transfer_routes
 from .recovery import REVIEW_TIMEOUT_WARNING, recoverable_recognition
 from .recognition_checkpoint import checkpoint_candidate, has_saved_candidate, readable_issue, save_checkpoint, saved_candidate
@@ -161,6 +162,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 await app.state.codex_login.close()
                 await app.state.codex_installer.close()
                 await surfaces.close()
+                await close_interior_images()
                 await app.state.runner.close()
                 await diy.close()
                 await codex.stop()
@@ -374,6 +376,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
 
     install_workspace_routes(app, store, settings, library)
     install_local_review_routes(app, store, settings, codex, registry, resolve_model)
+    close_interior_images = install_interior_image_route(app, codex, settings.data_dir)
     from .furniture_local import install_furniture_local
     install_furniture_local(app, store, settings, codex, registry, resolve_model, library)
     install_texture_routes(app, settings)

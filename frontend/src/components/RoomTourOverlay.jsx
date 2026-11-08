@@ -8,6 +8,7 @@ import {
   X,
   ChevronRight,
   CircleHelp,
+  Sparkles,
 } from "lucide-react";
 import { presets } from "../catalog.js";
 import "./roomTour.css";
@@ -66,6 +67,7 @@ export default function RoomTourOverlay({
   onExit,
   preset,
   onPreset,
+  onCaptureView,
 }) {
   const [mapOpen, setMapOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -136,6 +138,10 @@ export default function RoomTourOverlay({
         >
           <Map size={16} />
           房间地图
+        </button>
+        <button type="button" className="tour-image" onClick={onCaptureView}>
+          <Sparkles size={16} aria-hidden="true" />
+          用此视角出图
         </button>
       </div>
       {!!tour.recommendations?.length && (
