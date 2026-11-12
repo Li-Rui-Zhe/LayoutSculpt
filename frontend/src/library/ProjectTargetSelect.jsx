@@ -45,7 +45,10 @@ export default function ProjectTargetSelect({
         <option value="">选择目标项目与版本</option>
         {visibleTargets(groups, { query, history, selected: value }).map(
           (group) => (
-            <optgroup key={group.id} label={group.name}>
+            <optgroup
+              key={group.id}
+              label={`${group.name} · ${group.id.slice(0, 6)}`}
+            >
               {group.versions.map((job) => (
                 <option key={job.id} value={job.id}>
                   {cleanVersionName(job.name || group.name)} · V{job.version}
@@ -55,6 +58,7 @@ export default function ProjectTargetSelect({
                       ? " · 最新版本"
                       : ""}
                   {job.updated_at ? ` · ${job.updated_at.slice(0, 10)}` : ""}
+                  {` · ${job.id.slice(0, 6)}`}
                   {job.status === "awaiting_review" ? " · 待核对" : ""}
                 </option>
               ))}

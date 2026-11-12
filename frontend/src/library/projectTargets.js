@@ -41,7 +41,7 @@ export function visibleTargets(
         (job, index) =>
           job.id === selected ||
           ((history || index === 0) &&
-            `${group.name} ${job.name || ""}`
+            `${group.name} ${job.name || ""} ${job.id} ${group.id}`
               .toLocaleLowerCase()
               .includes(needle)),
       ),

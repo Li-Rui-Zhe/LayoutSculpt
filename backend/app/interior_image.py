@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import logging
+import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import UUID
@@ -11,6 +12,7 @@ from uuid import UUID
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.datastructures import UploadFile
 
 from .codex import CodexError, codex_command_args
@@ -21,6 +23,20 @@ TIMEOUT = 350
 MAX_IMAGE_BYTES = 24 * 1024 * 1024
 NO_STORE = {"Cache-Control": "no-store"}
 logger = logging.getLogger(__name__)
+
+
+class ImageContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    projectId: str = Field(default="", pattern=r"^(sample|[a-f0-9]{32})?$")
+    title: str = Field(default="", max_length=120)
+    roomName: str = Field(default="", max_length=80)
+
+
+class ImageArchive(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    archived: bool
+
+
 DISABLED_TOOLS = (
     "shell_tool",
     "unified_exec",
@@ -180,16 +196,25 @@ def install_interior_image_route(app, ai, data_dir):
         if request.client is None or request.client.host not in {"127.0.0.1", "::1"}:
             raise HTTPException(403, "AI 效果图只接受本机请求。")
 
-    def require_codex():
-        if ai.connections.data["default_provider"] != "codex":
-            raise HTTPException(
-                409, "DeepSeek API 暂未接入效果图生成，请在 AI 接入中切换并保存 Codex。"
-            )
+    @app.get("/api/interior-images/capability")
+    async def image_capability(request: Request):
+        require_local(request)
+        command = getattr(ai.local, "command", "codex")
+        available = bool(shutil.which(command) or Path(command).is_file())
+        return JSONResponse({
+            "available": available,
+            "verified": False,
+            "provider": "codex",
+            "message": "已发现本机 Codex；生成时需要有效登录与 ImageGen 权限。" if available
+            else "未找到本机 Codex，请在 AI 接入中准备运行环境。",
+        }, headers=NO_STORE)
 
     async def run_generation(record, view):
         try:
-            require_codex()
             png = await generate_interior_png(ai.local, record["prompt"], view)
+        except asyncio.CancelledError:
+            await asyncio.to_thread(gallery.fail, record, "生成已取消，底图和描述已保留，可再次生成。")
+            raise
         except HTTPException as exc:
             error = exc.detail
         except TimeoutError:
@@ -241,11 +266,11 @@ def install_interior_image_route(app, ai, data_dir):
     async def create_interior_image(request: Request):
         nonlocal worker, active_id
         require_local(request)
-        require_codex()
-        async with request.form(max_files=1, max_fields=1, max_part_size=8192) as form:
+        async with request.form(max_files=1, max_fields=2, max_part_size=8192) as form:
             prompt, view = form.get("prompt"), form.get("view")
             if (
-                set(form) != {"prompt", "view"}
+                not {"prompt", "view"}.issubset(form)
+                or set(form) - {"prompt", "view", "context"}
                 or not isinstance(prompt, str)
                 or not 1 <= len(prompt.strip()) <= 1200
                 or not isinstance(view, UploadFile)
@@ -254,10 +279,14 @@ def install_interior_image_route(app, ai, data_dir):
                     422, "请提交一张当前视角截图和 1 至 1200 字的描述。"
                 )
             data = await view.read(INTERIOR_VIEW_LIMIT + 1)
+            try:
+                context = ImageContext.model_validate_json(form.get("context") or "{}").model_dump()
+            except (ValidationError, TypeError):
+                raise HTTPException(422, "取景信息无效，请重新取景。") from None
         async with lock:
             if worker is not None and not worker.done():
                 raise HTTPException(
-                    409, "已有一张效果图正在生成，请在「已生成」中查看进度。"
+                    409, "已有一张效果图正在生成，请在「我的效果图」中查看进度。"
                 )
             try:
                 image = await asyncio.to_thread(normalize_view, data)
@@ -265,9 +294,8 @@ def install_interior_image_route(app, ai, data_dir):
                 raise HTTPException(
                     422, "当前视角截图无效，请重新取景后再试。"
                 ) from None
-            require_codex()
             try:
-                record = await asyncio.to_thread(gallery.create, prompt.strip(), image)
+                record = await asyncio.to_thread(gallery.create, prompt.strip(), image, context)
             except (OSError, ValueError):
                 raise HTTPException(
                     503, "无法保存生图记录，请检查本机磁盘和文件权限。"
@@ -275,6 +303,34 @@ def install_interior_image_route(app, ai, data_dir):
             active_id = record["id"]
             worker = asyncio.create_task(run_generation(record, image))
         return JSONResponse(record, status_code=202, headers=NO_STORE)
+
+    @app.post("/api/interior-images/{identifier}/cancel")
+    async def cancel_image(identifier: str, request: Request):
+        require_local(request)
+        async with lock:
+            try:
+                record = await asyncio.to_thread(gallery.read, identifier)
+            except (OSError, ValueError):
+                raise HTTPException(404, "生成记录不存在。") from None
+            if identifier == active_id and worker is not None and not worker.done():
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
+                record = await asyncio.to_thread(gallery.read, identifier)
+            return JSONResponse(gallery.public_record(record, None), headers=NO_STORE)
+
+    @app.post("/api/interior-images/{identifier}/archive")
+    async def archive_image(identifier: str, body: ImageArchive, request: Request):
+        require_local(request)
+        async with lock:
+            if identifier == active_id and worker is not None and not worker.done():
+                raise HTTPException(409, "请先取消生成，再移入归档。")
+            try:
+                await asyncio.to_thread(gallery.archive, identifier, body.archived)
+            except (FileNotFoundError, ValueError):
+                raise HTTPException(404, "生成记录不存在。") from None
+            except OSError:
+                raise HTTPException(503, "归档状态未能保存，请检查本机磁盘和文件权限后重试。") from None
+        return {"ok": True}
 
     async def close():
         if worker is not None and not worker.done():

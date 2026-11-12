@@ -24,6 +24,7 @@
 | [开始使用](getting-started.md) | Windows / macOS、启动、开发端口、配置与备份 |
 | [AI 接入](ai-connections.md) | 连接来源、保存模型、密钥状态、Codex 登录与更新 |
 | [设计工作流](design-workflows.md) | 上传、三维初稿、人工调整、素材复用与成果保存 |
+| [效果图工作室](interior-image-workspace.md) | 三维取景、本机草稿、生成取消、图片归档与生图能力边界 |
 | [全站 UI 统一](ui-design-20261106.md) | 导航、工作台视觉、编辑空间与响应式验收 |
 | [原图定位与精细识别](source-evidence-recognition.md) | 精细读图、叠加对照、结构分歧与校对边界 |
 | [三维直接编辑](live-3d-editing.md) | 家具、门扇与灯具的变换、热更新及保存 |

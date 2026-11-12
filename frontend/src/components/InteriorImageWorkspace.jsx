@@ -2,163 +2,173 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   Camera,
-  Check,
   Download,
   ImagePlus,
   Images,
-  LoaderCircle,
   PlugZap,
-  ScanLine,
-  ShieldCheck,
   Sparkles,
+  X,
+  RefreshCw,
 } from "lucide-react";
 import { api } from "../api.js";
+import { downloadFile } from "../downloadFile.js";
 import InteriorImageGallery from "./InteriorImageGallery.jsx";
+import { elapsedLabel, pollInteriorHistory } from "./interiorImageState.js";
 import "./interiorImageWorkspace.css";
 
-const maxPromptLength = 1200;
-const examplePrompt =
-  "保留现有镜头、门窗与家具位置。用柔和的午后自然光表现浅色木纹和布艺，呈现温暖、自然的室内摄影质感。";
-const steps = [
-  { title: "取景", detail: "在三维里调整镜头，点「用此视角出图」。" },
-  { title: "写描述", detail: "说说你想要的光线、材质和氛围。" },
-  { title: "对照下载", detail: "比较底图和成图，保存为 PNG。" },
+const suggestions = [
+  [
+    "午后自然光",
+    "保留门窗和家具位置。柔和的午后自然光，浅木纹与亚麻布艺，真实自然的居家摄影质感。",
+  ],
+  [
+    "温暖夜晚",
+    "保留门窗和家具位置。窗外入夜，室内暖色灯光照亮阅读和休息区域，保留暗部层次，避免过曝。",
+  ],
+  [
+    "清爽明亮",
+    "保留门窗和家具位置。明亮而不过曝的日光，干净的浅色墙面、自然木纹，呈现清爽舒适的真实空间。",
+  ],
 ];
-const unavailableCopy = {
-  deepseek: {
-    title: "DeepSeek API 暂未接入效果图生成",
-    detail: "后续可能支持。现在要出图，可前往 AI 接入切换并保存 Codex。",
-  },
-  unavailable: {
-    title: "本机 Codex 暂不可用",
-    detail: "前往 AI 接入检查 Codex 连接，设置好后再回来生成。",
-  },
-  offline: {
-    title: "本机工作台暂未连接",
-    detail: "工作台连接恢复后，可继续使用这里的截图和描述。",
-  },
-  checking: { title: "正在检查 AI 接入状态" },
-};
 
 export default function InteriorImageWorkspace({
   active,
   reference,
-  health,
+  draft,
   offline,
   onChooseView,
   onConnections,
-  onRetryConnection,
 }) {
-  const [draft, setDraft] = useState(null);
-  const [submission, setSubmission] = useState(null);
-  const [sending, setSending] = useState(null);
-  const [failure, setFailure] = useState(null);
-  const [panel, setPanel] = useState(null);
   const [history, setHistory] = useState({
     items: [],
-    folder: "",
     loading: true,
     error: "",
   });
+  const [capability, setCapability] = useState(null);
+  const [panel, setPanel] = useState("compose");
+  const [comparison, setComparison] = useState("result");
   const [revision, setRevision] = useState(0);
-  const heading = useRef(null);
-  const request = useRef(null);
-  const prompt =
-    draft?.projectId === reference?.projectId ? draft?.text || "" : "";
-  const current =
-    submission?.reference === reference
-      ? history.items.find((item) => item.id === submission?.id)
-      : null;
+  const [sending, setSending] = useState(false);
+  const [action, setAction] = useState("");
+  const [failure, setFailure] = useState("");
+  const [now, setNow] = useState(Date.now());
+  const heading = useRef(null),
+    request = useRef(null),
+    alive = useRef(true);
+  const current = history.items.find((item) => item.id === draft.submissionId);
+  const running = history.items.find((item) => item.status === "generating");
+  const busy = sending || !!running;
+  const ready = capability?.available && !offline;
   const imageUrl = current?.image_url;
-  const error =
-    (failure?.reference === reference ? failure?.message : "") ||
-    current?.error;
-  const pending =
-    !!reference && (sending === reference || current?.status === "generating");
-  const busy =
-    !!sending || history.items.some((item) => item.status === "generating");
-  const savedCount = history.items.filter(
-    (item) => item.status === "ready",
-  ).length;
-  const visiblePanel =
-    panel || (!reference && history.items.length ? "gallery" : "compose");
-  const access =
-    health?.ai?.provider === "deepseek"
-      ? "deepseek"
-      : health?.ai?.provider === "codex" && health.codex?.available
-        ? "codex"
-        : offline
-          ? "offline"
-          : health
-            ? "unavailable"
-            : "checking";
-  const ready = access === "codex";
-  const unavailable = unavailableCopy[access];
-  const currentStep = imageUrl ? 2 : reference ? 1 : 0;
+  const prompt = draft.prompt;
 
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      request.current?.abort();
+    };
+  }, []);
   useEffect(() => {
     if (active) heading.current?.focus({ preventScroll: true });
   }, [active]);
-
   useEffect(() => {
-    if (reference) setPanel("compose");
+    if (reference) {
+      setPanel("compose");
+      setFailure("");
+    }
   }, [reference]);
-
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
-    let timer;
-    let polling = false;
-    async function loadHistory() {
-      try {
-        const value = await api("/interior-images", {
+    const stop = pollInteriorHistory({
+      load: () =>
+        api("/interior-images", {
           signal: controller.signal,
           cache: "no-store",
-        });
-        if (controller.signal.aborted) return;
-        polling = value.items.some((item) => item.status === "generating");
-        setHistory({ ...value, loading: false, error: "" });
-      } catch {
-        if (controller.signal.aborted) return;
+        }),
+      onData: (value) => setHistory({ ...value, loading: false, error: "" }),
+      onError: (error, retrying) =>
         setHistory((previous) => ({
           ...previous,
           loading: false,
-          error: "暂时无法读取本机效果图，请稍后重试。",
-        }));
-      }
-      if (polling) timer = setTimeout(loadHistory, 2000);
-    }
-    void loadHistory();
+          error: `${error.status === 404 ? "服务版本较旧，请重启工作台加载新版接口。" : "暂时无法同步生成记录，已有图片和草稿仍保留。"}${retrying ? " 正在重新连接…" : " 请点击重新同步。"}`,
+        })),
+    });
+    api("/interior-images/capability", { signal: controller.signal })
+      .then((value) => {
+        if (!controller.signal.aborted) setCapability(value);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setCapability({
+            available: false,
+            message:
+              "未能检查生图环境，请重新同步；若刚更新代码，请重启工作台。",
+          });
+      });
     return () => {
+      stop();
       controller.abort();
-      clearTimeout(timer);
     };
   }, [active, revision]);
+  useEffect(() => {
+    if (!active || !running) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active, running?.id]);
 
-  useEffect(() => () => request.current?.abort(), []);
-
+  async function perform(id, work) {
+    if (action || request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setAction(id);
+    setFailure("");
+    try {
+      await work(controller.signal);
+    } catch (error) {
+      if (alive.current) setFailure(error.message);
+    } finally {
+      request.current = null;
+      if (alive.current) {
+        setAction("");
+        setRevision((v) => v + 1);
+      }
+    }
+  }
   async function generate(event) {
     event.preventDefault();
     if (!ready || !reference || busy || request.current || !prompt.trim())
       return;
+    const sourceRef = reference;
     const controller = new AbortController();
     request.current = controller;
-    setSending(reference);
-    setFailure(null);
+    setSending(true);
+    setFailure("");
     try {
       const source = await fetch(reference.image, {
         signal: controller.signal,
       });
+      if (!source.ok) throw Error("底图暂时无法读取，请重新取景后再试。");
       const form = new FormData();
       form.set("prompt", prompt.trim());
       form.set("view", await source.blob(), "view.jpg");
+      form.set(
+        "context",
+        JSON.stringify({
+          projectId: reference.projectId || "",
+          title: reference.title || "",
+          roomName: reference.roomName || "",
+        }),
+      );
       const record = await api("/interior-image", {
         method: "POST",
         body: form,
         signal: controller.signal,
       });
-      if (controller.signal.aborted) return;
-      setSubmission({ reference, id: record.id });
+      if (!alive.current) return;
+      draft.submitted(sourceRef, record.id);
       setHistory((previous) => ({
         ...previous,
         items: [
@@ -166,17 +176,49 @@ export default function InteriorImageWorkspace({
           ...previous.items.filter((item) => item.id !== record.id),
         ],
       }));
+      setComparison("result");
     } catch (error) {
-      if (!controller.signal.aborted)
-        setFailure({ reference, message: error.message });
+      if (alive.current) setFailure(error.message);
     } finally {
       request.current = null;
-      if (!controller.signal.aborted) {
-        setSending(null);
-        setRevision((value) => value + 1);
+      if (alive.current) {
+        setSending(false);
+        setRevision((v) => v + 1);
       }
     }
   }
+  function reuse(item) {
+    draft.choose(
+      {
+        image: item.view_url,
+        projectId: item.context?.projectId || "",
+        title: item.context?.title || "历史取景",
+        roomName: item.context?.roomName || "",
+      },
+      item.prompt,
+    );
+    setPanel("compose");
+    setFailure("");
+  }
+  const cancel = (item) =>
+    perform(item.id, (signal) =>
+      api(`/interior-images/${item.id}/cancel`, { method: "POST", signal }),
+    );
+  const archive = (item) =>
+    perform(item.id, (signal) =>
+      api(`/interior-images/${item.id}/archive`, {
+        method: "POST",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: !item.archived }),
+      }),
+    );
+  const download = (item) =>
+    perform(`download-${item.id}`, (signal) =>
+      downloadFile(item.image_url, `造个家-效果图-${item.id.slice(0, 8)}.png`, {
+        signal,
+      }),
+    );
 
   return (
     <section
@@ -187,253 +229,306 @@ export default function InteriorImageWorkspace({
       <header className="interior-image-heading">
         <div className="interior-image-title">
           <span className="interior-image-symbol">
-            <ImagePlus size={22} aria-hidden="true" />
+            <ImagePlus size={23} />
           </span>
           <div>
+            <span className="interior-image-eyebrow">从空间，到生活的样子</span>
             <h1 id="effects-title" ref={heading} tabIndex={-1}>
-              室内效果图
+              效果图工作室
             </h1>
-            <p>用自己的三维镜头，预览不同光线和材质下的家。</p>
+            <p>选好镜头，让光线与材质再近一步。</p>
           </div>
         </div>
-        <div className="interior-image-actions">
-          {ready && (
-            <span className="interior-image-provider">
-              <i aria-hidden="true" /> Codex · ImageGen
+        <nav className="interior-image-nav" aria-label="效果图工作区视图">
+          <button
+            aria-current={panel === "compose" ? "page" : undefined}
+            onClick={() => setPanel("compose")}
+          >
+            <Sparkles size={16} />
+            创作
+          </button>
+          <button
+            aria-current={panel === "gallery" ? "page" : undefined}
+            onClick={() => {
+              setPanel("gallery");
+              setRevision((v) => v + 1);
+            }}
+          >
+            <Images size={16} />
+            我的效果图{" "}
+            <span>
+              {
+                history.items.filter((v) => v.status === "ready" && !v.archived)
+                  .length
+              }
             </span>
-          )}
-          {reference && visiblePanel === "compose" && (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={onChooseView}
-            >
-              <Camera size={15} /> 重新取景
-            </button>
-          )}
-        </div>
+          </button>
+        </nav>
       </header>
-      <nav className="interior-image-nav" aria-label="效果图工作区视图">
-        <button
-          type="button"
-          aria-current={visiblePanel === "compose" ? "page" : undefined}
-          onClick={() => setPanel("compose")}
-        >
-          <Sparkles size={16} /> 创作
-        </button>
-        <button
-          type="button"
-          aria-current={visiblePanel === "gallery" ? "page" : undefined}
-          onClick={() => {
-            setPanel("gallery");
-            setRevision((value) => value + 1);
-          }}
-        >
-          <Images size={16} /> 已生成 <span>{savedCount}</span>
-          {busy && <small>生成中</small>}
-        </button>
-      </nav>
-      {visiblePanel === "gallery" ? (
+      {(history.error || failure) && (
+        <div className="interior-notice" role="alert">
+          <span>{failure || history.error}</span>
+          <button
+            onClick={() => {
+              setFailure("");
+              setRevision((v) => v + 1);
+            }}
+          >
+            <RefreshCw size={14} />
+            重新同步
+          </button>
+        </div>
+      )}
+      {running && (
+        <div className="interior-job" role="status">
+          <span className="interior-job-pulse" aria-hidden="true" />
+          <div>
+            <strong>
+              正在描绘空间 · {elapsedLabel(running.created_at, now)}
+            </strong>
+            <small>可以继续浏览，完成后自动保存在「我的效果图」。</small>
+          </div>
+          <button disabled={!!action} onClick={() => cancel(running)}>
+            <X size={14} />
+            {action === running.id ? "正在取消…" : "取消生成"}
+          </button>
+          <div className="interior-job-track" aria-hidden="true">
+            <i />
+          </div>
+        </div>
+      )}
+      {panel === "gallery" ? (
         <InteriorImageGallery
-          items={history.items}
-          folder={history.folder}
-          loading={history.loading}
-          error={history.error}
-          onRetry={() => setRevision((value) => value + 1)}
+          {...history}
+          onRetry={() => setRevision((v) => v + 1)}
           onCompose={() => setPanel("compose")}
+          onReuse={reuse}
+          onArchive={archive}
+          onDownload={download}
+          onCancel={cancel}
+          action={action}
+          sending={sending}
         />
       ) : (
-        <>
-          {unavailable && (
-            <section
-              className="interior-image-access"
-              aria-label="生图接入状态"
-              data-access={access}
-            >
-              {access === "checking" ? (
-                <LoaderCircle size={19} aria-hidden="true" />
-              ) : (
-                <PlugZap size={19} aria-hidden="true" />
-              )}
-              <div role="status">
-                <strong>{unavailable.title}</strong>
-                {unavailable.detail && <p>{unavailable.detail}</p>}
-              </div>
-              {access !== "checking" && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={
-                    access === "offline" ? onRetryConnection : onConnections
-                  }
-                >
-                  {access === "offline" ? "重新检查" : "前往 AI 接入"}
-                  <ArrowRight size={14} />
-                </button>
-              )}
-            </section>
-          )}
-          <ol className="interior-image-steps" aria-label="效果图制作步骤">
-            {steps.map(({ title, detail }, index) => (
-              <li
-                key={title}
-                aria-current={index === currentStep ? "step" : undefined}
-                data-complete={index < currentStep}
-              >
-                <span className="interior-step-number" aria-hidden="true">
-                  {index < currentStep ? <Check size={15} /> : `0${index + 1}`}
-                </span>
-                <div>
-                  <strong>{title}</strong>
-                  <p>{detail}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          {!reference ? (
-            <div className="interior-image-empty">
-              <div className="interior-image-empty-copy">
+        <div className="interior-image-content">
+          <div className="interior-stage">
+            <div className="interior-stage-heading">
+              <div>
                 <span className="interior-image-eyebrow">
-                  第一步 · 三维取景
+                  {imageUrl ? "02 / 空间效果" : "01 / 当前取景"}
                 </span>
-                <h2>先选一个想看的视角</h2>
-                <p>
-                  在三维预览中旋转模型，或进「看看我家」走到窗边、沙发旁，转向你想看的区域。
-                </p>
+                <h2>
+                  {reference?.title || "从一个喜欢的角度开始"}
+                  {reference?.roomName ? ` · ${reference.roomName}` : ""}
+                </h2>
+              </div>
+              {reference && (
                 <button
-                  type="button"
-                  className={ready ? "primary-button" : "secondary-button"}
+                  className="secondary-button"
+                  disabled={sending}
                   onClick={onChooseView}
                 >
-                  <Camera size={15} /> 去三维取景 <ArrowRight size={14} />
+                  <Camera size={14} />
+                  重新取景
                 </button>
-              </div>
-              <div className="interior-image-frame" aria-hidden="true">
-                <ScanLine size={37} strokeWidth={1.3} />
-                <span>取景后，三维底图会显示在这里</span>
-              </div>
+              )}
             </div>
-          ) : (
-            <div className="interior-image-content">
-              <div
-                className={`interior-image-comparison${imageUrl ? " has-result" : ""}`}
-              >
-                <figure>
-                  <figcaption>
-                    三维底图{" "}
-                    <span className="interior-image-lock">已锁定视角</span>
-                    <small>
-                      {[reference.title, reference.roomName]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </small>
-                  </figcaption>
-                  <img src={reference.image} alt="即将发送的三维视角截图" />
-                </figure>
+            {reference ? (
+              <>
                 {imageUrl && (
-                  <figure>
-                    <figcaption>AI 效果图</figcaption>
-                    <img src={imageUrl} alt="AI 生成的室内效果图" />
-                  </figure>
-                )}
-              </div>
-              <form
-                className="interior-image-form"
-                onSubmit={generate}
-                aria-busy={busy}
-              >
-                <div className="interior-image-form-heading">
-                  <h2>出图描述</h2>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() =>
-                      setDraft({
-                        projectId: reference.projectId,
-                        text: examplePrompt,
-                      })
-                    }
-                    disabled={!!prompt.trim() || pending}
+                  <div
+                    className="interior-compare-tabs"
+                    role="group"
+                    aria-label="图片对照方式"
                   >
-                    填入示例
-                  </button>
-                </div>
-                <label htmlFor="interior-image-prompt">
-                  描述想看到的光线、材质和氛围
-                </label>
-                <textarea
-                  id="interior-image-prompt"
-                  value={prompt}
-                  onChange={(event) =>
-                    setDraft({
-                      projectId: reference.projectId,
-                      text: event.target.value,
-                    })
-                  }
-                  placeholder="例如，保留家具布局，做成有下午自然光的暖色原木风，呈现布艺和木纹的真实质感。"
-                  maxLength={maxPromptLength}
-                  rows={4}
-                  required
-                  disabled={pending}
-                />
-                <small className="interior-image-length">
-                  {prompt.length} / {maxPromptLength}
-                </small>
-                <div className="interior-image-privacy">
-                  <ShieldCheck size={16} aria-hidden="true" />
-                  <p className="field-note">
-                    确认生成后，本机 Codex 只把这张截图和描述发给 OpenAI
-                    ImageGen。户型原图、GLB 和任务记录留在本机。
-                  </p>
-                </div>
-                {error && (
-                  <p role="alert" className="field-note">
-                    {error}
-                  </p>
+                    {[
+                      ["result", "效果图"],
+                      ["source", "三维底图"],
+                      ["compare", "并排对照"],
+                    ].map(([key, label]) => (
+                      <button
+                        key={key}
+                        aria-pressed={comparison === key}
+                        onClick={() => setComparison(key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 )}
-                {busy && (
-                  <p role="status" className="interior-image-progress">
-                    <LoaderCircle size={16} aria-hidden="true" />
-                    {pending
-                      ? "正在生成。可以离开页面，进度和结果会保存在「已生成」。"
-                      : "已有一张效果图在生成，可以到「已生成」查看。"}
-                  </p>
-                )}
-                <div className="interior-image-actions">
-                  <button
-                    type="submit"
-                    className="primary-button"
-                    disabled={!ready || busy || !prompt.trim()}
-                  >
-                    <Sparkles size={15} />{" "}
-                    {busy ? "生成中" : ready ? "生成效果图" : "暂不可生成"}
-                  </button>
-                  {imageUrl && (
-                    <a
-                      className="secondary-button"
-                      href={imageUrl}
-                      download="LayoutSculpt-室内效果图.png"
-                    >
-                      <Download size={15} /> 下载 PNG
-                    </a>
+                <div
+                  className={`interior-image-comparison${imageUrl && comparison === "compare" ? " has-result" : ""}`}
+                >
+                  {(!imageUrl || comparison !== "result") && (
+                    <figure>
+                      <img src={reference.image} alt="即将发送的三维视角截图" />
+                      <figcaption>
+                        三维底图 <span>已选定底图</span>
+                      </figcaption>
+                    </figure>
+                  )}
+                  {imageUrl && comparison !== "source" && (
+                    <figure>
+                      <img src={imageUrl} alt="AI 生成的室内效果图" />
+                      <figcaption>
+                        空间效果 <span>已保存到本机</span>
+                      </figcaption>
+                    </figure>
                   )}
                 </div>
+                <p className="interior-stage-note">
+                  效果图用于比较光线与氛围，尺寸和布局请以三维方案为准。
+                </p>
                 {imageUrl && (
-                  <p className="interior-image-saved" role="status">
-                    <Check size={15} /> 已自动保存到「已生成」
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => setPanel("gallery")}
-                    >
-                      查看图库
-                    </button>
-                  </p>
+                  <button
+                    className="secondary-button"
+                    disabled={!!action}
+                    onClick={() => download(current)}
+                  >
+                    <Download size={15} />
+                    {action ? "正在准备…" : "下载高清图片"}
+                  </button>
                 )}
-              </form>
+              </>
+            ) : (
+              <div className="interior-image-empty">
+                <div className="interior-room-sketch" aria-hidden="true">
+                  <div className="sketch-window" />
+                  <div className="sketch-sofa" />
+                  <div className="sketch-rug" />
+                  <Camera size={28} />
+                </div>
+                <h3>镜头里，就是你设计的家</h3>
+                <p>
+                  在三维中旋转查看，也可以走进房间。
+                  <br />
+                  找到喜欢的角度，再带它来这里。
+                </p>
+                <button
+                  className="primary-button"
+                  disabled={!draft.loaded}
+                  onClick={onChooseView}
+                >
+                  去三维取景 <ArrowRight size={16} />
+                </button>
+                <span className="interior-empty-note">
+                  取景 → 描述想法 → 预览与下载
+                </span>
+              </div>
+            )}
+            <p className="interior-draft-status" role="status">
+              {draft.status ||
+                (draft.loaded ? "底图与描述仅保存在本机" : "正在恢复上次创作…")}
+            </p>
+          </div>
+          <form
+            className="interior-image-form"
+            onSubmit={generate}
+            aria-busy={sending}
+          >
+            <div>
+              <span className="interior-image-eyebrow">让这个角落，更像家</span>
+              <h2>想看到什么感觉？</h2>
+              <p>说说光线、材质，或你想改变的氛围。</p>
             </div>
-          )}
-        </>
+            <label htmlFor="interior-image-prompt">你的想法</label>
+            <textarea
+              id="interior-image-prompt"
+              value={prompt}
+              onChange={(event) => draft.update({ prompt: event.target.value })}
+              disabled={!reference || sending}
+              placeholder="比如：保留现在的布置，阳光落在木地板上，沙发是温暖的亚麻质感。"
+              maxLength={1200}
+              rows={6}
+              required
+            />
+            <small className="interior-image-length">
+              {prompt.length} / 1200
+            </small>
+            <div className="interior-prompt-options" aria-label="描述灵感">
+              {suggestions.map(([label, text]) => (
+                <button
+                  key={label}
+                  type="button"
+                  disabled={!reference || sending}
+                  onClick={() =>
+                    draft.update({
+                      prompt: prompt.trim()
+                        ? `${prompt.trim()}\n${text}`.slice(0, 1200)
+                        : text,
+                    })
+                  }
+                >
+                  {label} <span>＋</span>
+                </button>
+              ))}
+            </div>
+            {current?.error && (
+              <div className="interior-form-error" role="alert">
+                {current.error}
+                <small>底图和描述仍在，调整后可以再次生成。</small>
+              </div>
+            )}
+            <button
+              type="submit"
+              className="primary-button interior-generate"
+              disabled={
+                !reference || !ready || busy || !!action || !prompt.trim()
+              }
+            >
+              <Sparkles size={17} />
+              {sending
+                ? "正在提交…"
+                : running
+                  ? "正在生成，请稍候"
+                  : current?.error
+                    ? "用当前描述重新生成"
+                    : imageUrl
+                      ? "再生成一张"
+                      : "生成效果图"}
+            </button>
+            {!reference && (
+              <p className="field-note">先在左侧选择一个三维视角。</p>
+            )}
+            <div className="interior-connection">
+              <span
+                className={`interior-connection-dot${ready ? " available" : ""}`}
+              />
+              <strong>
+                {offline
+                  ? "工作台暂未连接"
+                  : capability?.available
+                    ? "使用本机 Codex 生图"
+                    : capability
+                      ? "需要连接生图环境"
+                      : "正在检查生图环境"}
+              </strong>
+              <p>
+                {offline
+                  ? "连接恢复后重新同步，草稿会保留。"
+                  : capability?.message}
+              </p>
+              {!ready && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={onConnections}
+                >
+                  <PlugZap size={14} />
+                  检查 AI 接入
+                </button>
+              )}
+            </div>
+            <details className="interior-privacy">
+              <summary>生成与隐私说明</summary>
+              <p>
+                确认生成后，仅将这张底图和描述发送给 OpenAI
+                ImageGen。不会改变户型原图或三维模型，也不会切换其他功能的默认
+                AI 来源。需要本机 Codex 已登录并拥有生图权限。
+              </p>
+            </details>
+          </form>
+        </div>
       )}
     </section>
   );

@@ -39,11 +39,7 @@ def test_interior_image_accepts_only_a_local_view_and_prompt(tmp_path, monkeypat
     url = "/api/interior-image"
     with TestClient(app, client=("127.0.0.1", 12345)) as client:
         connection.data["default_provider"] = "deepseek"
-        denied = client.post(url, data={"prompt": "room"}, files=files)
-        assert denied.status_code == 409
-        assert "DeepSeek API 暂未接入" in denied.json()["detail"]
         assert not received
-        connection.data["default_provider"] = "codex"
         assert client.post(url, json={"prompt": "room"}).status_code == 422
         assert client.post(url, data={"prompt": " "}, files=files).status_code == 422
         assert (
@@ -54,7 +50,7 @@ def test_interior_image_accepts_only_a_local_view_and_prompt(tmp_path, monkeypat
             client.post(
                 url, data={"prompt": "room", "path": "private.png"}, files=files
             ).status_code
-            == 400
+            == 422
         )
         assert (
             client.post(

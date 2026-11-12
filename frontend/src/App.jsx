@@ -20,6 +20,8 @@ import { useProjects } from "./hooks/useProjects.js";
 import TaskRail from "./components/TaskRail.jsx";
 import TaskWorkspace from "./components/TaskWorkspace.jsx";
 import InteriorImageWorkspace from "./components/InteriorImageWorkspace.jsx";
+import Modal from "./components/Modal.jsx";
+import useInteriorDraft from "./hooks/useInteriorDraft.js";
 import GenerationForm from "./components/GenerationForm.jsx";
 const AiConnections = lazy(() => import("./settings/AiConnections.jsx"));
 const SurfaceStudio = lazy(() => import("./diy/SurfaceStudio.jsx"));
@@ -54,7 +56,8 @@ export default function App() {
   const projects = useProjects();
   const [helpOpen, setHelpOpen] = useState(false);
   const [surface, setSurface] = useState(surfaceFromHash);
-  const [interiorView, setInteriorView] = useState(null);
+  const interiorDraft = useInteriorDraft();
+  const interiorView = interiorDraft.reference;
   const [interiorViewRequest, setInteriorViewRequest] = useState(null);
   const [diyVisited, setDiyVisited] = useState(() => location.hash === "#diy");
   const [diyAssetId, setDiyAssetId] = useState(() =>
@@ -78,6 +81,7 @@ export default function App() {
   }, [diyMode]);
   const surfaceDiy = surface === "diy" && diyMode !== "furniture";
   const [placementRequest, setPlacementRequest] = useState(null);
+  const [furnitureDestination, setFurnitureDestination] = useState(null);
   const [boundaryRequest, setBoundaryRequest] = useState(null);
   const [architectureContext, setArchitectureContext] = useState(null);
   const [materialRequest, setMaterialRequest] = useState(null);
@@ -203,6 +207,62 @@ export default function App() {
         </div>
       </header>
       {helpOpen && <WorkspaceHelp onClose={() => setHelpOpen(false)} />}
+      {furnitureDestination && (
+        <Modal
+          title="把家具放进哪个家？"
+          onClose={() => setFurnitureDestination(null)}
+        >
+          <p>家具已保存到素材库。选择一个方案，再到画布上决定摆放位置。</p>
+          <ProjectTargetSelect
+            jobs={projects.jobs}
+            value={furnitureDestination.targetId}
+            label="家具放入目标户型"
+            currentId={projects.job?.id || ""}
+            onChange={(targetId) =>
+              setFurnitureDestination((v) => ({ ...v, targetId }))
+            }
+          />
+          <div className="dialog-actions">
+            <button
+              className="secondary-button"
+              onClick={() => setFurnitureDestination(null)}
+            >
+              暂不放入
+            </button>
+            <button
+              className="primary-button"
+              disabled={
+                !projects.jobs.some(
+                  (j) =>
+                    j.id === furnitureDestination.targetId &&
+                    j.status === "succeeded",
+                )
+              }
+              onClick={() => {
+                const job = projects.jobs.find(
+                  (j) =>
+                    j.id === furnitureDestination.targetId &&
+                    j.status === "succeeded",
+                );
+                if (!job) return;
+                setPlacementRequest({
+                  id: crypto.randomUUID(),
+                  jobId: job.id,
+                  template: placedDesign(
+                    furnitureDestination.design,
+                    { x: 0, y: 0 },
+                    "pending",
+                  ),
+                });
+                setFurnitureDestination(null);
+                select(job);
+              }}
+            >
+              去选择摆放位置
+            </button>
+          </div>
+        </Modal>
+      )}
       {surfaceToApply && (
         <ApplySurfaceDialog
           {...surfaceToApply}
@@ -345,11 +405,10 @@ export default function App() {
           <InteriorImageWorkspace
             active={surface === "effects"}
             reference={interiorView}
-            health={projects.health}
+            draft={interiorDraft}
             offline={!projects.health && !!projects.error}
             onChooseView={chooseInteriorView}
             onConnections={() => navigate("ai")}
-            onRetryConnection={projects.recheck}
           />
           {surface === "ai" && (
             <ProgressBoundary label="正在打开 AI 接入…">
@@ -379,21 +438,6 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              {!surfaceDiy && (
-                <label>
-                  目标户型
-                  <ProjectTargetSelect
-                    jobs={projects.jobs}
-                    value={projects.job?.id || ""}
-                    currentId={projects.job?.id || ""}
-                    label="DIY 目标户型"
-                    onChange={(id) => {
-                      const job = projects.jobs.find((j) => j.id === id);
-                      if (job) projects.select(job);
-                    }}
-                  />
-                </label>
-              )}
               <p>
                 {surfaceDiy
                   ? "独立制作墙地面材质，保存到素材库后可用于任意户型。"
@@ -429,6 +473,7 @@ export default function App() {
                   active={surface === "diy" && !surfaceDiy}
                   openAssetRequest={diyAssetId}
                   saveBeforeUse
+                  closeAfterUse={false}
                   useLabel="保存并选择放置位置"
                   onLibrary={(assetId) => {
                     try {
@@ -458,22 +503,14 @@ export default function App() {
                     });
                     navigate("library");
                   }}
-                  onUse={
-                    projects.job?.status === "succeeded"
-                      ? async (design) => {
-                          const job = projects.job;
-                          setPlacementRequest({
-                            id: crypto.randomUUID(),
-                            jobId: job.id,
-                            template: placedDesign(
-                              design,
-                              { x: 0, y: 0 },
-                              "pending",
-                            ),
-                          });
-                          select(job);
-                        }
-                      : undefined
+                  onUse={async (design) =>
+                    setFurnitureDestination({
+                      design,
+                      targetId:
+                        projects.job?.status === "succeeded"
+                          ? projects.job.id
+                          : "",
+                    })
                   }
                   onClose={() => navigate("workspace")}
                 />
@@ -609,7 +646,7 @@ export default function App() {
               projects={projects}
               onConnections={() => navigate("ai")}
               onInteriorView={(view) => {
-                setInteriorView(view);
+                interiorDraft.choose(view);
                 navigate("effects");
               }}
               interiorViewRequest={

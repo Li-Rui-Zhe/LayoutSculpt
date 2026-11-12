@@ -187,8 +187,8 @@ button:hover:not(:disabled) {
 }
 .result-first .design-panel {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: 52px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   background: #fff;
 }
 .result-first #viewport {
@@ -1199,5 +1199,75 @@ button:hover:not(:disabled) {
 @media (max-width: 700px) {
   .navigation-strip .mobile-help {
     display: flex;
+  }
+}
+
+/* 工具按真实宽度换行，避免中间墙体按钮被左右工具挤压。 */
+.result-first .design-panel {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.result-first .canvas-actionbar {
+  grid-row: 1;
+  grid-column: 1/-1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  min-width: 0;
+  border-bottom: 1px solid #edf0e8;
+  background: #fff;
+}
+.result-first .canvas-actionbar .canvas-controls,
+.result-first .canvas-actionbar .canvas-toolbar,
+.result-first .canvas-actionbar .wall-display-options {
+  position: static;
+  transform: none;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 0;
+  align-self: auto;
+}
+.result-first .canvas-actionbar .canvas-toolbar {
+  margin-left: auto;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.result-first .design-panel #viewport {
+  grid-row: 2;
+}
+.result-first .design-panel .room-view-tools {
+  position: relative;
+  grid-row: 2;
+  grid-column: 1/-1;
+  align-self: start;
+  justify-self: start;
+  top: auto;
+  left: auto;
+  margin: 12px;
+  max-width: calc(100% - 24px);
+}
+.result-first .canvas-actionbar .interior-capture-entry {
+  width: auto;
+}
+.result-first .tour-active .canvas-actionbar {
+  display: none;
+}
+.result-first .tour-active #viewport {
+  grid-row: 1/-1;
+}
+@media (max-width: 700px) {
+  .result-first .canvas-actionbar {
+    padding: 6px;
+    gap: 6px;
+  }
+  .result-first .canvas-actionbar .canvas-toolbar {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .result-first .canvas-actionbar .wall-display-options {
+    margin-left: auto;
   }
 }

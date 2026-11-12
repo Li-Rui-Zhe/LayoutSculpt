@@ -837,83 +837,120 @@ export default function TaskWorkspace({
                           : "示例模型"}
                     </small>
                   </div>
-                  <div className="canvas-toolbar">
-                    <EnvironmentPicker
-                      value={state.preset}
-                      onChange={(preset) => update({ preset })}
-                    />
-                    <span />
-                    <IconButton
-                      label="撤销"
-                      icon={Undo2}
-                      onClick={undo}
-                      disabled={!canUndo}
-                    />
-                    <IconButton
-                      label="重做"
-                      icon={Redo2}
-                      onClick={redo}
-                      disabled={!canRedo}
-                    />
-                    <span />
-                    <IconButton
-                      label="导出当前效果图"
-                      icon={Camera}
-                      onClick={() => exportImage()}
-                      disabled={loading || !!modelError}
-                    />
-                    <button
-                      type="button"
-                      className="icon-button interior-capture-entry"
-                      title="用此视角出图"
-                      aria-label="用当前视角生成效果图"
-                      onClick={selectInteriorView}
-                      disabled={loading || !!modelError}
-                    >
-                      <Sparkles size={15} aria-hidden="true" />
-                      <span>用此视角出图</span>
-                    </button>
-                    <IconButton
-                      label="全屏工作区"
-                      icon={Maximize}
-                      onClick={() => {
-                        const action = document.fullscreenElement
-                          ? document.exitFullscreen()
-                          : host.current.requestFullscreen();
-                        action.catch(() => setNotice("当前浏览器不支持全屏"));
-                      }}
-                    />
-                  </div>
-                  <div
-                    className="wall-display-options"
-                    role="group"
-                    aria-label="墙体显示方式"
-                  >
-                    <div className="wall-display-switch">
-                      {[
-                        [true, "剖切展示", "剖切展示", "查看室内布局与家具"],
-                        [false, "完整墙体", "完整墙体", "查看完整墙高与门窗"],
-                      ].map(([cutaway, label, accessibleLabel, title]) => (
+                  <div className="canvas-actionbar">
+                    <div className="canvas-controls">
+                      <div>
                         <button
-                          key={label}
-                          type="button"
-                          aria-label={accessibleLabel}
-                          aria-pressed={settings.cutaway === cutaway}
-                          title={title}
-                          className={
-                            settings.cutaway === cutaway ? "active" : ""
-                          }
-                          disabled={loading || !!modelError}
-                          onClick={() => {
-                            if (settings.cutaway !== cutaway)
-                              update({ settings: { ...settings, cutaway } });
-                          }}
+                          className={view === "perspective" ? "active" : ""}
+                          onClick={() => reset()}
                         >
-                          {label}
+                          <Box size={14} />
+                          三维
                         </button>
-                      ))}
+                        <button
+                          className={view === "top" ? "active" : ""}
+                          onClick={() => reset(true)}
+                        >
+                          <Scan size={14} />
+                          俯视
+                        </button>
+                      </div>
+                      <IconButton
+                        label="居中并适配户型"
+                        icon={Focus}
+                        onClick={() => reset(view === "top")}
+                      />
+                      <span />
+                      <IconButton
+                        label="缩小"
+                        icon={Minus}
+                        onClick={() => viewer.current?.zoom(1 / 1.12)}
+                      />
+                      <span className="zoom-value">{zoom}%</span>
+                      <IconButton
+                        label="放大"
+                        icon={Plus}
+                        onClick={() => viewer.current?.zoom(1.12)}
+                      />
                     </div>
-                    {settings.cutaway && <CutawayHint />}
+                    <div
+                      className="wall-display-options"
+                      role="group"
+                      aria-label="墙体显示方式"
+                    >
+                      <div className="wall-display-switch">
+                        {[
+                          [true, "剖切展示", "剖切展示", "查看室内布局与家具"],
+                          [false, "完整墙体", "完整墙体", "查看完整墙高与门窗"],
+                        ].map(([cutaway, label, accessibleLabel, title]) => (
+                          <button
+                            key={label}
+                            type="button"
+                            aria-label={accessibleLabel}
+                            aria-pressed={settings.cutaway === cutaway}
+                            title={title}
+                            className={
+                              settings.cutaway === cutaway ? "active" : ""
+                            }
+                            disabled={loading || !!modelError}
+                            onClick={() => {
+                              if (settings.cutaway !== cutaway)
+                                update({ settings: { ...settings, cutaway } });
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {settings.cutaway && <CutawayHint />}
+                    </div>
+                    <div className="canvas-toolbar">
+                      <EnvironmentPicker
+                        value={state.preset}
+                        onChange={(preset) => update({ preset })}
+                      />
+                      <span />
+                      <IconButton
+                        label="撤销"
+                        icon={Undo2}
+                        onClick={undo}
+                        disabled={!canUndo}
+                      />
+                      <IconButton
+                        label="重做"
+                        icon={Redo2}
+                        onClick={redo}
+                        disabled={!canRedo}
+                      />
+                      <span />
+                      <IconButton
+                        label="导出当前效果图"
+                        icon={Camera}
+                        onClick={() => exportImage()}
+                        disabled={loading || !!modelError}
+                      />
+                      <button
+                        type="button"
+                        className="icon-button interior-capture-entry"
+                        title="用此视角出图"
+                        aria-label="用当前视角生成效果图"
+                        onClick={selectInteriorView}
+                        disabled={loading || !!modelError}
+                      >
+                        <Sparkles size={15} aria-hidden="true" />
+                        <span>用此视角出图</span>
+                      </button>
+                      <IconButton
+                        label="全屏工作区"
+                        icon={Maximize}
+                        onClick={() => {
+                          const action = document.fullscreenElement
+                            ? document.exitFullscreen()
+                            : host.current.requestFullscreen();
+                          action.catch(() => setNotice("当前浏览器不支持全屏"));
+                        }}
+                      />
+                    </div>
                   </div>
                   <div className="room-view-tools">
                     <select
@@ -1004,41 +1041,6 @@ export default function TaskWorkspace({
                     >
                       恢复镜头
                     </button>
-                  </div>
-                  <div className="canvas-controls">
-                    <div>
-                      <button
-                        className={view === "perspective" ? "active" : ""}
-                        onClick={() => reset()}
-                      >
-                        <Box size={14} />
-                        三维
-                      </button>
-                      <button
-                        className={view === "top" ? "active" : ""}
-                        onClick={() => reset(true)}
-                      >
-                        <Scan size={14} />
-                        俯视
-                      </button>
-                    </div>
-                    <IconButton
-                      label="居中并适配户型"
-                      icon={Focus}
-                      onClick={() => reset(view === "top")}
-                    />
-                    <span />
-                    <IconButton
-                      label="缩小"
-                      icon={Minus}
-                      onClick={() => viewer.current?.zoom(1 / 1.12)}
-                    />
-                    <span className="zoom-value">{zoom}%</span>
-                    <IconButton
-                      label="放大"
-                      icon={Plus}
-                      onClick={() => viewer.current?.zoom(1.12)}
-                    />
                   </div>
                   <div className="canvas-caption">
                     <span>拖动旋转 · 滚轮缩放</span>

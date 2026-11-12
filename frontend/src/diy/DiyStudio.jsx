@@ -72,6 +72,7 @@ export default function DiyStudio({
   onUse,
   onLibrary,
   saveBeforeUse = false,
+  closeAfterUse = true,
   initialDesign = null,
   placementSize = null,
   active = true,
@@ -1586,7 +1587,7 @@ export default function DiyStudio({
                       await refresh();
                     }
                     await onUse(current, { preserveSize });
-                    onClose();
+                    if (closeAfterUse) onClose();
                   });
               }}
             >

@@ -57,7 +57,7 @@ export default function EditorSaveBar({
           <StatusIcon size={13} />
           {status.text}
         </span>
-        {!action.disabled && (
+        {!action.disabled && !action.preview && (
           <small className="editor-next-step">{action.detail}</small>
         )}
         {reviewing && (

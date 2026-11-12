@@ -37,11 +37,12 @@ class InteriorImageGallery:
             json.dumps(record, ensure_ascii=False).encode("utf-8"),
         )
 
-    def create(self, prompt, view):
+    def create(self, prompt, view, context=None):
         record = {
             "id": uuid4().hex,
             "created_at": datetime.now(UTC).isoformat(),
             "prompt": prompt,
+            "context": context or {},
         }
         folder = self._folder(record["id"])
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -63,8 +64,18 @@ class InteriorImageGallery:
         atomic_private_write(folder / "result.png", png)
 
     def fail(self, record, message):
-        stored = {key: record[key] for key in ("id", "created_at", "prompt")}
+        stored = self.read(record["id"])
         self._write_record(self._folder(stored["id"]), {**stored, "error": message})
+
+    def read(self, identifier):
+        path = self._folder(identifier) / "record.json"
+        if path.resolve() != path:
+            raise ValueError("invalid record")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def archive(self, identifier, archived):
+        record = self.read(identifier)
+        self._write_record(self._folder(identifier), {**record, "archived": archived})
 
     def media_file(self, identifier, filename):
         if filename not in MEDIA_TYPES:
@@ -84,6 +95,8 @@ class InteriorImageGallery:
             "id": identifier,
             "created_at": record["created_at"],
             "prompt": record["prompt"],
+            "context": record.get("context", {}),
+            "archived": bool(record.get("archived", False)),
             "status": "ready" if ready else "generating" if generating else "failed",
             "view_url": f"{base}/view.jpg",
             "image_url": f"{base}/result.png" if ready else None,

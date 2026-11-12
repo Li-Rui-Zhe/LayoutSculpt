@@ -5,13 +5,14 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 from .opening_visuals import opening_parts
-from .quality import footprint, solid_walls
+from .quality import footprint
+from .placement_geometry import walls_at_height
 
 
 def access_issues(plan, layout):
     items = [(i, item, footprint(item)) for i, item in enumerate(plan.items)
              if not item.edit_hidden and item.kind != "rug"]
-    solids = solid_walls(layout)
+    wall_spans = {}
     walls = {wall.id: wall for wall in layout.walls}
     issues = []
 
@@ -54,8 +55,15 @@ def access_issues(plan, layout):
         c, s = math.cos(math.radians(item.rotation)), math.sin(math.radians(item.rotation))
         return Polygon([(item.x+c*x-s*y, item.y+s*x+c*y) for x,y in [(x0,y0),(x1,y0),(x1,y1),(x0,y1)]])
 
-    def obstructed(area, index):
-        obstacles = [solids, *[shape for i,item,shape in items if i != index and item.elevation < 1.8]]
+    def obstructed(area, index, bottom=0, top=1.8):
+        # 使用空间也有高度：低台面不挡吊柜门，高吊柜不挡拉椅。
+        span = (bottom, top)
+        if span not in wall_spans:
+            wall_spans[span] = walls_at_height(layout, bottom, top)
+        obstacles = [wall_spans[span], *[
+            shape for i, item, shape in items if i != index
+            and item.elevation < top - .02 and item.elevation + item.height > bottom + .02
+        ]]
         return any(area.intersection(shape).area > .025 for shape in obstacles)
 
     for index, item, _ in items:
@@ -63,7 +71,13 @@ def access_issues(plan, layout):
         label = item.name or item.kind
         if item.kind in {"cabinet", "shoe_cabinet", "refrigerator", "washing_machine"}:
             area = zone(item, -w+.06, d+.03, w-.06, d+.6)
-            if obstructed(area, index):
+            wall_mounted = item.kind == "cabinet" and item.elevation >= 1.2
+            blocked = obstructed(area, index, item.elevation, item.elevation + item.height) if wall_mounted else obstructed(area, index)
+            # 吊柜允许下方操作台，但台面前仍需留出站立空间。
+            if wall_mounted:
+                standing = zone(item, -w+.06, d+.4, w-.06, d+1.0)
+                blocked = blocked or obstructed(standing, index, 0, 1.8)
+            if blocked:
                 warn("front_access", f"{label}正面约 60 cm 使用空间可能受挡，请检查开门、取物是否方便", "furniture", index)
         if item.kind == "bed":
             left = zone(item, -w-.55, -d+.35, -w-.03, d-.1)
