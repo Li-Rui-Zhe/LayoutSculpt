@@ -32,9 +32,16 @@ test-results/
 .env
 .env.*
 !.env.example
+.envrc
+.direnv/
 .codex/
+*.local.json
+*.local.toml
 .npmrc
 .pypirc
+.git-credentials
+.netrc
+_netrc
 secrets/
 credentials.json
 auth.json
@@ -44,7 +51,10 @@ credentials.json.*
 *.pem
 *.p12
 *.pfx
+*.ppk
 id_ed25519*
+id_ecdsa*
+id_dsa*
 id_rsa*
 
 # Runtime databases, journals and logs

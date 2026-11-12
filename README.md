@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="#preview">看演示</a> · <a href="#furniture">家具素材</a> · <a href="#quickstart">开始使用</a> · <a href="docs/README.md">文档中心</a> · <a href="CONTRIBUTING.md">参与改进</a> · <a href="SECURITY.md">反馈问题</a>
+  <a href="#preview">看演示</a> · <a href="#interior-images">室内效果图</a> · <a href="#furniture">家具素材</a> · <a href="#quickstart">开始使用</a> · <a href="docs/README.md">文档中心</a> · <a href="CONTRIBUTING.md">参与改进</a> · <a href="SECURITY.md">反馈问题</a>
 </p>
 
 ---
@@ -36,12 +36,20 @@
 
 <p align="center"><sub>林间光庭 · 93.2㎡ · 七个功能分区<br />旋转、切换光照、走近花园露台，再回到俯视布局。</sub></p>
 
-这是一套随项目分发的**原创样板间**。演示来自当前版本的真实页面，上传户型的识别结果仍需要对照原图校对。
+这是一套随项目分发的**原创样板间**。演示录自实际页面。上传户型后，可以将识别结果与原图并排核对。
 
 | 理解空间 | 亲手设计 | 留下成果 |
 | :--- | :--- | :--- |
 | 户型识别、原图叠加、结构核对 | 平面 / 三维编辑、墙体、门窗与灯具 | GLB、效果图与成果包 |
 | 三维 / 俯视、剖切、室内漫游 | 墙地面搭配、家具 DIY、素材复用 | 高清效果图、草稿与阶段恢复 |
+
+<a id="interior-images"></a>
+
+### 从三维取景，生成室内效果图
+
+在三维预览或「看看我家」里选好角度，点击「用此视角出图」，描述想看的光线、材质和生活细节。工作台调用本机 Codex 的 ImageGen，结果保存到「我的效果图」，可以下载或与三维底图并排查看。
+
+[效果图工作室使用指南](docs/interior-image-workspace.md)
 
 <a id="materials"></a>
 
