@@ -1,14 +1,22 @@
 import { useEffect, useRef, useId } from "react";
 import { X } from "lucide-react";
 
-export default function Modal({ title, children, onClose, className = "" }) {
+export default function Modal({
+  title,
+  children,
+  onClose,
+  className = "",
+  focusTitle = false,
+}) {
   const ref = useRef(null);
+  const titleRef = useRef(null);
   const close = useRef(onClose);
   close.current = onClose;
   const titleId = useId();
   useEffect(() => {
     const element = ref.current;
     element.showModal();
+    titleRef.current?.focus({ preventScroll: true });
     const leave = () => close.current();
     window.addEventListener("hashchange", leave);
     window.addEventListener("popstate", leave);
@@ -40,7 +48,13 @@ export default function Modal({ title, children, onClose, className = "" }) {
       }}
     >
       <div className="dialog-title">
-        <h2 id={titleId}>{title}</h2>
+        <h2
+          id={titleId}
+          ref={focusTitle ? titleRef : null}
+          tabIndex={focusTitle ? -1 : undefined}
+        >
+          {title}
+        </h2>
         <button type="button" onClick={onClose} aria-label="关闭">
           <X size={20} />
         </button>

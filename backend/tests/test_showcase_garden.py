@@ -45,8 +45,10 @@ def test_terrace_keeps_an_eighty_centimetre_access_route(parts):
     doc = document()
     outline = np.array([[p["x"], p["y"]] for p in doc["outline"]])
     center = (outline.min(axis=0) + outline.max(axis=0)) / 2
-    route = box(3.65, 7.29, 4.45, 8.45)
-    for prefix in ["露台双人柚木沙发", "露台柚木休闲椅", "露台薄边洞石茶桌"]:
+    route = box(3.66, 7.08, 4.46, 8.45)
+    assert any(o["wall_id"] == "terrace" and o["kind"] == "door" and o["door_material"] == "glass"
+               for o in doc["openings"])
+    for prefix in ["露台双人柚木沙发", "露台柚木休闲椅", "露台薄边洞石茶桌", "单开门扇"]:
         extent = bounds(parts, prefix)[:, [0, 2]] + center
         footprint = box(*extent.flatten())
         assert not footprint.intersects(route), prefix

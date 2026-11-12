@@ -2,11 +2,11 @@ import json
 import numpy as np
 import trimesh
 import pytest
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, box
 
 from backend.app.schemas import Layout, Furnishing
-from backend.app.quality import validate_generated_furnishing
-from backend.app.architecture import validate_generated_structure
+from backend.app.quality import footprint, validate_generated_furnishing
+from backend.app.architecture import opening_footprint, validate_generated_structure, wall_sections
 from backend.app.consistency import verify_export
 from scripts.build_showcase import ROOT, SHOWCASE_ID, document
 
@@ -16,6 +16,42 @@ def test_showcase_layout_and_door_clearances():
     layout = Layout.model_validate({k: v for k, v in doc.items() if k in Layout.model_fields})
     validate_generated_structure(layout)
     validate_generated_furnishing(Furnishing(items=doc["furniture"], notes=[]), layout)
+
+
+def test_bathroom_entrance_is_inside_and_clear_on_both_sides():
+    doc = document()
+    spine = next(wall for wall in doc["walls"] if wall["id"] == "spine")
+    bathroom_door = max(
+        (opening for opening in doc["openings"] if opening["wall_id"] == spine["id"]),
+        key=lambda opening: opening["offset"],
+    )
+    west, start, east, end = opening_footprint(spine, bathroom_door).bounds
+    terrace_wall = next(wall for wall in doc["walls"] if wall["id"] == "terrace")
+    assert end + .08 <= terrace_wall["start"]["y"] - terrace_wall["thickness"] / 2
+    assert bathroom_door["door_leaf"] and bathroom_door["width"] - .06 >= .70
+    approach = box(west - .90, start, east + .60, end)
+    door_top = bathroom_door["bottom"] + bathroom_door["height"]
+    for bottom, top, _, footprint in wall_sections(doc):
+        if bottom < door_top and top > bathroom_door["bottom"]:
+            assert footprint.intersection(approach).area < 1e-6
+
+
+def test_bathroom_fixtures_leave_space_to_use_and_keep_toilet_out_of_entry_view():
+    doc = document()
+    fixtures = {item.kind: footprint(item) for item in Furnishing(items=doc["furniture"], notes=[]).items
+                if item.room_id == "bath"}
+    bath = next(room for room in doc["rooms"] if room["id"] == "bath")
+    room = Polygon([(point["x"], point["y"]) for point in bath["polygon"]])
+    for kind, fixture in fixtures.items():
+        left, _, right, front = fixture.bounds
+        if kind == "toilet":
+            _, front, _, _ = fixture.bounds
+            use_space = box(left - .20, front - .70, right + .20, front)
+            assert front >= 7.30  # The toilet sits beyond the bathroom door's sightline.
+        else:
+            use_space = box(left, front, right, front + .75)
+        assert room.covers(use_space)
+        assert all(use_space.intersection(other).area < 1e-6 for name, other in fixtures.items() if name != kind)
 
 
 def test_shipped_showcase_structure_and_metadata():
@@ -36,17 +72,29 @@ def test_shipped_showcase_uses_real_assets_and_tv_elevation():
     scene = trimesh.load(ROOT / f"public/models/{SHOWCASE_ID}.glb", force="scene")
     doc = document()
     groups, fixtures = {}, []
+    vanity_top, countertop_objects = None, []
     for (_, node), edge in scene.graph.transforms.edge_data.items():
         metadata = edge.get("metadata", {})
         if metadata.get("fixture_id"):
             fixtures.append(metadata)
         index = metadata.get("furniture_index")
-        if index is None:
+        on_vanity = node.startswith(("洗手台叠放毛巾", "洗手台洗护瓶"))
+        if index is None and not on_vanity:
             continue
         transform, geometry = scene.graph[node]
         mesh = scene.geometry[geometry].copy()
         mesh.apply_transform(transform)
-        groups.setdefault(index, []).append(mesh.bounds)
+        if on_vanity:
+            countertop_objects.append(mesh.bounds)
+        else:
+            groups.setdefault(index, []).append(mesh.bounds)
+            if doc["furniture"][index]["kind"] == "sink" and mesh.visual.material.name == "石材_细纹":
+                vanity_top = mesh.bounds
+    assert vanity_top is not None and len(countertop_objects) == 2
+    for bounds in countertop_objects:
+        assert bounds[0, 1] == pytest.approx(vanity_top[1, 1], abs=.002)
+        assert np.all(bounds[0, [0, 2]] >= vanity_top[0, [0, 2]])
+        assert np.all(bounds[1, [0, 2]] <= vanity_top[1, [0, 2]])
     assert set(groups) == set(range(len(doc["furniture"])))
     for index, item in enumerate(doc["furniture"]):
         bounds = np.array(groups[index])

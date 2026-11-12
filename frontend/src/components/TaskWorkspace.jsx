@@ -464,9 +464,9 @@ export default function TaskWorkspace({
   const selectInteriorView = () => {
     try {
       const image = viewer.current?.snapshot({
-        maxDimension: 1600,
+        maxDimension: 1920,
         type: "image/jpeg",
-        quality: 0.92,
+        interiorReference: true,
       });
       if (!image?.startsWith("data:image/jpeg;base64,"))
         throw Error("当前视角尚未就绪");

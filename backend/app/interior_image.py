@@ -51,15 +51,11 @@ DISABLED_TOOLS = (
     "browser_use_external",
     "memories",
 )
-INSTRUCTIONS = (
-    "Use the built-in image generation tool exactly once to edit the attached 3D viewport image. "
-    "Pass num_last_images_to_include=1 to the tool so it uses the image already attached "
-    "to this turn. Omit referenced_image_paths and do not attempt any file reads. "
-    "Use that image as the visual reference, preserving its camera direction, "
-    "framing, wall and opening geometry, and furniture positions. Follow the user's description "
-    "for the requested lighting, finishes, and atmosphere. Do not open other files, "
-    "use external data, or use tools other than image generation. Reply briefly when finished."
-)
+INSTRUCTIONS = """Use the built-in image generation tool exactly once to edit the attached viewport still. Set num_last_images_to_include=1 and omit referenced_image_paths. Use only the attached image and the user's visual brief. Do not read files, fetch external data, or use other tools. Reply briefly after generating one image.
+
+Write the image edit prompt for this particular reference. In that prompt identify the visible room, camera angle, and a few distinctive landmarks and their relative positions. Keep the same camera height, direction, perspective, composition, and visible boundaries. Preserve wall lines, openings, door swings as shown, and the type, position, scale, and count of major furnishings. A bird's-eye or cutaway reference remains a bird's-eye or cutaway. If some area is hidden, preserve the occlusion and do not invent another room or extend the footprint. Do not add a collage, captions, or watermarks.
+
+Unless the brief asks for a different treatment, render a natural photograph of a lived-in home. Apply the requested mood, lighting and finishes to the existing space. Use believable daylight or existing fixtures, soft contact shadows, balanced exposure, and material textures at real-world scale. Give upholstery and textiles subtle wrinkles and variation. Where the brief allows, add only one or two small, plausible everyday details on surfaces already visible, appropriate to the room. Keep walking paths clear. Avoid showroom staging, excessive symmetry, glossy CGI surfaces, extreme wide-angle distortion, blown-out windows, and duplicated decor. The brief controls styling and atmosphere within the reference's composition and layout."""
 
 
 def normalize_view(data: bytes) -> bytes:

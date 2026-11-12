@@ -413,55 +413,56 @@
   margin-top: 5px;
 }
 .interior-job {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px 12px;
   align-items: center;
   margin: 18px 28px 0;
-  padding: 15px 18px 18px;
-  background: #edf3e6;
-  border: 1px solid #d9e3cc;
-  border-radius: 10px;
-  color: #49623c;
-  font-size: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--creative-line);
+  border-radius: var(--creative-radius);
+  color: var(--creative-ink);
+  font-size: 13px;
 }
-.interior-job > div:not(.interior-job-track) {
-  flex: 1;
-}
-.interior-job small {
+.interior-job-copy small {
   display: block;
-  color: #7e8c72;
-  margin-top: 5px;
-  font-size: 11px;
+  color: var(--creative-muted);
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.5;
 }
-.interior-job button {
+.interior-job-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: 10px;
+  color: var(--creative-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
-.interior-job-pulse {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #94ad74;
-  box-shadow: 0 0 0 5px #dce8cc;
-  flex: none;
+.interior-job-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: #edf3e9;
+  color: var(--creative-green);
 }
 .interior-job-track {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  grid-column: 1 / -1;
+  overflow: hidden;
   height: 3px;
-  background: #dce5d0;
+  border-radius: 999px;
+  background: #e7ede6;
 }
 .interior-job-track i {
   display: block;
-  width: 40%;
+  width: 30%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, #90a873, transparent);
+  border-radius: inherit;
+  background: var(--creative-green);
 }
 @media (prefers-reduced-motion: no-preference) {
   .interior-job-track i {
@@ -470,10 +471,10 @@
 }
 @keyframes interior-travel {
   from {
-    transform: translateX(-80%);
+    transform: translateX(0);
   }
   to {
-    transform: translateX(250%);
+    transform: translateX(233%);
   }
 }
 .interior-gallery {
@@ -719,6 +720,13 @@
   .interior-notice,
   .interior-job {
     margin: 12px 14px 0;
+  }
+  .interior-job {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .interior-job-actions {
+    grid-column: 2;
+    justify-content: space-between;
   }
   .interior-image-empty {
     min-height: 320px;

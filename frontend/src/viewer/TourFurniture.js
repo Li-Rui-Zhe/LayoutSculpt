@@ -119,6 +119,18 @@ export class TourFurniture {
   ignoresHit(mesh) {
     return (this.byMesh.get(mesh)?.factor ?? 1) < 0.35;
   }
+  withoutFading(render) {
+    const faded = this.groups
+      .filter((group) => group.assigned)
+      .flatMap((group) => group.meshes)
+      .filter((item) => item.mesh.material === item.assigned);
+    for (const item of faded) item.mesh.material = item.original;
+    try {
+      return render();
+    } finally {
+      for (const item of faded) item.mesh.material = item.assigned;
+    }
+  }
   dispose() {
     for (const group of this.groups) {
       this.restore(group);

@@ -5,56 +5,72 @@ import DataManagement from "../settings/DataManagement.jsx";
 export default function WorkspaceHelp({ onClose }) {
   const [dataOpen, setDataOpen] = useState(false);
   return (
-    <Modal title="操作指南" onClose={onClose} className="workspace-help">
-      <h3>从户型图到设计成果</h3>
-      <details onToggle={(e) => setDataOpen(e.currentTarget.open)}>
-        <summary>本机数据与备份</summary>
-        {dataOpen && <DataManagement />}
-      </details>
-      <ol>
-        <li>新建项目，上传清晰户型图。</li>
-        <li>对照原图核对墙体、房间与门窗。</li>
-        <li>进入人工设计调整布局，在 DIY 中修改家具和饰面。</li>
-        <li>保存新的三维版本，检查效果后导出成果。</li>
-      </ol>
-      <h3>画布快捷操作</h3>
-      <table>
-        <tbody>
-          {[
-            ["滚轮", "缩放画布"],
-            ["空格＋拖动", "平移平面图"],
-            ["方向键", "微移选中对象"],
-            ["Shift＋旋转", "按 15° 吸附"],
-            ["Ctrl / ⌘＋Z", "撤销编辑"],
-            ["Ctrl / ⌘＋Shift＋Z", "重做"],
-            ["0", "适配平面图"],
-          ].map(([key, value]) => (
-            <tr key={key}>
-              <th>{key}</th>
-              <td>{value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p>
-        修改会自动保存到当前浏览器并同步本机服务。点击“生成最新三维效果”更新完整预览与导出成果；没有修改时可直接“查看三维效果”。外观试配需要通过“保存墙面与地板到设计版本”写入模型。
-      </p>
-      <p>夜晚模式用于观察视觉效果，照度与施工尺寸请结合实际设计核对。</p>
-      <h3>精细设计与复核</h3>
-      <ul>
-        <li>选择房间地板，在“块材规格与拼缝”中设置砖板宽深、拼缝和美缝色。</li>
-        <li>选择灯具，在“灯光分组与批量设置”中控制同组、同房间或全部灯具。</li>
-        <li>家具 DIY 的分组路径使用“/”建立层级，可整体移动、旋转和缩放。</li>
-        <li>
-          选择墙体或房间可进行 AI
-          局部复核。先查看依据与疑点，再应用建议；草稿变化后旧建议无法覆盖新修改。
-        </li>
-        <li>三维预览选定房间后可“只看此房间”；退出恢复全屋及阴影。</li>
-      </ul>
-      <p>跨设备搬迁请导出、导入成果 ZIP。</p>
-      <p>
-        多页面修改不同字段会尝试自动合并，并重置撤销基线；同字段冲突会停止同步，请先备份当前草稿，再读取最新版本。
-      </p>
+    <Modal
+      title="操作指南"
+      onClose={onClose}
+      className="workspace-help"
+      focusTitle
+    >
+      <div
+        className="workspace-help-content"
+        tabIndex={0}
+        role="region"
+        aria-label="操作指南内容"
+      >
+        <h3>从户型图到设计成果</h3>
+        <details onToggle={(e) => setDataOpen(e.currentTarget.open)}>
+          <summary>本机数据与备份</summary>
+          {dataOpen && <DataManagement />}
+        </details>
+        <ol>
+          <li>新建项目，上传清晰户型图。</li>
+          <li>对照原图核对墙体、房间与门窗。</li>
+          <li>进入人工设计调整布局，在 DIY 中修改家具和饰面。</li>
+          <li>保存新的三维版本，检查效果后导出成果。</li>
+        </ol>
+        <h3>画布快捷操作</h3>
+        <table>
+          <tbody>
+            {[
+              ["滚轮", "缩放画布"],
+              ["空格＋拖动", "平移平面图"],
+              ["方向键", "微移选中对象"],
+              ["Shift＋旋转", "按 15° 吸附"],
+              ["Ctrl / ⌘＋Z", "撤销编辑"],
+              ["Ctrl / ⌘＋Shift＋Z", "重做"],
+              ["0", "适配平面图"],
+            ].map(([key, value]) => (
+              <tr key={key}>
+                <th>{key}</th>
+                <td>{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p>
+          修改会自动保存到当前浏览器并同步本机服务。点击“生成最新三维效果”更新完整预览与导出成果；没有修改时可直接“查看三维效果”。外观试配需要通过“保存墙面与地板到设计版本”写入模型。
+        </p>
+        <p>夜晚模式用于观察视觉效果，照度与施工尺寸请结合实际设计核对。</p>
+        <h3>精细设计与复核</h3>
+        <ul>
+          <li>
+            选择房间地板，在“块材规格与拼缝”中设置砖板宽深、拼缝和美缝色。
+          </li>
+          <li>
+            选择灯具，在“灯光分组与批量设置”中控制同组、同房间或全部灯具。
+          </li>
+          <li>家具 DIY 的分组路径使用“/”建立层级，可整体移动、旋转和缩放。</li>
+          <li>
+            选择墙体或房间可进行 AI
+            局部复核。先查看依据与疑点，再应用建议；草稿变化后旧建议无法覆盖新修改。
+          </li>
+          <li>三维预览选定房间后可“只看此房间”；退出恢复全屋及阴影。</li>
+        </ul>
+        <p>跨设备搬迁请导出、导入成果 ZIP。</p>
+        <p>
+          多页面修改不同字段会尝试自动合并，并重置撤销基线；同字段冲突会停止同步，请先备份当前草稿，再读取最新版本。
+        </p>
+      </div>
     </Modal>
   );
 }

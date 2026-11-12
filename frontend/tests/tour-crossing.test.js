@@ -126,7 +126,7 @@ test("地板接通后，关着的门板和玻璃仍受真实几何阻挡", () =>
     ),
   );
 });
-test("真实示例的露台整段开口可连续进入客厅，露台外侧仍不能越界", async () => {
+test("真实示例可穿过露台门和室内浴室门，窗户与露台边界仍阻挡通行", async () => {
   const bytes = await readFile(
     new URL("../../public/models/forest-home-v3.glb", import.meta.url),
   );
@@ -144,19 +144,19 @@ test("真实示例的露台整段开口可连续进入客厅，露台外侧仍�
     terrace = tour.rooms.find((r) => r.id === "terrace");
   const regions = buildWalkRegions(tour.rooms, tour.portals, terrace);
   const obstacles = buildWalkObstacles(scene, terrace.floor);
-  assert.ok(
-    tour.portals.find((p) => p.rooms.includes("terrace")).bridges.length > 1,
+  const terraceDoor = tour.portals.find((p) => p.rooms.includes("terrace"));
+  assert.equal(terraceDoor.kind, "door");
+  const outside = { x: terraceDoor.x, y: 3.3 };
+  const inside = { x: terraceDoor.x, y: 1.5 };
+  assert.equal(walkAreaError(outside, inside, regions, obstacles), "");
+  assert.equal(walkAreaError(inside, outside, regions, obstacles), "");
+  assert.ok(walkAreaError({ x: -2.5, y: 3.3 }, { x: -2.5, y: 1.5 }, regions, obstacles));
+  const bathDoor = tour.portals.find((p) => p.rooms.includes("bath"));
+  assert.ok(bathDoor.rooms.includes("living"));
+  assert.equal(
+    walkAreaError({ x: .65, y: bathDoor.y }, { x: 1.76, y: bathDoor.y }, regions, obstacles),
+    "",
   );
-  for (const x of [-3.7, -2.5, -1.7, -0.5]) {
-    assert.equal(
-      walkAreaError({ x, y: 3.3 }, { x, y: 1.5 }, regions, obstacles),
-      "",
-    );
-    assert.equal(
-      walkAreaError({ x, y: 1.5 }, { x, y: 3.3 }, regions, obstacles),
-      "",
-    );
-  }
   assert.ok(
     walkAreaError({ x: -1.7, y: 3.3 }, { x: -1.7, y: 5.5 }, regions, obstacles),
   );

@@ -43,8 +43,8 @@ def document():
         ("living", "客厅", "living", (0.12, 2.4, 5.88, 7.08), "oak"),
         ("terrace", "花园露台", "balcony", (0.12, 7.28, 5.88, 9.48), "tile"),
         ("bedroom", "主卧", "bedroom", (6.12, 0.12, 9.48, 4.08), "oak"),
-        ("study", "书房", "study", (6.12, 4.28, 9.48, 6.48), "oak"),
-        ("bath", "浴室", "bathroom", (6.12, 6.68, 9.48, 8.48), "tile"),
+        ("study", "书房", "study", (6.12, 4.28, 9.48, 5.8), "oak"),
+        ("bath", "浴室", "bathroom", (6.12, 6.0, 9.48, 8.48), "tile"),
     ]
     walls = [
         ("north", (0, 0), (9.6, 0), True, "cream"),
@@ -56,12 +56,12 @@ def document():
         ("terrace_front", (0, 9.6), (6, 9.6), True, "cream"),
         ("spine", (6, 0), (6, 8.6), False, "cream"),
         ("bed_study", (6, 4.18), (9.6, 4.18), False, "sage"),
-        ("study_bath", (6, 6.58), (9.6, 6.58), False, "cream"),
+        ("study_bath", (6, 5.9), (9.6, 5.9), False, "cream"),
         ("terrace", (0, 7.18), (6, 7.18), False, "cream"),
     ]
     openings = []
 
-    def opening(wall, kind, offset, width, bottom=0, height=2.35):
+    def opening(wall, kind, offset, width, bottom=0, height=2.35, **options):
         openings.append(
             {
                 "wall_id": wall,
@@ -71,6 +71,7 @@ def document():
                 "bottom": bottom,
                 "height": height,
                 "door_leaf": False,
+                **options,
             }
         )
 
@@ -79,12 +80,14 @@ def document():
     # The bed needs a solid headboard wall; daylight enters from its side.
     opening("east", "window", 0.55, 2.8, 0.5, 2.05)
     opening("west", "window", 2.85, 2.9, 0.45, 2.15)
-    opening("east", "window", 4.55, 1.4, 0.75, 1.85)
-    opening("east", "window", 7.0, 1.0, 1.3, 1.3)
-    opening("spine", "door", 2.98, 0.85)
-    opening("spine", "door", 5.6, 0.78)
-    opening("spine", "door", 6.8, 0.85)
-    opening("terrace", "passage", 0.65, 4.7)
+    opening("east", "window", 4.44, 1.19, 0.88, 1.57)
+    opening("east", "window", 6.22, 1.05, 1.55, 0.83, window_style="casement", glass_type="frosted")
+    opening("spine", "door", 2.76, 0.90)
+    opening("spine", "door", 4.84, 0.88, height=2.16)
+    # Bathroom door stays on the indoor side of the terrace wall, opening into the dry zone.
+    opening("spine", "door", 6.05, 0.94, height=2.16, door_leaf=True, hinge="end", swing="right")
+    opening("terrace", "window", 0.65, 2.80, 0.06, 2.29)
+    opening("terrace", "door", 3.60, 0.98, door_leaf=True, hinge="end", door_material="glass")
     furniture = []
 
     def item(kind, name, room, x, z, w, d, h, rotation=0, elevation=0):
@@ -107,18 +110,17 @@ def document():
     item("refrigerator", "嵌入式冰箱", "kitchen", 2.58, 0.53, 0.62, 0.72, 1.95)
     item("bed", "亚麻软包大床", "bedroom", 7.82, 1.55, 1.85, 2.2, 1.08)
     item("cabinet", "床尾胡桃木矮柜", "bedroom", 8.0, 3.72, 2.3, 0.35, 0.58, 180)
-    item("desk", "临窗工作台", "study", 9.08, 5.28, 1.65, 0.62, 0.76, 90)
-    item("chair", "工作椅", "study", 8.3, 5.28, 0.52, 0.56, 0.85, 270)
-    item("bookshelf", "胡桃木开放书架", "study", 7.02, 4.53, 1.45, 0.38, 1.65)
-    # 借用北侧实墙安装花洒，左侧玻璃分隔干区；东侧窗前无实体板。
-    # 正面朝南，距南墙净空 0.64 m，入口与窗户均可使用。
-    item("shower_walk_in", "临窗步入式淋浴区", "bath", 8.86, 7.26, 1.16, 1.16, 2.1)
-    item("sink", "悬浮洗手台", "bath", 6.8, 8.16, 1.0, 0.5, 0.82, 180)
-    item("toilet", "一体裙包坐便器", "bath", 7.62, 7.11, 0.4, 0.68, 0.76)
+    item("desk", "临窗工作台", "study", 9.08, 5.05, 1.3, 0.62, 0.76, 90)
+    item("chair", "工作椅", "study", 8.3, 5.05, 0.52, 0.56, 0.85, 270)
+    item("bookshelf", "胡桃木开放书架", "study", 7.42, 4.49, 1.20, 0.38, 1.65)
+    # Basin by the entry, toilet out of the direct sightline, and a wet zone at the far end.
+    item("shower_walk_in", "临窗步入式淋浴区", "bath", 8.87, 6.61, 1.14, 1.2, 2.1)
+    item("sink", "胡桃木洗手台", "bath", 7.15, 6.26, 1.0, 0.5, 1.0)
+    item("toilet", "一体裙包坐便器", "bath", 6.92, 8.13, 0.4, 0.68, 0.76, 180)
     item("sofa", "亚麻模块沙发", "living", 1.25, 4.6, 3.0, 1.02, 0.86, 270)
     item("armchair", "胡桃木阅读椅", "living", 4.57, 3.62, 0.78, 0.8, 0.86, 35)
-    item("tv_console", "格栅电视低柜", "living", 5.61, 4.68, 1.46, 0.4, 0.48, 90)
-    item("wall_television", "超薄壁挂电视", "living", 5.8, 4.68, 1.24, 0.1, 0.71, 90, 0.93)
+    item("tv_console", "格栅电视低柜", "living", 5.61, 4.25, 1.08, 0.4, 0.48, 90)
+    item("wall_television", "超薄壁挂电视", "living", 5.8, 4.25, 0.94, 0.10, 0.54, 90, 0.96)
     # 窄餐区沿长向摆桌，椅子分居左右，避免北墙挤占拉椅空间。
     for z in [.93, 1.78]:
         item("chair", "弧面软包餐椅", "dining", 3.72, z, 0.46, 0.5, 0.8, 270)
@@ -435,8 +437,8 @@ class Showcase(Builder):
         self.disc("胡桃边几底座", 3.9, 5.4, 0.21, 0.26, 0.06, "wood")
         self.disc("胡桃边几桌面", 3.9, 5.4, 0.36, 0.055, 0.32, "wood")
         # The media panel fits between the two doors, leaving their routes open.
-        self.block("电视墙洞石背板", 5.88, 4.68, 0.04, 1.54, 1.74, 0.06, "stone", radius=0.015)
-        for z in np.linspace(3.94, 4.02, 3):
+        self.block("电视墙洞石背板", 5.88, 4.25, 0.04, 1.12, 1.74, 0.06, "stone", radius=0.015)
+        for z in np.linspace(3.71, 3.77, 3):
             self.block(
                 "胡桃木格栅", 5.85, z, 0.035, 0.023, 1.7, 0.08, "wood", radius=0.008
             )
@@ -549,7 +551,7 @@ class Showcase(Builder):
             )
         self.lamp("餐桌纸灯", 4.43, 1.42, 2.18, 0.32, 450)
         self.lamp("书房台灯", 9.1, 4.75, 1.08, 0.12, 240)
-        self.lamp("浴室壁灯", 6.8, 8.36, 1.4, 0.12, 240)
+        self.lamp("浴室镜前灯", 7.15, 6.15, 1.94, 0.10, 240)
         # 桌面和餐具使用同一刚体变换，外观细节完整保留。
         pivot = self.pos(4.58, 0, 1.36)
         pose = trimesh.transformations.translation_matrix([-.15, 0, 0]) @ trimesh.transformations.rotation_matrix(-math.pi / 2, [0, 1, 0], point=pivot)
@@ -612,14 +614,14 @@ class Showcase(Builder):
             self.block("客厅艺术画框", 0.16, z, 0.055, 0.37, 0.55, 1.35, "wood", radius=0.008)
             self.block("客厅艺术画底纸", 0.191, z, 0.012, 0.32, 0.50, 1.375, "fabric", self.paper, 0.004)
             self.orb("客厅艺术画色块", 0.202, z, 1.65, [0.008, 0.17, 0.1], "accent")
-        # Bathroom mat and vanity objects, placed clear of the entrance.
-        self.block("浴室棉麻脚垫", 8.05, 8.04, 0.7, 0.46, 0.014, 0.052, "fabric", self.cream, 0.06)
-        for x in [6.46, 6.57]:
-            self.disc("洗手台洗护瓶", x, 8.17, 0.025, 0.1, 0.86, "white")
+        # The hand towel and soap bottle sit on the vanity top at 0.791 m.
+        self.block("浴室棉麻脚垫", 8.87, 7.56, 0.72, 0.46, 0.014, 0.039, "fabric", self.cream, 0.06)
+        self.block("洗手台叠放毛巾", 6.75, 6.36, .13, .18, .025, .791, "fabric", self.cream, .02)
+        self.disc("洗手台洗护瓶", 6.73, 6.12, .028, .10, .791, "white")
         # Concealed warm strips are actual fixtures, not isolated floating bulbs.
         for name, x, z, width, depth, height, lumens in [
             ("床头氛围灯带", 7.8, 0.245, 2.9, 0.016, 1.08, 160),
-            ("电视柜氛围灯带", 5.6, 4.68, 0.016, 1.25, 0.15, 90),
+            ("电视柜氛围灯带", 5.6, 4.25, 0.016, 0.98, 0.15, 90),
         ]:
             glow = material(name, [255, 224, 175])
             glow.emissiveFactor = [1, 0.66, 0.32]
@@ -665,15 +667,23 @@ class Showcase(Builder):
                                 x=.55, y=2.48, elevation=1.5, lumens=420,
                                 temperature=2700, enabled=True, cast_shadow=False))
         # Stone vanity backsplash and an actual reflective, round-topped mirror.
-        self.block("浴室洞石背墙", 6.8, 8.455, 1.16, 0.022, 1.78, 0.12,
+        self.block("浴室洞石背墙", 7.15, 6.012, 1.16, 0.022, 1.78, 0.12,
                    "stone", radius=0.01, metadata={"cutaway_upper": True})
         from shapely.geometry import Point
         arch = rectangle(-0.32, 0, 0.32, 0.55).union(Point(0, 0.55).buffer(0.32, quad_segs=24))
         mirror = trimesh.creation.extrude_polygon(arch, 0.012, engine="earcut")
         mirror_mat = material("镜面_暖银", [210, 220, 214], 0.11, 0.94)
         self.add("浴室拱形镜", mirror, "metal",
-                 trimesh.transformations.translation_matrix(self.pos(6.8, 1.06, 8.42)),
+                 trimesh.transformations.translation_matrix(self.pos(7.15, 1.06, 6.029)),
                  material=mirror_mat, metadata={"cutaway_upper": True})
+        # The leaf is fixed open against the south jamb in this presentation.
+        for side in [-1, 1]:
+            self.block("浴室门把手底座", 6.81, 6.99 + side * .022, .045, .012, .05, 1.0,
+                       "metal", self.bronze, .004)
+            self.block("浴室门把手握杆", 6.87, 6.99 + side * .047, .14, .027, .024, 1.012,
+                       "metal", self.bronze, .01)
+            self.block("浴室门把手连轴", 6.81, 6.99 + side * .038, .022, .039, .023, 1.012,
+                       "metal", self.bronze, .006)
         # Sculpted ceramic accents, authored geometry instead of flat colour blocks.
         for name, x, z, height in [("岛台手作花瓶", 1.8, 1.95, 0.958),
                                    ("床尾陶器", 7.42, 3.72, 0.62)]:
@@ -683,9 +693,9 @@ class Showcase(Builder):
         # Kitchen thin brass toe-kick and bookshelf accents give depth at close range.
         self.block("岛台铜色踢脚", 1.72, 2.295, 2.08, 0.018, 0.035, 0.09,
                    "metal", self.bronze, 0.006)
-        self.block("书房皮革桌垫", 9.08, 5.28, 0.47, 0.9, 0.006, 0.802,
+        self.block("书房皮革桌垫", 9.08, 4.98, 0.47, 0.76, 0.006, 0.802,
                    "fabric", self.olive, 0.025)
-        self.block("书房合上的画册", 9.05, 5.75, 0.25, 0.19, 0.025, 0.812,
+        self.block("书房合上的画册", 9.05, 5.52, 0.25, 0.19, 0.025, 0.802,
                    "fabric", self.paper, 0.008, angle=0.08)
 
     def export(self, output):

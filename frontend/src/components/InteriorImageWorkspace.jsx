@@ -19,15 +19,15 @@ import "./interiorImageWorkspace.css";
 const suggestions = [
   [
     "午后自然光",
-    "保留门窗和家具位置。柔和的午后自然光，浅木纹与亚麻布艺，真实自然的居家摄影质感。",
+    "柔和的午后阳光从原有窗户斜照进来，木纹和亚麻保留细节，暗部有层次，像在家随手拍下的一张照片。",
   ],
   [
     "温暖夜晚",
-    "保留门窗和家具位置。窗外入夜，室内暖色灯光照亮阅读和休息区域，保留暗部层次，避免过曝。",
+    "窗外入夜，用房间已有的灯具营造暖光。桌面和布艺带一点柔和反光，灯下明亮，角落保留自然的暗部。",
   ],
   [
-    "清爽明亮",
-    "保留门窗和家具位置。明亮而不过曝的日光，干净的浅色墙面、自然木纹，呈现清爽舒适的真实空间。",
+    "日常居住感",
+    "布料有一点自然褶皱，木材保留细微纹理。可以在合适的台面放一件日常小物，空间看起来有人使用，整洁而随意。",
   ],
 ];
 
@@ -280,19 +280,31 @@ export default function InteriorImageWorkspace({
         </div>
       )}
       {running && (
-        <div className="interior-job" role="status">
-          <span className="interior-job-pulse" aria-hidden="true" />
-          <div>
-            <strong>
-              正在描绘空间 · {elapsedLabel(running.created_at, now)}
-            </strong>
+        <div className="interior-job">
+          <span className="interior-job-icon" aria-hidden="true">
+            <ImagePlus size={17} />
+          </span>
+          <div className="interior-job-copy" role="status">
+            <strong>正在生成效果图</strong>
             <small>可以继续浏览，完成后自动保存在「我的效果图」。</small>
           </div>
-          <button disabled={!!action} onClick={() => cancel(running)}>
-            <X size={14} />
-            {action === running.id ? "正在取消…" : "取消生成"}
-          </button>
-          <div className="interior-job-track" aria-hidden="true">
+          <div className="interior-job-actions">
+            <span>{elapsedLabel(running.created_at, now)}</span>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={!!action}
+              onClick={() => cancel(running)}
+            >
+              <X size={14} aria-hidden="true" />
+              {action === running.id ? "正在取消…" : "取消生成"}
+            </button>
+          </div>
+          <div
+            className="interior-job-track"
+            role="progressbar"
+            aria-label="效果图生成进度"
+          >
             <i />
           </div>
         </div>
@@ -429,7 +441,7 @@ export default function InteriorImageWorkspace({
             <div>
               <span className="interior-image-eyebrow">让这个角落，更像家</span>
               <h2>想看到什么感觉？</h2>
-              <p>说说光线、材质，或你想改变的氛围。</p>
+              <p>说说光线、材质或生活细节。室内视角更适合生成接近实拍的效果。</p>
             </div>
             <label htmlFor="interior-image-prompt">你的想法</label>
             <textarea

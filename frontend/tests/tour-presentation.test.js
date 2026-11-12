@@ -31,6 +31,12 @@ test("近镜头家具渐隐，共享材质的其他家具与墙体保持原样�
   assert.equal(far.material, original);
   assert.equal(wall.material, original);
   assert.equal(original.opacity, 0.8);
+  const faded = near.material;
+  assert.throws(() => view.withoutFading(() => {
+    assert.equal(near.material, original);
+    throw new Error("capture failed");
+  }), /capture failed/);
+  assert.equal(near.material, faded);
   camera.position.set(0, 1, 5);
   settle(view, camera, 1000);
   assert.equal(near.material, original);

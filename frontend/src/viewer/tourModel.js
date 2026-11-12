@@ -171,7 +171,7 @@ export function buildTour(model) {
     if (
       ["door", "passage"].includes(d.opening_kind) &&
       d.opening_index != null &&
-      !/门扇|门板|把手|合页/.test(o.name)
+      !/门扇|门板|扇竖框|扇横框|把手|合页/.test(o.name)
     ) {
       const key = `${d.wall_id}:${d.opening_index}`;
       if (!openings.has(key)) {

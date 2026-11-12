@@ -922,7 +922,12 @@ export class StudioScene {
         : this.camera.zoom * 100,
     );
   }
-  snapshot({ maxDimension = 2048, type = "image/png", quality = 0.94 } = {}) {
+  snapshot({
+    maxDimension = 2048,
+    type = "image/png",
+    quality = 0.94,
+    interiorReference = false,
+  } = {}) {
     this.interactionQuality?.restore();
     // 导出所选环境的完整效果，而不是切换途中的混合帧。
     this.light(this.state?.preset);
@@ -943,8 +948,14 @@ export class StudioScene {
         this.renderer.setPixelRatio(ratio);
         this.composer.setPixelRatio(ratio);
       }
-      this.composer.render();
-      return this.renderer.domElement.toDataURL(type, quality);
+      const render = () => {
+        this.composer.render();
+        return this.renderer.domElement.toDataURL(type, quality);
+      };
+      const furniture = interiorReference && this.tour?.furnitureView;
+      if (!furniture) return render();
+      this.dirty = true;
+      return furniture.withoutFading(render);
     } finally {
       if (ratio !== originalRatio) {
         this.renderer.setPixelRatio(originalRatio);

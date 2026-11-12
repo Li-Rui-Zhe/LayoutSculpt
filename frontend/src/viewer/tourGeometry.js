@@ -55,9 +55,11 @@ export function standPoints(polygon, obstacles = []) {
       if (clearance >= 0.28) candidates.push({ ...p, clearance });
     }
   candidates.sort((a, b) => b.clearance - a.clearance);
+  const shortSide = Math.min(maxX - minX, maxY - minY);
+  const spacing = Math.min(2.2, Math.max(0.75, shortSide / 2));
   const result = [];
   for (const p of candidates) {
-    if (result.every((q) => Math.hypot(p.x - q.x, p.y - q.y) > 2.2))
+    if (result.every((q) => Math.hypot(p.x - q.x, p.y - q.y) > spacing))
       result.push(p);
     if (result.length === 3) break;
   }

@@ -82,8 +82,14 @@ export class RoomViews {
         !o.userData.architecture_network
       ) {
         const c = box.getCenter(new THREE.Vector3());
-        if (this.targets.every((p) => Math.hypot(p.x - c.x, p.y - c.z) > 0.8))
-          this.targets.push({ x: c.x, y: c.z });
+        if (this.targets.every((p) => Math.hypot(p.x - c.x, p.y - c.z) > 0.8)) {
+          const kind = o.userData.builtin_kind || o.userData.furniture_name || "";
+          this.targets.push({
+            x: c.x,
+            y: c.z,
+            weight: /toilet|坐便|马桶/i.test(kind) ? 0.25 : 1,
+          });
+        }
       }
     });
   }
@@ -103,8 +109,15 @@ export class RoomViews {
       )
         continue;
       const preferred = arrivalYaw(room, station, this.data, targets);
+      const subjects = targets
+        .filter((p) => Math.hypot(p.x - station.x, p.y - station.y) >= 0.85)
+        .map((p) => ({
+          heading: Math.atan2(p.x - station.x, -(p.y - station.y)),
+          weight: p.weight,
+        }));
       const yaws = [
         preferred,
+        ...subjects.map((subject) => subject.heading),
         ...Array.from({ length: 16 }, (_, i) => (i * Math.PI) / 8),
       ];
       for (const yaw of yaws) {
@@ -150,17 +163,17 @@ export class RoomViews {
           return distance;
         });
         if (distances[2] < 0.85 || Math.min(...distances) < 0.4) continue;
-        const subject = targets.length
-          ? Math.max(
-              ...targets.map((p) =>
-                Math.cos(yaw - Math.atan2(p.x - station.x, -(p.y - station.y))),
-              ),
-            )
-          : 0;
+        // Favor a recognizable furnishing in the frame over depth into an empty corner.
+        const subject = Math.max(
+          0,
+          ...subjects.map(({ heading, weight }) =>
+            weight * (Math.cos(yaw - heading) - 0.8) / 0.2,
+          ),
+        );
         const score =
           distances.reduce((sum, d) => sum + Math.min(d, 6), 0) / 5 +
           Math.min(...distances) * 0.5 +
-          subject * 0.6 +
+          subject * 1.35 +
           Math.cos(yaw - preferred) * 0.15;
         if (!best || score > best.score)
           best = { station, yaw, pitch: -0.08, fov: 62, score };

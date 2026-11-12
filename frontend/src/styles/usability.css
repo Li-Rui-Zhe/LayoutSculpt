@@ -134,10 +134,54 @@ select:focus-visible {
 .edit-save-bar {
   z-index: 3;
 }
-.workspace-help {
-  max-width: 700px;
-  width: calc(100vw - 40px);
-  padding: 24px;
+dialog.workspace-help[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(700px, calc(100vw - 32px));
+  max-height: min(760px, calc(100dvh - 32px));
+  padding: 0;
+  overflow: hidden;
+}
+.workspace-help > .dialog-title {
+  flex: none;
+  margin: 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.workspace-help > .dialog-title h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  outline: none;
+}
+.workspace-help > .dialog-title button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f4f6f1;
+  color: #315f4e;
+}
+.workspace-help > .dialog-title button:hover {
+  background: #e7eee5;
+  color: #254e3e;
+}
+.workspace-help-content {
+  min-height: 0;
+  margin-inline-end: 6px;
+  padding: 16px 14px 20px 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.workspace-help-content > :first-child {
+  margin-top: 0;
+}
+.workspace-help-content:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .workspace-help p,
 .workspace-help li {
