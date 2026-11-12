@@ -19,7 +19,7 @@ from .codex import CodexError, codex_command_args
 from .interior_image_gallery import MEDIA_TYPES, InteriorImageGallery
 from .request_limits import INTERIOR_VIEW_LIMIT
 
-TIMEOUT = 350
+TIMEOUT = 360
 MAX_IMAGE_BYTES = 24 * 1024 * 1024
 NO_STORE = {"Cache-Control": "no-store"}
 logger = logging.getLogger(__name__)
