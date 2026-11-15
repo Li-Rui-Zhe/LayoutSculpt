@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { readInteriorDraft, writeInteriorDraft } from "./interiorDraft.js";
 
-const empty = { reference: null, prompt: "", submissionId: null };
+const empty = {
+  reference: null,
+  prompt: "",
+  exterior: "auto",
+  exteriorDescription: "",
+  submissionId: null,
+};
 export default function useInteriorDraft() {
   const [value, setValue] = useState(empty);
   const [loaded, setLoaded] = useState(false);
@@ -48,13 +54,12 @@ export default function useInteriorDraft() {
     touched.current = true;
     setValue((v) => ({ ...v, ...patch }));
   }
-  function choose(reference, prompt) {
+  function choose(reference, options) {
     touched.current = true;
     setValue((v) => ({
+      ...(v.reference?.projectId === reference?.projectId ? v : empty),
+      ...options,
       reference,
-      prompt:
-        prompt ??
-        (v.reference?.projectId === reference?.projectId ? v.prompt : ""),
       submissionId: null,
     }));
   }

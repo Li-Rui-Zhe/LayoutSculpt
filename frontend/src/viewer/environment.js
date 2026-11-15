@@ -55,3 +55,44 @@ export function blendEnvironment(from, to, fraction) {
     ]),
   );
 }
+
+const referenceSkyColors = {
+  midday: ["#c7deea", "#518fce"],
+  sunset: ["#f1cfb0", "#7f9ac7"],
+  night: ["#40546f", "#0e1935"],
+};
+
+// Shade only the empty background of an eye-level reference. Geometry and
+// lighting still come from the scene, including the glazing and railings.
+export function withReferenceSky(scene, camera, preset, render) {
+  const [horizon, sky] = referenceSkyColors[normalizeEnvironment(preset)].map(
+    (color) => new THREE.Color(color),
+  );
+  const rows = 128;
+  const pixels = new Uint8Array(rows * 4);
+  const rotation = camera.getWorldQuaternion(new THREE.Quaternion());
+  const halfHeight =
+    Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / camera.zoom;
+  const ray = new THREE.Vector3();
+  const color = new THREE.Color();
+  for (let row = 0; row < rows; row++) {
+    ray.set(0, ((2 * row) / (rows - 1) - 1) * halfHeight, -1);
+    ray.applyQuaternion(rotation).normalize();
+    const height = THREE.MathUtils.smoothstep(ray.y, -0.055, 0.38);
+    color.copy(horizon).lerp(sky, height).convertLinearToSRGB();
+    pixels.set([color.r * 255, color.g * 255, color.b * 255, 255], row * 4);
+  }
+  const background = new THREE.DataTexture(pixels, 1, rows);
+  background.colorSpace = THREE.SRGBColorSpace;
+  background.magFilter = THREE.LinearFilter;
+  background.minFilter = THREE.LinearFilter;
+  background.needsUpdate = true;
+  const original = scene.background;
+  scene.background = background;
+  try {
+    return render();
+  } finally {
+    scene.background = original;
+    background.dispose();
+  }
+}

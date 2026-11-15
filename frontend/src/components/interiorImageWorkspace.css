@@ -206,6 +206,30 @@
   color: #4f6355;
   margin-top: 9px;
 }
+.interior-exterior {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 5px;
+}
+.interior-image-form .interior-exterior label {
+  margin: 0;
+  font-weight: 600;
+}
+.interior-exterior :is(select, input) {
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid #dce3d6;
+  border-radius: 8px;
+  background: #fafbf7;
+  color: #354b3c;
+  font-size: 12px;
+}
+.interior-exterior input {
+  grid-column: 1 / -1;
+}
 .interior-image-form textarea {
   width: 100%;
   min-height: 150px;

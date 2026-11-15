@@ -477,6 +477,8 @@ export default function TaskWorkspace({
         room: tour?.room,
         roomName: rooms.find((room) => room.id === (tour?.room || roomView))
           ?.name,
+        framing: tour ? "walkthrough" : undefined,
+        lighting: state.preset,
       });
     } catch {
       setNotice("当前视角无法截图，请等模型加载完成后重试。");

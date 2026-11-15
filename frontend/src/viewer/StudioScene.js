@@ -25,6 +25,7 @@ import {
   environmentTarget,
   blendEnvironment,
   normalizeEnvironment,
+  withReferenceSky,
 } from "./environment.js";
 import { resolveMaterial } from "../materials/custom.js";
 import { isolateSoftSurfaces, surfaceProfile } from "../materials/surfaces.js";
@@ -953,9 +954,23 @@ export class StudioScene {
         return this.renderer.domElement.toDataURL(type, quality);
       };
       const furniture = interiorReference && this.tour?.furnitureView;
-      if (!furniture) return render();
-      this.dirty = true;
-      return furniture.withoutFading(render);
+      const capture = () =>
+        furniture ? furniture.withoutFading(render) : render();
+      if (furniture) this.dirty = true;
+      if (
+        interiorReference &&
+        this.tour?.active &&
+        this.camera.isPerspectiveCamera
+      ) {
+        this.dirty = true;
+        return withReferenceSky(
+          this.scene,
+          this.camera,
+          this.state?.preset,
+          capture,
+        );
+      }
+      return capture();
     } finally {
       if (ratio !== originalRatio) {
         this.renderer.setPixelRatio(originalRatio);

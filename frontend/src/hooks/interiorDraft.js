@@ -1,4 +1,14 @@
 // 独立保存取景草稿，不与户型、家具的草稿互相覆盖。
+export const interiorExteriors = {
+  auto: "自动",
+  trees: "树景",
+  city: "城市街景",
+  mountains: "山景",
+  water: "水景",
+  custom: "自定义",
+};
+export const exteriorDescriptionLimit = 160;
+
 export function validInteriorDraft(value) {
   const ref = value?.reference;
   if (
@@ -14,6 +24,13 @@ export function validInteriorDraft(value) {
   return {
     reference: ref,
     prompt: typeof value.prompt === "string" ? value.prompt.slice(0, 1200) : "",
+    exterior: Object.hasOwn(interiorExteriors, value.exterior)
+      ? value.exterior
+      : "auto",
+    exteriorDescription:
+      typeof value.exteriorDescription === "string"
+        ? value.exteriorDescription.slice(0, exteriorDescriptionLimit)
+        : "",
     submissionId: /^[a-f0-9]{32}$/.test(value.submissionId || "")
       ? value.submissionId
       : null,

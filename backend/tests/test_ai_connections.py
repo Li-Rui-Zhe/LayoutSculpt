@@ -131,6 +131,45 @@ def test_credentials_are_encrypted_and_preview_never_persists(tmp_path):
         assert calls
 
 
+def test_deepseek_model_test_uses_selected_model_without_saving(tmp_path):
+    app, _, _ = connection_app(tmp_path)
+    calls = []
+
+    def upstream(request):
+        calls.append(request)
+        if request.headers["authorization"] != f"Bearer {KEY}":
+            return httpx.Response(401, json={"error": "Invalid key"})
+        if request.method == "GET":
+            return httpx.Response(200, json=models())
+        return httpx.Response(
+            200,
+            json={"choices": [{"finish_reason": "stop", "message": {"content": "OK"}}]},
+        )
+
+    app.state.ai_client.remote.transport = httpx.MockTransport(upstream)
+    with TestClient(app) as client:
+        result = client.post(
+            "/api/ai/deepseek/test-model",
+            json={"provider": "deepseek", "model": TEXT, "api_key": KEY},
+        )
+        assert result.status_code == 200
+        assert result.json() == {"model": TEXT}
+        assert client.get("/api/ai/settings").json()["revision"] == 0
+        assert not (tmp_path / "ai" / "connections.json").exists()
+
+        enable(client, VISION)
+        result = client.post("/api/ai/deepseek/test-model", json={"provider": "deepseek"})
+        assert result.json() == {"model": VISION}
+        assert client.get("/api/ai/settings").json()["revision"] == 1
+
+    completions = [request for request in calls if request.method == "POST"]
+    assert [request.url.path for request in completions] == ["/chat/completions"] * 2
+    assert [json.loads(request.content)["model"] for request in completions] == [
+        "text-only",
+        "vision",
+    ]
+
+
 def test_settings_reopen_shows_saved_model_and_masked_key_without_network(tmp_path):
     app, _, calls = connection_app(tmp_path)
     with TestClient(app) as client:

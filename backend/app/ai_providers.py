@@ -177,6 +177,37 @@ class DeepSeekClient:
             )
             return catalog
 
+    async def test_model(self, model=None, *, key=None):
+        secret = self.key(key)
+        catalog = await self.list_models(key=secret)
+        model = model or catalog["default_model"]
+        if not any(item["id"] == model for item in catalog["items"]):
+            raise CodexError("所选 DeepSeek 模型已不可用，请刷新模型列表。")
+        result = await self.request(
+            "POST",
+            "/chat/completions",
+            key=secret,
+            body={
+                "model": model.removeprefix(DEEPSEEK_PREFIX),
+                "messages": [{"role": "user", "content": "Reply only with OK."}],
+                "thinking": {"type": "disabled"},
+                "max_tokens": 16,
+                "stream": False,
+            },
+        )
+        try:
+            choice = result["choices"][0]
+            content = choice["message"]["content"]
+            if (
+                choice["finish_reason"] == "stop"
+                and isinstance(content, str)
+                and content.strip()
+            ):
+                return model
+        except (KeyError, IndexError, TypeError):
+            pass
+        raise CodexError("DeepSeek 未返回完整的文字回复，请重试。")
+
     async def generate(
         self,
         *,

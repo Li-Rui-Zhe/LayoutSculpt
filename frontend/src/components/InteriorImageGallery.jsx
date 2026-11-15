@@ -9,11 +9,20 @@ import {
 } from "lucide-react";
 import Modal from "./Modal.jsx";
 import { filterInteriorImages } from "./interiorImageState.js";
+import { interiorExteriors } from "../hooks/interiorDraft.js";
 
 const dates = new Intl.DateTimeFormat("zh-CN", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
+function exteriorLabel(context) {
+  const exterior = context?.exterior;
+  if (!exterior || exterior === "auto") return "";
+  return exterior === "custom"
+    ? context.exteriorDescription
+    : interiorExteriors[exterior];
+}
 export default function InteriorImageGallery({
   items,
   loading,
@@ -176,7 +185,9 @@ export default function InteriorImageGallery({
               <time dateTime={item.created_at}>
                 {dates.format(new Date(item.created_at))}
               </time>
-              <p>{item.prompt}</p>
+              {(item.prompt || exteriorLabel(item.context)) && (
+                <p>{item.prompt || exteriorLabel(item.context)}</p>
+              )}
               {item.error && <small>{item.error}</small>}
               {actions(item)}
             </div>
@@ -211,7 +222,14 @@ export default function InteriorImageGallery({
               </figure>
             )}
           </div>
-          <p className="interior-gallery-prompt">{selected.prompt}</p>
+          {exteriorLabel(selected.context) && (
+            <p className="interior-gallery-prompt">
+              窗外景色 · {exteriorLabel(selected.context)}
+            </p>
+          )}
+          {selected.prompt && (
+            <p className="interior-gallery-prompt">{selected.prompt}</p>
+          )}
           {selected.error && <p role="status">{selected.error}</p>}
           {actions(selected)}
           <p className="interior-stage-note">

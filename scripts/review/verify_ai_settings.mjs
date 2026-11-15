@@ -33,6 +33,7 @@ let state = {
 let failCatalog = false;
 let omitSelected = false;
 let forceConflict = false;
+let modelTestCount = 0;
 const catalog = (provider) => {
   const value = {
     provider,
@@ -111,6 +112,19 @@ try {
         provider: request.postDataJSON().provider,
         catalog: catalog(request.postDataJSON().provider),
       });
+    if (path === "/api/ai/deepseek/test-model") {
+      expect(request.postDataJSON()).toEqual({
+        provider: "deepseek",
+        model: "deepseek::example-pro",
+      });
+      modelTestCount++;
+      if (modelTestCount === 1)
+        return route.fulfill({
+          status: 503,
+          json: { detail: "DeepSeek 账户余额不足" },
+        });
+      return fulfill({ model: "deepseek::example-pro" });
+    }
     if (path === "/api/ai/settings" && method === "POST") {
       const body = request.postDataJSON();
       if (forceConflict) {
@@ -166,14 +180,15 @@ try {
   });
   await page.goto(base + "/#ai");
   const summary = page.getByRole("region", { name: "已保存的 AI 配置" });
+  const savedKey = page.locator(".ai-saved-key");
   const picker = page.getByRole("combobox", {
     name: "新任务默认模型",
     exact: true,
   });
   await expect(summary).toBeVisible();
   await expect(summary.locator(".ai-saved-model")).toHaveText("Example Flash");
-  await expect(summary).toContainText("已保存");
-  await expect(summary).toContainText("•••• DEMO");
+  await expect(savedKey).toContainText("已保存");
+  await expect(savedKey).toContainText("•••• DEMO");
   await expect(picker).toHaveValue("deepseek::example-flash");
   await expect(
     page.getByLabel("DeepSeek API Key", { exact: true }),
@@ -190,6 +205,20 @@ try {
   ).toBeEnabled();
   await expect(picker).toHaveValue("deepseek::example-pro");
   await expect(summary.locator(".ai-saved-model")).toHaveText("Example Flash");
+  const testModel = page.getByRole("button", { name: "测试模型", exact: true });
+  const testStatus = page.locator(".ai-model-test-status");
+  expect(modelTestCount).toBe(0);
+  await testModel.click();
+  await expect(testStatus).toContainText("账户余额不足");
+  await expect(
+    page.getByRole("button", { name: "保存并使用 DeepSeek API" }),
+  ).toBeEnabled();
+  await testModel.click();
+  await expect(testStatus).toContainText("Example Pro 已成功返回文字回复");
+  await expect(summary.locator(".ai-saved-model")).toHaveText("Example Flash");
+  checks.push(
+    "可选模型测试使用待保存的选择，失败仍可保存，重试成功后展示具体模型",
+  );
   await page.screenshot({ path: output + "/pending-desktop.png" });
   checks.push(
     "刷新目录与连接测试不会覆盖用户选中的模型，也不会提前改变生效配置",
@@ -208,12 +237,12 @@ try {
 
   const input = page.getByLabel("DeepSeek API Key", { exact: true });
   await input.fill("not-a-real-credential-for-browser-test");
-  await expect(summary).toContainText("•••• DEMO");
+  await expect(savedKey).toContainText("•••• DEMO");
   await expect(page.locator(".ai-unsaved-note")).toBeVisible();
   await page
     .getByRole("button", { name: "保存并使用 DeepSeek API", exact: true })
     .click();
-  await expect(summary).toContainText("•••• NEW1");
+  await expect(savedKey).toContainText("•••• NEW1");
   await expect(input).toHaveValue("");
   await expect(page.locator("body")).not.toContainText(
     "not-a-real-credential-for-browser-test",
@@ -232,6 +261,11 @@ try {
     ),
   ).toBe(true);
   await page.screenshot({ path: output + "/saved-mobile.png" });
+  const modelTestPanel = page.getByRole("region", { name: /可选测试/ });
+  await expect(modelTestPanel).toBeVisible();
+  expect(
+    await modelTestPanel.evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true);
   checks.push("手机能看见保存状态、模型名称和密钥标识，无横向溢出");
 
   await page.setViewportSize({ width: 1600, height: 1100 });
@@ -241,7 +275,7 @@ try {
     page.getByRole("button", { name: "保存并使用 DeepSeek API", exact: true }),
   ).toBeDisabled();
   await expect(page.locator(".ai-catalog-error")).toContainText(
-    "所选模型未在当前目录中找到",
+    "所选模型已不在列表中",
   );
   await page.getByRole("button", { name: "刷新模型", exact: true }).click();
   await expect(
@@ -258,7 +292,7 @@ try {
     "模型目录暂时不可用",
   );
   await expect(picker).toHaveValue("deepseek::example-pro");
-  await expect(summary).toContainText("•••• NEW1");
+  await expect(savedKey).toContainText("•••• NEW1");
   await expect(summary.locator(".ai-saved-model")).toHaveText("example-pro");
   checks.push("模型目录暂不可用时仍展示保存的模型与密钥，不退回模糊的自动选择");
   failCatalog = false;
@@ -270,17 +304,36 @@ try {
     .getByRole("button", { name: "保存并使用 DeepSeek API", exact: true })
     .click();
   await expect(summary).toContainText("上次读取的配置");
-  await expect(summary).toContainText("请重新读取确认");
+  await expect(
+    page.getByRole("button", { name: "重新读取状态" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "重新读取状态", exact: true }).click();
   await expect(summary.locator(".ai-saved-model")).toHaveText("Example Flash");
   await expect(picker).toHaveValue("deepseek::example-flash");
   checks.push("保存冲突时不把旧快照冒充当前生效配置，重新读取后显示真实配置");
   await page.getByText("密钥管理", { exact: true }).click();
   await page.getByRole("button", { name: "确认移除密钥", exact: true }).click();
-  await expect(summary.locator(".ai-saved-key")).toContainText("未配置");
-  await expect(summary).not.toContainText("•••• NEW1");
+  await expect(savedKey).toHaveCount(0);
   await expect(picker).toHaveValue("local-choice");
   checks.push("移除密钥后清除旧标识，切回已保存的 Codex 模型");
+  const codexStatus = page.locator(".ai-codex-detected");
+  await expect(codexStatus).toContainText("已发现本机 Codex · 待检测");
+  for (const [status, label] of [
+    ["ready", "Codex 已连接"],
+    ["disconnected", "Codex 连接已断开"],
+  ]) {
+    state.codex.runtime = { status, connected: status === "ready" };
+    await page.reload();
+    await expect(codexStatus).toContainText(label);
+    await expect(summary.locator(".ai-connected-badge")).toHaveCount(
+      status === "ready" ? 1 : 0,
+    );
+    if (status === "ready")
+      await page.screenshot({ path: output + "/codex-connected.png" });
+  }
+  checks.push(
+    "Codex 待检测、已连接、已断开状态明确，顶部徽标只在检测通过时可见",
+  );
   expect(errors).toEqual([]);
   expect(blockedWrites).toEqual([]);
   await writeFile(

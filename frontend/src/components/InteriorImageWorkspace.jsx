@@ -14,6 +14,10 @@ import { api } from "../api.js";
 import { downloadFile } from "../downloadFile.js";
 import InteriorImageGallery from "./InteriorImageGallery.jsx";
 import { elapsedLabel, pollInteriorHistory } from "./interiorImageState.js";
+import {
+  exteriorDescriptionLimit,
+  interiorExteriors,
+} from "../hooks/interiorDraft.js";
 import "./interiorImageWorkspace.css";
 
 const suggestions = [
@@ -60,7 +64,11 @@ export default function InteriorImageWorkspace({
   const busy = sending || !!running;
   const ready = capability?.available && !offline;
   const imageUrl = current?.image_url;
-  const prompt = draft.prompt;
+  const { prompt, exterior, exteriorDescription } = draft;
+  const hasBrief =
+    exterior === "custom"
+      ? !!exteriorDescription.trim()
+      : exterior !== "auto" || !!prompt.trim();
 
   useEffect(() => {
     alive.current = true;
@@ -139,8 +147,7 @@ export default function InteriorImageWorkspace({
   }
   async function generate(event) {
     event.preventDefault();
-    if (!ready || !reference || busy || request.current || !prompt.trim())
-      return;
+    if (!ready || !reference || busy || request.current || !hasBrief) return;
     const sourceRef = reference;
     const controller = new AbortController();
     request.current = controller;
@@ -160,6 +167,11 @@ export default function InteriorImageWorkspace({
           projectId: reference.projectId || "",
           title: reference.title || "",
           roomName: reference.roomName || "",
+          framing: reference.framing,
+          lighting: reference.lighting,
+          exterior,
+          exteriorDescription:
+            exterior === "custom" ? exteriorDescription.trim() : undefined,
         }),
       );
       const record = await api("/interior-image", {
@@ -194,8 +206,14 @@ export default function InteriorImageWorkspace({
         projectId: item.context?.projectId || "",
         title: item.context?.title || "历史取景",
         roomName: item.context?.roomName || "",
+        framing: item.context?.framing,
+        lighting: item.context?.lighting,
       },
-      item.prompt,
+      {
+        prompt: item.prompt,
+        exterior: item.context?.exterior || "auto",
+        exteriorDescription: item.context?.exteriorDescription || "",
+      },
     );
     setPanel("compose");
     setFailure("");
@@ -441,9 +459,42 @@ export default function InteriorImageWorkspace({
             <div>
               <span className="interior-image-eyebrow">让这个角落，更像家</span>
               <h2>想看到什么感觉？</h2>
-              <p>说说光线、材质或生活细节。室内视角更适合生成接近实拍的效果。</p>
+              <p>描述你想要的光线和材质。</p>
             </div>
-            <label htmlFor="interior-image-prompt">你的想法</label>
+            <div className="interior-exterior">
+              <label htmlFor="interior-exterior-select">窗外景色</label>
+              <select
+                id="interior-exterior-select"
+                value={exterior}
+                disabled={!reference || sending}
+                onChange={(event) =>
+                  draft.update({ exterior: event.target.value })
+                }
+              >
+                {Object.entries(interiorExteriors).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              {exterior === "custom" && (
+                <input
+                  type="text"
+                  aria-label="自定义窗外景色"
+                  value={exteriorDescription}
+                  placeholder="例如：远处是海湾和几艘帆船"
+                  maxLength={exteriorDescriptionLimit}
+                  onChange={(event) =>
+                    draft.update({ exteriorDescription: event.target.value })
+                  }
+                  disabled={!reference || sending}
+                  required
+                />
+              )}
+            </div>
+            <label htmlFor="interior-image-prompt">
+              你的想法{exterior !== "auto" ? "（可选）" : ""}
+            </label>
             <textarea
               id="interior-image-prompt"
               value={prompt}
@@ -452,7 +503,7 @@ export default function InteriorImageWorkspace({
               placeholder="比如：保留现在的布置，阳光落在木地板上，沙发是温暖的亚麻质感。"
               maxLength={1200}
               rows={6}
-              required
+              required={exterior === "auto"}
             />
             <small className="interior-image-length">
               {prompt.length} / 1200
@@ -484,9 +535,7 @@ export default function InteriorImageWorkspace({
             <button
               type="submit"
               className="primary-button interior-generate"
-              disabled={
-                !reference || !ready || busy || !!action || !prompt.trim()
-              }
+              disabled={!reference || !ready || busy || !!action || !hasBrief}
             >
               <Sparkles size={17} />
               {sending
@@ -534,7 +583,7 @@ export default function InteriorImageWorkspace({
             <details className="interior-privacy">
               <summary>生成与隐私说明</summary>
               <p>
-                确认生成后，仅将这张底图和描述发送给 OpenAI
+                确认生成后，仅将这张底图和创作设置发送给 OpenAI
                 ImageGen。不会改变户型原图或三维模型，也不会切换其他功能的默认
                 AI 来源。需要本机 Codex 已登录并拥有生图权限。
               </p>

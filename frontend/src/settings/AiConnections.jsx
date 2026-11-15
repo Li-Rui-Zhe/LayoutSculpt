@@ -5,8 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Cloud,
   Monitor,
-  Check,
-  ShieldCheck,
   Eye,
   EyeOff,
   RefreshCw,
@@ -15,7 +13,6 @@ import {
   KeyRound,
   ExternalLink,
   ArrowRight,
-  PlugZap,
 } from "lucide-react";
 import { api } from "../api.js";
 import CodexRuntime from "./CodexRuntime.jsx";
@@ -40,6 +37,7 @@ export default function AiConnections() {
   const [notice, setNotice] = useState("");
   const [readingModels, setReadingModels] = useState(false);
   const [catalogError, setCatalogError] = useState("");
+  const [modelTest, setModelTest] = useState(null);
   const catalogRequest = useRef(null),
     catalogSequence = useRef(0);
   const request = useRef(null),
@@ -106,6 +104,7 @@ export default function AiConnections() {
     request.current = controller;
     setPhase("loading");
     setError("");
+    setModelTest(null);
     stopCatalogRead();
     try {
       const value = await api("/ai/settings", { signal: controller.signal });
@@ -155,6 +154,7 @@ export default function AiConnections() {
     setVisible(false);
     setError("");
     setNotice("");
+    setModelTest(null);
     if (value === "deepseek" ? configured : settings.codex.available)
       void readSavedCatalog(value);
   };
@@ -166,6 +166,7 @@ export default function AiConnections() {
     setPhase(testing ? "testing" : "saving");
     setError("");
     setNotice("");
+    setModelTest(null);
     stopCatalogRead();
     try {
       const body = {
@@ -191,9 +192,7 @@ export default function AiConnections() {
       if (current !== sequence.current) return;
       if (testing) {
         applyCatalog(value.catalog, model || undefined);
-        setNotice(
-          "连接检测通过，可在下方选择模型；点击连接按钮后保存。持续生成仍需账户有可用权限和额度。",
-        );
+        setNotice("模型列表已更新。");
       } else {
         applyCatalog(
           value.catalog,
@@ -205,9 +204,7 @@ export default function AiConnections() {
         setReloadNeeded(false);
         if (removeKey) setProvider(value.default_provider);
         setNotice(
-          removeKey
-            ? "已移除 DeepSeek 密钥。默认来源已切回 Codex，使用前请确认连接可用。"
-            : `已保存 ${names[value.default_provider]} · ${readableModelId(savedModelId(value, value.default_provider))}。新任务将使用此配置。`,
+          removeKey ? "密钥已移除，默认来源已切换为 Codex。" : "配置已保存。",
         );
         window.dispatchEvent(
           new CustomEvent("habitat:ai-changed", {
@@ -233,25 +230,63 @@ export default function AiConnections() {
       if (current === sequence.current) setPhase("idle");
     }
   };
+  const testModel = async () => {
+    const current = ++sequence.current;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setPhase("testing-model");
+    setModelTest(null);
+    try {
+      const value = await api("/ai/deepseek/test-model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "deepseek",
+          model: model || null,
+          ...(key.trim() ? { api_key: key.trim() } : {}),
+        }),
+        signal: controller.signal,
+        timeoutMs: 55000,
+      });
+      if (current === sequence.current) {
+        const label =
+          catalog?.items.find((item) => item.id === value.model)?.name ||
+          readableModelId(value.model);
+        setModelTest({
+          success: true,
+          message: `${label} 已成功返回文字回复。`,
+        });
+      }
+    } catch (e) {
+      if (current === sequence.current)
+        setModelTest({ success: false, message: e.message });
+    } finally {
+      if (current === sequence.current) setPhase("idle");
+    }
+  };
   const refreshCodex = async () => {
     const value = await api("/ai/settings");
     setSettings((previous) =>
       previous ? { ...previous, codex: value.codex } : previous,
     );
   };
+  const codexReport = settings?.codex.runtime;
+  const codexStatus =
+    codexReport?.status === "ready"
+      ? "已连接"
+      : codexReport?.status === "disconnected"
+        ? "已断开"
+        : codexReport?.action === "login" ||
+            codexReport?.code === "authentication"
+          ? "待登录"
+          : settings?.codex.available
+            ? "已安装"
+            : "待安装";
   return (
     <section className="ai-connections ai-simple" aria-label="AI 接入设置">
       <header className="ai-page-heading">
-        <div className="ai-page-title">
-          <span className="ai-page-icon">
-            <PlugZap size={25} />
-          </span>
-          <div>
-            <span className="ai-eyebrow">连接创作能力</span>
-            <h1>让 AI 加入你的设计</h1>
-            <p>选一种接入方式，连接一次，之后直接使用。</p>
-          </div>
-        </div>
+        <h1>AI 接入</h1>
         <button className="ai-text-button" disabled={busy} onClick={load}>
           <RefreshCw size={14} />
           刷新状态
@@ -265,71 +300,6 @@ export default function AiConnections() {
           label="正在读取连接设置"
           successLabel="连接设置已读取"
         />
-        {settings && (
-          <section
-            className="ai-saved-summary"
-            aria-label="已保存的 AI 配置"
-            data-uncertain={reloadNeeded || undefined}
-          >
-            <div className="ai-summary-heading">
-              <strong>
-                <CheckCircle2 size={16} />{" "}
-                {reloadNeeded
-                  ? "上次读取的配置"
-                  : settings.revision > 0
-                    ? "当前已保存配置"
-                    : "当前默认配置"}
-              </strong>
-              <span>
-                {reloadNeeded
-                  ? "请重新读取确认"
-                  : settings.revision > 0
-                    ? "已保存到本机"
-                    : settings.codex.available
-                      ? "可沿用本机 Codex"
-                      : "尚未选择默认连接"}
-              </span>
-            </div>
-            <dl>
-              <div>
-                <dt>新任务默认来源</dt>
-                <dd>{names[settings.default_provider]}</dd>
-              </div>
-              <div>
-                <dt>当前默认模型</dt>
-                <dd className="ai-saved-model">{currentModelLabel}</dd>
-                {currentModelId &&
-                  currentModel?.name &&
-                  currentModel.name !== readableModelId(currentModelId) && (
-                    <dd className="ai-saved-model-id">
-                      {readableModelId(currentModelId)}
-                    </dd>
-                  )}
-              </div>
-              <div>
-                <dt>DeepSeek 密钥</dt>
-                <dd className="ai-saved-key">
-                  <KeyRound size={15} />
-                  {configured ? (
-                    <>
-                      <span>已保存</span>
-                      <code>{settings.deepseek.key_hint || "••••••••"}</code>
-                    </>
-                  ) : (
-                    "未配置"
-                  )}
-                </dd>
-              </div>
-            </dl>
-            <p>
-              {reloadNeeded
-                ? "连接设置可能已保存或被其他页面更新，请重新读取状态后确认当前配置。"
-                : settings.revision > 0
-                  ? "新任务默认使用以上配置；已有任务保留各自的来源和模型。"
-                  : "连接并保存后，新任务会使用你选择的来源和模型。"}
-            </p>
-          </section>
-        )}
         {error && (
           <div className="ai-feedback error" role="alert">
             <AlertCircle size={16} />
@@ -354,329 +324,324 @@ export default function AiConnections() {
             {!busy && "暂时无法读取设置，请重试。"}
           </div>
         ) : (
-          <>
-            <div
-              className="ai-provider-cards"
-              role="group"
-              aria-label="AI 来源"
-            >
-              {[
-                [
-                  "deepseek",
-                  Cloud,
-                  "简单接入 · 推荐",
-                  "粘贴 API Key，一键连接",
-                  "不用安装 CLI，适合先开始文字设计",
-                ],
-                [
-                  "codex",
-                  Monitor,
-                  "进阶接入",
-                  "已有 Codex？直接复用",
-                  "也可以让项目准备独立环境",
-                ],
-              ].map(([id, Icon, badge, title, sub]) => (
-                <button
-                  key={id}
-                  disabled={busy}
-                  aria-pressed={provider === id}
-                  onClick={() => choose(id)}
-                  className="ai-provider-card"
-                >
-                  <span className={`ai-provider-icon ${id}`}>
-                    <Icon size={25} />
-                  </span>
-                  <div>
-                    <span className="ai-choice-badge">{badge}</span>
-                    <strong>{names[id]}</strong>
-                    <p>{title}</p>
-                    <span>{sub}</span>
-                  </div>
-                  <i className="ai-radio">
-                    {provider === id && <Check size={12} />}
-                  </i>
-                </button>
-              ))}
-            </div>
-            <div className="ai-settings-layout">
-              <div className="ai-connection-panel">
-                <div className="ai-panel-heading">
-                  <div>
-                    <h2>
-                      {provider === "deepseek"
-                        ? configured
-                          ? "管理 DeepSeek 连接"
-                          : "填写密钥，就能开始"
-                        : "连接你的 Codex"}
-                    </h2>
-                  </div>
-                  <span>
-                    {provider === "deepseek" ? "无需安装" : "进阶使用"}
-                  </span>
-                </div>
-                {provider === "deepseek" ? (
-                  <div className="ai-deepseek-fields">
-                    <div className="ai-key-label">
-                      <label htmlFor="ai-api-key">DeepSeek API Key</label>
-                      <a
-                        href="https://platform.deepseek.com/api_keys"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        获取密钥
-                        <ExternalLink size={12} />
-                      </a>
-                    </div>
-                    {configured && (
-                      <div className="ai-key-saved" role="status">
-                        <ShieldCheck size={17} />
-                        <strong>密钥已保存</strong>
-                        <code>{settings.deepseek.key_hint || "••••••••"}</code>
-                        <span>本机加密 · 无需重复填写</span>
-                      </div>
+          <div className="ai-settings-layout">
+            <div className="ai-source-column">
+              <div
+                className="ai-provider-cards"
+                role="group"
+                aria-label="AI 来源"
+              >
+                {[
+                  ["deepseek", Cloud, configured ? "密钥已保存" : "待配置"],
+                  ["codex", Monitor, codexStatus],
+                ].map(([id, Icon, status]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={busy}
+                    aria-pressed={provider === id}
+                    onClick={() => choose(id)}
+                    className="ai-provider-card"
+                  >
+                    <span className="ai-provider-icon" aria-hidden="true">
+                      <Icon size={18} />
+                    </span>
+                    <span className="ai-provider-label">
+                      <strong>{names[id]}</strong>
+                      <span>{status}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <section
+                className="ai-saved-summary"
+                aria-label="已保存的 AI 配置"
+                data-uncertain={reloadNeeded || undefined}
+              >
+                <span className="ai-summary-label">
+                  {reloadNeeded ? "上次读取的配置" : "新任务默认配置"}
+                </span>
+                <div className="ai-summary-selection">
+                  <strong>{names[settings.default_provider]}</strong>
+                  <span className="ai-saved-model">{currentModelLabel}</span>
+                  {!reloadNeeded &&
+                    settings.default_provider === "codex" &&
+                    settings.codex.runtime?.status === "ready" && (
+                      <span className="ai-connected-badge">
+                        <CheckCircle2 size={13} aria-hidden="true" />
+                        已连接
+                      </span>
                     )}
-                    <div className="ai-key-input">
-                      <KeyRound size={16} />
-                      <input
-                        id="ai-api-key"
-                        type={visible ? "text" : "password"}
-                        autoComplete="new-password"
-                        spellCheck={false}
-                        placeholder={
-                          configured
-                            ? "需要更换密钥时再填写，留空保留已保存密钥"
-                            : "粘贴你的 API Key"
-                        }
-                        value={key}
-                        disabled={busy}
-                        maxLength={4096}
-                        onChange={(e) => {
-                          setKey(e.target.value);
+                </div>
+              </section>
+            </div>
+            <div className="ai-provider-detail">
+              <section
+                className="ai-connection-panel"
+                aria-labelledby="ai-provider-title"
+              >
+                <h2 id="ai-provider-title">{names[provider]} 设置</h2>
+                <div className="ai-connection-fields">
+                  {provider === "deepseek" ? (
+                    <div className="ai-deepseek-fields">
+                      <div className="ai-key-label">
+                        <label htmlFor="ai-api-key">DeepSeek API Key</label>
+                        {configured && (
+                          <span className="ai-saved-key" role="status">
+                            <CheckCircle2 size={13} aria-hidden="true" />
+                            已保存{" "}
+                            <code>
+                              {settings.deepseek.key_hint || "••••••••"}
+                            </code>
+                          </span>
+                        )}
+                        <a
+                          href="https://platform.deepseek.com/api_keys"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          获取密钥
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+                      <div className="ai-key-input">
+                        <KeyRound size={16} />
+                        <input
+                          id="ai-api-key"
+                          type={visible ? "text" : "password"}
+                          autoComplete="new-password"
+                          spellCheck={false}
+                          placeholder={
+                            configured
+                              ? "留空沿用已保存的密钥"
+                              : "粘贴你的 API Key"
+                          }
+                          value={key}
+                          disabled={busy}
+                          maxLength={4096}
+                          onChange={(e) => {
+                            setKey(e.target.value);
+                            stopCatalogRead();
+                            setCatalog(null);
+                            setError("");
+                            setNotice("");
+                            setModelTest(null);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          disabled={!key}
+                          aria-label={
+                            visible ? "隐藏密钥" : "显示本次输入的密钥"
+                          }
+                          onClick={() => setVisible(!visible)}
+                        >
+                          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                      {provider === "deepseek" && configured && (
+                        <details className="ai-advanced ai-remove">
+                          <summary>密钥管理</summary>
+                          <p>移除密钥后，默认来源将切换为 Codex。</p>
+                          <button
+                            disabled={busy}
+                            onClick={() => send(false, true)}
+                          >
+                            确认移除密钥
+                          </button>
+                        </details>
+                      )}
+                    </div>
+                  ) : (
+                    <CodexRuntime
+                      initial={settings.codex.runtime}
+                      connection={settings.codex}
+                      busy={busy}
+                      onPhase={setPhase}
+                      onConnect={() => send()}
+                      onEnvironment={refreshCodex}
+                      onResult={(value, diagnostics, replace) => {
+                        if (replace) {
                           stopCatalogRead();
-                          setCatalog(null);
-                          setError("");
-                          setNotice("");
-                        }}
-                      />
-                      <button
-                        type="button"
-                        disabled={!key}
-                        aria-label={visible ? "隐藏密钥" : "显示本次输入的密钥"}
-                        onClick={() => setVisible(!visible)}
+                          applyCatalog(value);
+                        }
+                        if (diagnostics)
+                          setSettings((previous) => ({
+                            ...previous,
+                            codex: {
+                              ...previous.codex,
+                              runtime: diagnostics,
+                              connected: diagnostics.connected,
+                            },
+                          }));
+                        window.dispatchEvent(
+                          new Event("habitat:runtime-changed"),
+                        );
+                      }}
+                    />
+                  )}
+                  <div className="ai-model-options">
+                    <section
+                      className="ai-model-picker"
+                      aria-label="默认模型设置"
+                    >
+                      <label htmlFor="ai-default-model">新任务默认模型</label>
+                      <div className="ai-model-controls">
+                        <select
+                          id="ai-default-model"
+                          value={model}
+                          disabled={busy}
+                          onChange={(e) => {
+                            setModel(e.target.value);
+                            setModelTest(null);
+                          }}
+                        >
+                          <option value="">自动选择</option>
+                          {model &&
+                            !catalog?.items.some(
+                              (item) => item.id === model,
+                            ) && (
+                              <option value={model}>
+                                {readableModelId(model)}
+                                {catalog ? " · 当前目录未返回" : ""}
+                              </option>
+                            )}
+                          {catalog?.items.map((item) => (
+                            <option
+                              key={item.id}
+                              value={item.id}
+                              disabled={item.available === false}
+                            >
+                              {item.name}
+                              {item.available === false
+                                ? " · 不可用"
+                                : item.supports_image === true
+                                  ? " · 支持识图"
+                                  : item.supports_image === false
+                                    ? " · 仅文字"
+                                    : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="ai-text-button"
+                          disabled={
+                            busy ||
+                            readingModels ||
+                            (provider === "deepseek" &&
+                              !configured &&
+                              !key.trim())
+                          }
+                          onClick={() => send(true)}
+                        >
+                          <RefreshCw size={14} />
+                          {readingModels || phase === "testing"
+                            ? "正在读取…"
+                            : "刷新模型"}
+                        </button>
+                      </div>
+                      {catalogError && (
+                        <p className="ai-catalog-error">{catalogError}</p>
+                      )}
+                      {missingModel && (
+                        <p className="ai-catalog-error">
+                          所选模型已不在列表中，请重新选择。
+                        </p>
+                      )}
+                    </section>
+                    {provider === "deepseek" && (
+                      <section
+                        className="ai-model-test"
+                        aria-labelledby="ai-model-test-title"
                       >
-                        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+                        <p id="ai-model-test-title">
+                          可选测试 · 使用少量 API 额度
+                        </p>
+                        <button
+                          type="button"
+                          className="ai-model-test-button"
+                          disabled={
+                            busy ||
+                            missingModel ||
+                            selected?.available === false ||
+                            (!configured && !key.trim())
+                          }
+                          onClick={testModel}
+                        >
+                          {phase === "testing-model" ? "正在测试…" : "测试模型"}
+                        </button>
+                        <div
+                          className="ai-model-test-status"
+                          role="status"
+                          aria-atomic="true"
+                        >
+                          {modelTest && (
+                            <p
+                              className={
+                                modelTest.success ? "success" : "error"
+                              }
+                            >
+                              {modelTest.success ? (
+                                <CheckCircle2 size={16} aria-hidden="true" />
+                              ) : (
+                                <AlertCircle size={16} aria-hidden="true" />
+                              )}
+                              <span>{modelTest.message}</span>
+                            </p>
+                          )}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                  {notice && (
+                    <div className="ai-feedback success" role="status">
+                      <CheckCircle2 size={17} />
+                      <span>{notice}</span>
+                      <button
+                        aria-label="关闭成功提示"
+                        onClick={() => setNotice("")}
+                      >
+                        ×
                       </button>
                     </div>
-                    <p className="ai-field-help">
-                      <ShieldCheck size={13} />{" "}
-                      {configured
-                        ? "已有密钥保存在本机，可直接连接。"
-                        : "密钥加密保存在本机，保存后仅显示脱敏标识。"}{" "}
-                      直连 DeepSeek 官方 API，按你的账户计费。
-                    </p>
-                    <div className="ai-fit-note">
-                      <p>
-                        文字家具、墙面与地板设计可直接开始。上传户型或参考图片，需要模型支持图片理解。
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <CodexRuntime
-                    initial={settings.codex.runtime}
-                    connection={settings.codex}
-                    busy={busy}
-                    onPhase={setPhase}
-                    onConnect={() => send()}
-                    onEnvironment={refreshCodex}
-                    onAlternative={() => choose("deepseek")}
-                    onResult={(value, diagnostics, replace) => {
-                      if (replace) {
-                        stopCatalogRead();
-                        applyCatalog(value);
-                      }
-                      if (diagnostics)
-                        setSettings((previous) => ({
-                          ...previous,
-                          codex: {
-                            ...previous.codex,
-                            runtime: diagnostics,
-                            connected: diagnostics.connected,
-                          },
-                        }));
-                      window.dispatchEvent(
-                        new Event("habitat:runtime-changed"),
-                      );
-                    }}
-                  />
-                )}
-                {notice && (
-                  <div className="ai-feedback success" role="status">
-                    <CheckCircle2 size={17} />
-                    <span>{notice}</span>
+                  )}
+                  <footer className="ai-save-row">
+                    {changed && (
+                      <span className="ai-unsaved-note" role="status">
+                        修改尚未保存
+                      </span>
+                    )}
                     <button
-                      aria-label="关闭成功提示"
-                      onClick={() => setNotice("")}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-                <section className="ai-model-picker" aria-label="默认模型设置">
-                  <div className="ai-model-heading">
-                    <label htmlFor="ai-default-model">新任务默认模型</label>
-                    <span className={changed ? "pending" : "saved"}>
-                      {changed
-                        ? "本次选择 · 尚未保存"
-                        : settings.revision > 0
-                          ? "已保存"
-                          : "连接后生效"}
-                    </span>
-                  </div>
-                  <div className="ai-model-controls">
-                    <select
-                      id="ai-default-model"
-                      value={model}
-                      disabled={busy}
-                      onChange={(e) => setModel(e.target.value)}
-                    >
-                      <option value="">自动选择（保存后显示实际模型）</option>
-                      {model &&
-                        !catalog?.items.some((item) => item.id === model) && (
-                          <option value={model}>
-                            {readableModelId(model)}
-                            {catalog ? " · 当前目录未返回" : ""}
-                          </option>
-                        )}
-                      {catalog?.items.map((item) => (
-                        <option
-                          key={item.id}
-                          value={item.id}
-                          disabled={item.available === false}
-                        >
-                          {item.name}
-                          {item.available === false
-                            ? " · 不可用"
-                            : item.supports_image === true
-                              ? " · 支持识图"
-                              : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="ai-text-button"
+                      className="primary-button"
                       disabled={
                         busy ||
-                        readingModels ||
-                        (provider === "deepseek" && !configured && !key.trim())
+                        reloadNeeded ||
+                        missingModel ||
+                        selected?.available === false ||
+                        (provider === "deepseek" &&
+                          !configured &&
+                          !key.trim()) ||
+                        (provider === "codex" && !settings.codex.available)
                       }
-                      onClick={() => send(true)}
+                      onClick={() => send()}
                     >
-                      <RefreshCw size={14} />
-                      {readingModels || phase === "testing"
-                        ? "正在读取…"
-                        : "刷新模型"}
+                      <InlineProgress
+                        active={phase === "saving"}
+                        failed={!!error}
+                        fallback={<ArrowRight size={16} />}
+                      />{" "}
+                      {phase === "saving"
+                        ? "正在连接并保存…"
+                        : `${settings.revision > 0 ? "保存并使用" : "连接并使用"} ${names[provider]}`}
                     </button>
-                  </div>
-                  {catalogError && (
-                    <p className="ai-catalog-error">
-                      {catalogError} 已保存配置仍显示在上方，可稍后刷新模型。
-                    </p>
-                  )}
-                  {missingModel && (
-                    <p className="ai-catalog-error">
-                      所选模型未在当前目录中找到，请选择可用模型后保存。上方已保存配置不变。
-                    </p>
-                  )}
-                  <p className="ai-field-help">
-                    先选择模型，再点击保存。只读取模型列表不会产生生成任务。
-                  </p>
-                </section>
-                {selected && (
-                  <p className="ai-capability-note">
-                    本次选择：{selected.name} ·{" "}
-                    {selected.supports_image === true
-                      ? "支持文字设计与识图（非图片生成）"
-                      : selected.supports_image === false
-                        ? "仅支持文字输入，上传户型图请切换图片模型"
-                        : "识图能力尚未确认，上传图片前需检查"}
-                  </p>
-                )}
-                {settings.revision > 0 && changed && (
-                  <p className="ai-unsaved-note" role="status">
-                    修改尚未保存。当前新任务仍默认使用{" "}
-                    {names[settings.default_provider]} · {currentModelLabel}。
-                  </p>
-                )}
-                <footer className="ai-save-row">
-                  <span>
-                    {settings.revision > 0 && !changed
-                      ? "当前配置已保存，可直接开始设计"
-                      : "保存后，新任务将使用本次选择的来源和模型"}
-                  </span>
-                  <button
-                    className="primary-button"
-                    disabled={
-                      busy ||
-                      reloadNeeded ||
-                      missingModel ||
-                      selected?.available === false ||
-                      (provider === "deepseek" && !configured && !key.trim()) ||
-                      (provider === "codex" && !settings.codex.available)
-                    }
-                    onClick={() => send()}
-                  >
-                    <InlineProgress
-                      active={busy}
-                      failed={!!error}
-                      fallback={<ArrowRight size={16} />}
-                    />{" "}
-                    {phase === "saving"
-                      ? "正在连接并保存…"
-                      : `${settings.revision > 0 ? "保存并使用" : "连接并使用"} ${names[provider]}`}
-                  </button>
-                </footer>
-                {provider === "deepseek" && configured && (
-                  <details className="ai-advanced ai-remove">
-                    <summary>密钥管理</summary>
-                    <p>
-                      删除本机密钥并切回 Codex，已有设计保留；Codex
-                      需要另行连接。
-                    </p>
-                    <button disabled={busy} onClick={() => send(false, true)}>
-                      确认移除密钥
-                    </button>
-                  </details>
-                )}
-              </div>
-              <aside className="ai-settings-guide">
-                <div className="ai-guide-block">
-                  <span className="ai-guide-icon">
-                    <Cloud size={22} />
-                  </span>
-                  <h2>怎么选更省事？</h2>
-                  <p>
-                    <strong>想快速开始</strong>
-                    <br />选 DeepSeek API，填密钥后直接连接。
-                  </p>
-                  <p>
-                    <strong>电脑已有 Codex</strong>
-                    <br />选 Codex，检测通过后沿用现有登录与配置。
-                  </p>
-                  <p>
-                    <strong>想独立管理环境</strong>
-                    <br />在 Codex 更多设置中准备项目专用版本，首次单独登录。
-                  </p>
+                  </footer>
                 </div>
-                <div className="ai-guide-block ai-privacy">
-                  <ShieldCheck size={18} />
-                  <p>
-                    生成所需的描述和图片会发送给你选择的 AI
-                    服务。失败时不会自动换用另一家服务。
-                  </p>
-                </div>
-              </aside>
+              </section>
+              <p className="ai-data-note">
+                设计描述和图片会发送给所选 AI 服务。
+              </p>
             </div>
-          </>
+          </div>
         )}
       </div>
     </section>

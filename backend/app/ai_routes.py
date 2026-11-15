@@ -39,9 +39,12 @@ class ConnectionRequest(BaseModel):
         return SecretStr(key)
 
 
-class SaveConnection(ConnectionRequest):
-    revision: int = Field(ge=0)
+class ModelConnection(ConnectionRequest):
     model: str | None = Field(default=None, max_length=160)
+
+
+class SaveConnection(ModelConnection):
+    revision: int = Field(ge=0)
     remove_key: bool = False
 
 
@@ -173,6 +176,22 @@ def install_ai_routes(app, settings, client):
             "catalog": catalog,
             "message": f"连接成功，已读取 {len(catalog['items'])} 个模型。",
         }
+
+    @app.post("/api/ai/deepseek/test-model")
+    async def test_deepseek_model(body: ModelConnection):
+        if body.provider != "deepseek":
+            raise HTTPException(422, "请选择 DeepSeek API 后再测试模型。")
+        key = body.api_key.get_secret_value() if body.api_key else None
+        try:
+            async with asyncio.timeout(50):
+                model = await client.remote.test_model(body.model, key=key)
+        except TimeoutError:
+            raise HTTPException(504, "模型测试超时，请检查网络后重试。") from None
+        except CodexError as exc:
+            raise HTTPException(503, str(exc)) from None
+        except Exception:  # Upstream errors may contain credentials.
+            raise HTTPException(503, "模型测试失败，请检查连接后重试。") from None
+        return {"model": model}
 
     @app.post("/api/ai/settings")
     async def save_settings(body: SaveConnection):

@@ -13,7 +13,17 @@ test("取景草稿保留截图、描述与任务身份，只恢复本机底图",
     prompt: "夜晚",
     submissionId: "a".repeat(32),
   };
-  assert.deepEqual(validInteriorDraft(value), value);
+  assert.deepEqual(validInteriorDraft(value), {
+    ...value,
+    exterior: "auto",
+    exteriorDescription: "",
+  });
+  const custom = {
+    ...value,
+    exterior: "custom",
+    exteriorDescription: "远处的湖岸",
+  };
+  assert.deepEqual(validInteriorDraft(custom), custom);
   assert.equal(
     validInteriorDraft({
       reference: { image: "https://outside.test/private" },

@@ -43,6 +43,14 @@ def test_interior_image_accepts_only_a_local_view_and_prompt(tmp_path, monkeypat
         assert client.post(url, json={"prompt": "room"}).status_code == 422
         assert client.post(url, data={"prompt": " "}, files=files).status_code == 422
         assert (
+            client.post(
+                url,
+                data={"prompt": "午后", "context": '{"exterior":"custom"}'},
+                files=files,
+            ).status_code
+            == 422
+        )
+        assert (
             client.post(url, data={"prompt": "x" * 1201}, files=files).status_code
             == 422
         )
@@ -69,12 +77,30 @@ def test_interior_image_accepts_only_a_local_view_and_prompt(tmp_path, monkeypat
             ).status_code
             == 403
         )
-        response = client.post(url, data={"prompt": "  虚构客厅  "}, files=files)
+        context = {
+            "roomName": "客厅",
+            "framing": "walkthrough",
+            "lighting": "sunset",
+            "exterior": "custom",
+            "exteriorDescription": "窗外有远处的湖岸",
+        }
+        response = client.post(
+            url,
+            data={
+                "prompt": "",
+                "context": json.dumps(
+                    {**context, "exteriorDescription": "  窗外有远处的湖岸  "}
+                ),
+            },
+            files=files,
+        )
         assert response.status_code == 202
         assert response.headers["cache-control"] == "no-store"
         record = response.json()
         assert record["status"] == "generating"
-        assert record["prompt"] == "虚构客厅"
+        assert record["prompt"] == ""
+        assert record["context"]["framing"] == "walkthrough"
+        assert record["context"]["exteriorDescription"] == "窗外有远处的湖岸"
         assert client.get("/api/interior-images").json()["items"] == [record]
         assert client.post(url, data={"prompt": "room"}, files=files).status_code == 409
         release.set()
@@ -105,7 +131,26 @@ def test_interior_image_accepts_only_a_local_view_and_prompt(tmp_path, monkeypat
         assert history["items"] == [ready]
         assert history["folder"] == str(tmp_path / "interior_images")
         assert client.get(ready["image_url"]).content == png.getvalue()
-    assert received == ["虚构客厅"]
+    assert [json.loads(brief) for brief in received] == [
+        {
+            "sourceView": {
+                "roomName": "客厅", "framing": "walkthrough", "lighting": "sunset"
+            },
+            "visualBrief": "",
+            "exteriorBrief": "窗外有远处的湖岸",
+        }
+    ]
+
+
+def test_image_brief_distinguishes_explicit_exterior_from_automatic():
+    visual = "午后阳光，窗外是树木"
+    automatic = json.loads(interior_image.compose_image_brief(visual, {}))
+    assert automatic == {"sourceView": {}, "visualBrief": visual}
+    selected = json.loads(
+        interior_image.compose_image_brief(visual, {"exterior": "city"})
+    )
+    assert selected["visualBrief"] == visual
+    assert "city streetscape" in selected["exteriorBrief"]
 
 
 def test_generated_png_uses_thread_directory_and_strips_metadata(tmp_path):

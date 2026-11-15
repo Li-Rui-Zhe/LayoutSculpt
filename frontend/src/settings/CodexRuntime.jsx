@@ -18,7 +18,6 @@ export default function CodexRuntime({
   onResult,
   onEnvironment,
   onConnect,
-  onAlternative,
 }) {
   const [report, setReport] = useState(initial);
   const [operation, setOperation] = useState("");
@@ -155,6 +154,7 @@ export default function CodexRuntime({
   const isolated = connection.environment === "isolated";
   const needLogin =
     report?.action === "login" || report?.code === "authentication";
+  const disconnected = report?.status === "disconnected";
   const installer = (
     <CodexInstall
       disabled={busy}
@@ -175,33 +175,49 @@ export default function CodexRuntime({
       className="ai-runtime ai-runtime-simple"
       aria-label="Codex CLI 运行环境"
     >
-      <div className="ai-codex-detected">
-        <Monitor size={22} />
+      <div
+        className="ai-codex-detected"
+        data-ready={ready || undefined}
+        role="status"
+      >
+        {ready ? (
+          <CheckCircle2 size={22} aria-hidden="true" />
+        ) : (
+          <Monitor size={22} aria-hidden="true" />
+        )}
         <div>
           <strong>
-            {isolated
-              ? "使用项目独立环境"
-              : connection.available
-                ? connection.managed
-                  ? "使用项目 CLI · 沿用本机配置"
-                  : "已发现本机 Codex"
-                : "尚未发现可用的 Codex"}
+            {ready
+              ? "Codex 已连接"
+              : needLogin
+                ? "Codex 待登录"
+                : disconnected
+                  ? "Codex 连接已断开"
+                  : isolated
+                    ? "使用项目独立环境"
+                    : connection.available
+                      ? connection.managed
+                        ? "使用项目 CLI · 沿用本机配置"
+                        : "已发现本机 Codex · 待检测"
+                      : "尚未发现可用的 Codex"}
           </strong>
-          <p>
-            {isolated
-              ? "程序、配置和登录由本项目单独管理。"
-              : connection.available
-                ? "可以直接连接，不必重新安装。本机更新配置或退出登录也会影响这里。"
-                : "可以在下方一键准备独立环境；首次需要在官方页面登录。"}
-          </p>
+          {ready && <p>{isolated ? "项目独立环境" : "使用本机配置"}</p>}
         </div>
-        {ready && <CheckCircle2 size={18} />}
+        {disconnected && (
+          <button
+            className="ai-text-button"
+            disabled={busy || report?.active_tasks > 0}
+            onClick={() => run("reconnect")}
+          >
+            {operation === "reconnect" ? "正在连接…" : "重新连接"}
+          </button>
+        )}
       </div>
-      {report?.message && !ready && (
-        <p className="ai-field-help">
-          {needLogin ? "需要先登录，再读取可用模型。" : report.message}
-        </p>
-      )}
+      {report?.message &&
+        !needLogin &&
+        !disconnected &&
+        report.status !== "unchecked" &&
+        !ready && <p className="ai-field-help">{report.message}</p>}
       {needLogin && login.status !== "waiting" && (
         <div className="ai-login-action">
           <button
@@ -212,11 +228,6 @@ export default function CodexRuntime({
             <ExternalLink size={15} />
             登录并连接 Codex
           </button>
-          {!isolated && (
-            <small>
-              此操作使用本机共享登录；需要完全分开时，请使用下方独立环境。
-            </small>
-          )}
         </div>
       )}
       <OperationStatus
@@ -257,7 +268,7 @@ export default function CodexRuntime({
       )}
       {!connection.available && installer}
       <details className="ai-advanced">
-        <summary>环境、更新与恢复</summary>
+        <summary>高级设置</summary>
         <dl className="ai-runtime-facts">
           <div>
             <dt>当前版本</dt>
@@ -276,14 +287,16 @@ export default function CodexRuntime({
           >
             {operation === "check" ? "正在检测…" : "检查连接"}
           </button>
-          <button
-            className="ai-text-button"
-            disabled={busy || report?.active_tasks > 0}
-            onClick={() => run("reconnect")}
-          >
-            <RefreshCw size={13} />
-            重新连接
-          </button>
+          {!disconnected && (
+            <button
+              className="ai-text-button"
+              disabled={busy || report?.active_tasks > 0}
+              onClick={() => run("reconnect")}
+            >
+              <RefreshCw size={13} />
+              重新连接
+            </button>
+          )}
           <button
             className="ai-text-button"
             disabled={busy}
@@ -304,15 +317,6 @@ export default function CodexRuntime({
           更新先下载校验，等当前任务结束再启用；失败保留原版本。复用本机配置时不会自动复制登录信息到独立环境。
         </p>
       </details>
-      {onAlternative && !ready && (
-        <button
-          className="ai-text-button"
-          disabled={busy}
-          onClick={onAlternative}
-        >
-          想简单一点？改用 DeepSeek API
-        </button>
-      )}
     </div>
   );
 }
