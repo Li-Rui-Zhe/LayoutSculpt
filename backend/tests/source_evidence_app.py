@@ -9,7 +9,7 @@ from backend.tests.test_source_evidence import PreciseReader
 
 main.ALLOWED_ORIGINS.add(f"http://127.0.0.1:{int(os.getenv('STUDIO_TEST_PORT', '8011'))}")
 reader = PreciseReader()
-reader.wrong_audit = True
+reader.audit_window = True
 app = main.create_app(
     replace(Settings(), data_dir=Path(os.getenv("STUDIO_TEST_DATA", str(ROOT / "data" / "source-evidence-browser")))),
     client=reader,

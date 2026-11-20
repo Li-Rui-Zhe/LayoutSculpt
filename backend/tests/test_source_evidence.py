@@ -15,14 +15,20 @@ from backend.app.main import create_app
 from backend.app.source_evidence import (
     DetailRegion,
     ImageLabel,
+    ImageOpening,
+    ImageWall,
+    PixelLayoutExtraction,
     SourceEvidence,
     alignment_from_evidence,
     compare_source,
     detail_views,
     image_wall_findings,
+    opening_findings,
+    pixel_wire,
     validate_evidence,
 )
 from backend.tests.test_progressive_generation import upload, wait_for
+from backend.app.wall_evidence import wall_findings
 from backend.tests.test_workflow import (
     FakeCodex,
     app_for,
@@ -91,8 +97,110 @@ def test_image_bounds_and_local_crop_mapping_are_checked_without_redrawing(tmp_p
         validate_evidence(source, (200, 150))
 
 
+def test_missing_partition_is_located_without_confusing_open_spans_or_furniture(tmp_path):
+    source = evidence()
+    alignment = alignment_from_evidence(source, (200, 150))
+    original = layout_data()
+    divider = ImageWall(a=[20, 70], b=[80, 70])
+    source.walls_px.append(divider)
+    missing, = compare_source(original, source, alignment)["findings"]
+    assert missing["code"] == "missing_wall" and missing["blocking"]
+    assert missing["box"][0] <= 50 <= missing["box"][2]
+    assert missing["box"][1] <= 70 <= missing["box"][3]
+
+    path = tmp_path / "original.png"
+    image = Image.new("RGB", (200, 150), "white")
+    image.save(path)
+    assert not wall_findings(original, source, alignment, source=path)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((20, 70, 80, 85), outline="black", width=1)
+    image.save(path)
+    thin, = wall_findings(original, source, alignment, source=path)
+    assert thin["support"] == "weak" and not thin["blocking"]
+    draw.line([tuple(divider.a), tuple(divider.b)], fill="black", width=4)
+    image.save(path)
+    strong, = wall_findings(original, source, alignment, source=path)
+    assert strong["blocking"] and strong["support"] == "clear"
+    draw.line([tuple(divider.a), tuple(divider.b)], fill="black", width=13)
+    image.save(path)
+    assert wall_findings(original, source, alignment, source=path)[0]["support"] == "clear"
+    for kind in ("door", "window", "passage"):
+        source.openings_px = [ImageOpening(kind=kind, a=divider.b, b=divider.a, certainty="clear")]
+        assert not wall_findings(original, source, alignment, source=path)
+
+
+def test_slanted_wall_split_across_reversed_segments_is_covered():
+    source = evidence()
+    alignment = alignment_from_evidence(source, (200, 150))
+    source.walls_px.append(ImageWall(a=[20, 10], b=[140, 100]))
+    layout = layout_data()
+    for start, end in [((3, 2.25), (0, 0)), ((6, 4.5), (3, 2.25))]:
+        layout["walls"].append({"start": dict(zip(("x", "y"), start)), "end": dict(zip(("x", "y"), end))})
+    assert not wall_findings(layout, source, alignment)
+    layout["walls"].pop()
+    gap, = wall_findings(layout, source, alignment)
+    assert gap["code"] == "missing_wall"
+    assert gap["span_px"][0][0] >= 80
+
+
+def test_opening_comparison_uses_span_kind_and_unique_matches():
+    source = evidence()
+    alignment = alignment_from_evidence(source, (200, 150))
+    layout = layout_data()
+    door = ImageOpening(kind="door", a=[59, 11], b=[40, 12], certainty="clear")
+    source.openings_px = [door]
+    assert opening_findings(layout, source, alignment) == []
+    # Both the wall and the observation can be drawn in either direction.
+    wall = layout["walls"][0]
+    wall["start"], wall["end"] = wall["end"], wall["start"]
+    layout["openings"][0]["offset"] = 8 - 1.9
+    assert opening_findings(layout, source, alignment) == []
+    for observation in [
+        door.model_copy(update={"kind": "window"}),
+        door.model_copy(update={"a": [78, 10], "b": [96, 10]}),
+        door.model_copy(update={"a": [38, 10], "b": [82, 10]}),
+    ]:
+        source.openings_px = [observation]
+        finding, = opening_findings(layout, source, alignment)
+        assert finding["blocking"] and finding["code"] == "opening_mismatch"
+        left, top, right, bottom = finding["box"]
+        assert left <= observation.a[0] <= right and top <= observation.a[1] <= bottom
+    source.openings_px = [door, door.model_copy(update={"a": [58, 10], "b": [40, 10]})]
+    assert not opening_findings(layout, source, alignment)
+    source.openings_px[1] = door.model_copy(update={"a": [62, 11], "b": [43, 12]})
+    assert len(opening_findings(layout, source, alignment)) == 1
+    layout["openings"] = []
+    source.openings_px = [door.model_copy(update={"certainty": "uncertain"})]
+    assert not opening_findings(layout, source, alignment)
+    source.openings_px = [door.model_copy(update={"a": [201, 10]})]
+    with pytest.raises(ValueError, match="超出图片"):
+        validate_evidence(source, (200, 150))
+
+
+@pytest.mark.parametrize("wall_a, wall_b, offset, hinge, tip, expected", [
+    ([30, 30], [30, 110], 10, [30, 60], [50, 60], ("end", "right")),
+    ([30, 110], [30, 30], 50, [30, 60], [50, 60], ("start", "right")),
+    ([30, 30], [78, 94], 10, [36, 38], [20, 50], ("start", "right")),
+    ([30, 30], [78, 94], 10, [36, 38], [52, 26], ("start", "left")),
+    ([30, 30], [30, 110], 10, [30, 60], [30, 58], ("start", "left")),
+])
+def test_pixel_door_pose_follows_visible_leaf(wall_a, wall_b, offset, hinge, tip, expected):
+    source = evidence()
+    pixels = PixelLayoutExtraction.model_validate({
+        "input_check": source.input_check, "title": "开门方向", "confidence": 1, "scale_note": "",
+        "warnings": [], "outline": source.outline_px, "rooms": [],
+        "walls": [{"id": "wall", "a": wall_a, "b": wall_b, "t": 3, "h": 2.7, "ext": False}],
+        "openings": [{"wall_id": "wall", "kind": "door", "offset": offset, "width": 20, "height": 2.1,
+                      "bottom": 0, "leaf_px": {"hinge": hinge, "tip": tip}}],
+    })
+    door, = pixel_wire(pixels, alignment_from_evidence(source, (200, 150)))["openings"]
+    assert (door["hinge"], door["swing"]) == expected
+    assert "leaf_px" not in door
+
+
 class PreciseReader(FakeCodex):
     wrong_audit = False
+    audit_window = False
     rejected = False
     invalid_pixels = False
 
@@ -106,6 +214,8 @@ class PreciseReader(FakeCodex):
                 data.update(input_check={"status": "rejected", "reason": "not_floorplan", "evidence": "图片只有人物没有墙体"}, outline_px=[], walls_px=[], labels=[], dimensions=[], regions=[])
             elif audit and self.wrong_audit:
                 data["labels"][0].update(name="原图卧室", kind="bedroom")
+            elif audit and self.audit_window:
+                data["openings_px"][0]["kind"] = "window"
             elif not audit:
                 data["regions"] = [{"box": [10, 10, 70, 60], "reason": "此区域门窗需要细读"}]
             return json.dumps(data)
@@ -146,6 +256,99 @@ def test_independent_disagreement_pauses_default_preview_instead_of_building(tmp
         assert "卧室" in job["result"]["ai_review"]["summary"]
         assert len(ai.calls) == 3
         assert not (tmp_path / "jobs" / job_id / "model.glb").exists()
+
+
+@pytest.mark.parametrize("repairs_door", [True, False])
+def test_precise_read_repairs_a_missing_door_or_keeps_candidate_for_review(tmp_path, repairs_door):
+    class MissedDoor(PreciseReader):
+        reads = 0
+
+        async def generate(self, **kwargs):
+            result = await super().generate(**kwargs)
+            if kwargs["schema"]["title"] == "PixelLayoutExtraction":
+                self.reads += 1
+                if self.reads == 2:
+                    assert "整图像素范围" in kwargs["prompt"]
+                if self.reads == 1 or not repairs_door:
+                    data = json.loads(result)
+                    data["openings"] = []
+                    return json.dumps(data)
+            return result
+
+    ai = MissedDoor()
+    with TestClient(app_for(tmp_path, ai)) as client:
+        job_id = upload(client, recognition_mode="precise")
+        job = wait_for(client, job_id, lambda j: j["status"] in {"succeeded", "awaiting_review", "failed"})
+        assert ai.reads == 2
+        if repairs_door:
+            assert job["status"] == "succeeded", job
+            layout = client.get(f"/api/jobs/{job_id}/artifacts/layout.json").json()
+            assert [(o["kind"], o["offset"], o["width"]) for o in layout["openings"]] == [
+                ("door", pytest.approx(1), pytest.approx(.9))]
+        else:
+            assert job["status"] == "awaiting_review", job
+            assert job["result"]["recognition_review"]["can_continue"]
+            alignment = client.get(job["result"]["source_alignment_url"]).json()
+            assert any(f["code"] == "opening_mismatch" and f["box"] for f in alignment["findings"])
+
+
+@pytest.mark.parametrize("reader,repair", [
+    ("primary", "fix"), ("audit", "fix"), ("primary_only", "fix"), ("both", "unrelated"),
+    ("both", "room_outside"), ("both", "uncertain"), ("both", "offline"),
+])
+def test_wall_repair_only_reads_disputed_region_and_retains_safe_candidate(tmp_path, reader, repair):
+    class WallReader(PreciseReader):
+        async def generate(self, **kwargs):
+            data = json.loads(await super().generate(**kwargs))
+            title = kwargs["schema"]["title"]
+            if title == "SourceEvidence":
+                audit = "不参考之前的识别结果" in kwargs["prompt"]
+                if reader == "both" or reader == ("audit" if audit else "primary") or (reader == "primary_only" and not audit):
+                    data["walls_px"].append({"a": [12, 45], "b": [48, 45]})
+            if title == "LayoutReviewPatch":
+                assert len(kwargs["reference_images"]) == 1
+                crop, = kwargs["reference_images"]
+                assert crop.name == "wall-detail-1.png"
+                with Image.open(crop) as detail:
+                    assert detail.width < 120 and detail.height < 90
+                assert "meters_per_pixel" in kwargs["prompt"]
+                if repair == "offline":
+                    raise ConnectionError("connection lost")
+                if repair != "uncertain":
+                    values = {"id": "partition", "a": [0, 3], "b": [3, 3], "t": .16, "h": 2.7, "ext": False}
+                    data["walls"] = [{"id": "partition", "action": "add", "value": values, "evidence": "原图清晰黑线"}]
+                    if repair == "unrelated":
+                        data["walls"].append({"id": "extra", "action": "add",
+                            "value": {**values, "id": "extra", "a": [5, 3], "b": [7, 3]}, "evidence": "未经证实的墙线"})
+                    if repair == "room_outside":
+                        data["rooms"] = [{"action": "update", "id": "living", "evidence": "缩小已有的房间",
+                            "value": {"id": "living", "kind": "living", "name": "客厅",
+                                      "polygon": [[0, 0], [7, 0], [7, 6], [0, 6]]}}]
+            return json.dumps(data)
+
+    image = Image.new("RGB", (120, 90), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((12, 9, 108, 81), outline="black", width=2)
+    draw.line((12, 45, 48, 45), fill="black", width=3)
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+    ai = WallReader()
+    with TestClient(app_for(tmp_path, ai)) as client:
+        posted = client.post("/api/jobs", files={"file": ("plan.png", buf.getvalue(), "image/png")},
+                             data={"recognition_mode": "precise", "review_mode": "preview",
+                                   "collaboration": str(reader != "primary_only").lower()})
+        assert posted.status_code == 201, posted.text
+        job_id = posted.json()["id"]
+        job = wait_for(client, job_id, lambda j: j["status"] in {"succeeded", "failed", "awaiting_review"})
+        assert sum(c["schema"]["title"] == "LayoutReviewPatch" for c in ai.calls) == 1
+        fixed = repair == "fix"
+        assert job["status"] == ("succeeded" if fixed else "awaiting_review"), job
+        artifact = "layout.json" if fixed else "structure.json"
+        layout = client.get(f"/api/jobs/{job_id}/artifacts/{artifact}").json()
+        assert ("partition" in {w["id"] for w in layout["walls"]}) == fixed
+        assert all(w["id"] != "extra" for w in layout["walls"])
+        findings = client.get(job["result"]["source_alignment_url"]).json()["findings"]
+        assert any(f["code"] == "missing_wall" and f["blocking"] for f in findings) != fixed
 
 
 def test_rejected_source_does_not_invoke_detail_recognition(tmp_path):

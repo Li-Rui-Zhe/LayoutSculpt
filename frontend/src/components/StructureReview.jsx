@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Check, PencilRuler } from "lucide-react";
 import { api } from "../api.js";
 import SourceOverlay from "./SourceOverlay.jsx";
+import DoorLeafLines from "./DoorLeafLines.jsx";
 import { toDraft, openingPoints } from "../editor/geometry.js";
 import {
   balconyNames,
@@ -100,6 +101,12 @@ export function StructurePlan({ layout }) {
               stroke={opening.kind === "window" ? "#2382a0" : "#be863b"}
               strokeWidth=".045"
             />
+            <DoorLeafLines
+              opening={opening}
+              wall={wall}
+              stroke="#be863b"
+              strokeWidth=".035"
+            />
           </g>
         );
       })}
@@ -109,14 +116,18 @@ export function StructurePlan({ layout }) {
 
 export default function StructureReview({ job, projects, onEdit }) {
   const checkpoint = job.result?.recognition_review;
-  const [comparisonView, setComparisonView] = useState("side");
+  const [chosenView, setComparisonView] = useState(null);
+  const showDifference =
+    job.result?.source_alignment_url &&
+    (job.result?.ai_review?.status === "needs_review" || checkpoint);
+  const comparisonView = chosenView ?? (showDifference ? "overlay" : "side");
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [revision, setRevision] = useState(0);
   useEffect(() => {
     let alive = true;
-    setComparisonView("side");
+    setComparisonView(null);
     api(`/jobs/${job.id}/artifacts/structure.json`)
       .then((value) => {
         if (alive) {
@@ -167,7 +178,10 @@ export default function StructureReview({ job, projects, onEdit }) {
             ? "识别遇到卡点，请先看看平面图"
             : "先确认结构，再生成三维"}
         </h2>
-        <p>对照原图检查平面图，满意后再生成 3D。蓝色是窗，金色是门或通道。</p>
+        <p>
+          对照原图检查平面图，满意后再生成 3D。
+          {comparisonView === "side" && "蓝色是窗，金色是门或通道。"}
+        </p>
         {job.result?.ai_review?.status === "completed" &&
           job.result.ai_review.summary && (
             <p className="review-ai-summary">

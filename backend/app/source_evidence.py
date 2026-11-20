@@ -13,11 +13,12 @@ import numpy as np
 from PIL import Image
 from pydantic import Field
 from shapely.geometry import LineString, Point, Polygon
-from shapely.ops import unary_union
 
+from .architecture import wall_line
 from .input_quality import InputCheck, SourceImageRejected
 from .recognition_contract import RecognitionOpening, RecognitionRoom
 from .schemas import StrictModel
+from .wall_evidence import wall_findings
 
 Pixel = Annotated[float, Field(ge=0, le=4096, allow_inf_nan=False)]
 PixelPoint = Annotated[list[Pixel], Field(min_length=2, max_length=2)]
@@ -26,6 +27,13 @@ PixelPoint = Annotated[list[Pixel], Field(min_length=2, max_length=2)]
 class ImageWall(StrictModel):
     a: PixelPoint
     b: PixelPoint
+
+
+class ImageOpening(StrictModel):
+    kind: Literal["door", "window", "passage"]
+    a: PixelPoint
+    b: PixelPoint
+    certainty: Literal["clear", "uncertain"]
 
 
 class ImageLabel(StrictModel):
@@ -51,6 +59,7 @@ class SourceEvidence(StrictModel):
     input_check: InputCheck
     outline_px: list[PixelPoint] = Field(max_length=512, description="真实建筑外轮廓，保留室外凹口；拒绝图片时为空")
     walls_px: list[ImageWall] = Field(max_length=120, description="可见墙中心线，不根据房间功能补墙")
+    openings_px: list[ImageOpening] = Field(default_factory=list, max_length=80, description="门、窗和通道在墙线上的洞口两端，使用整图像素。只记录图上可辨认的位置。")
     labels: list[ImageLabel] = Field(max_length=35, description="原图可见房间名称或可辨认功能的中心位置，不编造新房间")
     dimensions: list[DimensionEvidence] = Field(max_length=12, description="可靠尺寸标注与对应的像素跨度；读不清则留空")
     regions: list[DetailRegion] = Field(max_length=3, description="需要局部细读的密集或不清晰区域，清晰简单图可为空")
@@ -73,9 +82,15 @@ class PixelWall(StrictModel):
     finish: Literal["default", "white", "cream", "sage", "gray"] = "default"
 
 
+class DoorLeafPixels(StrictModel):
+    hinge: PixelPoint
+    tip: PixelPoint
+
+
 class PixelOpening(RecognitionOpening):
     offset: float = Field(ge=0, le=8192, description="沿所属墙起点的距离，单位原图像素")
     width: float = Field(gt=0, le=8192, description="开口宽度，单位原图像素")
+    leaf_px: DoorLeafPixels | None = Field(default=None, description="清晰单开平开门的门轴和已打开门扇的自由端，使用整图像素坐标；其余填 null")
 
 
 class PixelLayoutExtraction(StrictModel):
@@ -95,12 +110,15 @@ def validate_evidence(evidence, image_size):
         raise SourceImageRejected(evidence.input_check)
     width, height = image_size
     points = [*evidence.outline_px, *(p for w in evidence.walls_px for p in (w.a, w.b)), *(l.point for l in evidence.labels), *(p for d in evidence.dimensions for p in (d.a, d.b))]
+    points.extend(p for o in evidence.openings_px for p in (o.a, o.b))
     if any(p[0] > width or p[1] > height for p in points):
         raise ValueError("原图定位坐标超出图片边界，请使用实际图片像素坐标")
     if len(evidence.outline_px) < 3:
         raise ValueError("缺少完整的原图外轮廓")
     if any(w.a == w.b for w in evidence.walls_px):
         raise ValueError("原图墙线不能是零长度")
+    if any(o.a == o.b for o in evidence.openings_px):
+        raise ValueError("请标出洞口在墙上的两个不同端点")
     shape = Polygon(evidence.outline_px)
     if not shape.is_valid or shape.area < 16:
         raise ValueError("原图外轮廓自交或范围过小，请重新沿真实建筑边缘定位")
@@ -133,6 +151,29 @@ def alignment_from_evidence(evidence, image_size):
             "evidence_outline": evidence.outline_px, "findings": [], "views": []}
 
 
+def _apply_door_leaf(opening, wall, leaf, alignment):
+    """Resolve a visibly open leaf in image axes (x right, y down)."""
+    if not leaf or not wall or opening["kind"] != "door" or opening["door_style"] != "hinged":
+        return
+    hinge, tip = leaf["hinge"], leaf["tip"]
+    if any(x > alignment["image_width"] or y > alignment["image_height"] for x, y in (hinge, tip)):
+        return
+    centerline = LineString([wall.a, wall.b])
+    width = opening["width"]
+    if centerline.length == 0 or width < 8:
+        return
+    jambs = [centerline.interpolate(offset) for offset in (opening["offset"], opening["offset"] + width)]
+    distances = [jamb.distance(Point(hinge)) for jamb in jambs]
+    if min(distances) > width * 0.3 or not 0.6 * width <= math.dist(hinge, tip) <= 1.4 * width:
+        return
+    at_end = distances[1] < distances[0]
+    fixed, opposite = reversed(jambs) if at_end else jambs
+    cross = (opposite.x - fixed.x) * (tip[1] - hinge[1]) - (opposite.y - fixed.y) * (tip[0] - hinge[0])
+    if abs(cross) < 0.2 * width * width:
+        return
+    opening.update(hinge="end" if at_end else "start", swing="right" if cross > 0 else "left")
+
+
 def pixel_wire(output, alignment):
     if output.input_check.status == "rejected":
         raise SourceImageRejected(output.input_check)
@@ -153,13 +194,16 @@ def pixel_wire(output, alignment):
     for wall in data["walls"]:
         wall["a"], wall["b"] = point(wall["a"]), point(wall["b"])
         wall["t"] *= scale
+    pixel_walls = {wall.id: wall for wall in output.walls}
     for opening in data["openings"]:
+        leaf = opening.pop("leaf_px")
+        _apply_door_leaf(opening, pixel_walls.get(opening["wall_id"]), leaf, alignment)
         opening["offset"] *= scale
         opening["width"] *= scale
     return data
 
 
-def detail_views(source, workspace, evidence):
+def detail_views(source, workspace, evidence, *, prefix="recognition-detail"):
     """At most three original-resolution crops; the source is never redrawn."""
     views = []
     paths = []
@@ -173,7 +217,7 @@ def detail_views(source, workspace, evidence):
                 continue
             if any(v["box"] == list(box) for v in views):
                 continue
-            path = workspace / f"recognition-detail-{len(views) + 1}.png"
+            path = workspace / f"{prefix}-{len(views) + 1}.png"
             image.crop(box).save(path)
             paths.append(path)
             views.append({"image_index": len(views) + 2, "box": list(box), "reason": region.reason,
@@ -181,7 +225,87 @@ def detail_views(source, workspace, evidence):
     return paths, views
 
 
-def compare_source(layout, evidence, alignment):
+def _span_distance(a, b, c, d):
+    """Largest endpoint error under the better of the two wall directions."""
+    return min(max(math.dist(a, c), math.dist(b, d)),
+               max(math.dist(a, d), math.dist(b, c)))
+
+
+def opening_findings(layout, evidence, alignment):
+    """Match clearly observed spans one-to-one; an omitted observation proves nothing."""
+    clear = []
+    for o in evidence.openings_px:
+        if o.certainty != "clear" or math.dist(o.a, o.b) < 8:
+            continue
+        if not any(old.kind == o.kind and _span_distance(o.a, o.b, old.a, old.b) <= 2 for old in clear):
+            clear.append(o)
+    if not clear:
+        return []
+    ox, oy = alignment["origin_px"]
+    scale = alignment["meters_per_pixel"]
+    walls = {w["id"]: wall_line(w) for w in layout["walls"]}
+    candidates = []
+    for opening in layout["openings"]:
+        wall = walls[opening["wall_id"]]
+        start = wall.interpolate(opening["offset"])
+        end = wall.interpolate(opening["offset"] + opening["width"])
+        candidates.append((opening["kind"], (start.x, start.y), (end.x, end.y)))
+
+    choices = []
+    other_kinds = []
+    for o in clear:
+        a, b = [((x - ox) * scale, (y - oy) * scale) for x, y in (o.a, o.b)]
+        span = math.dist(a, b)
+        # Ignore small differences in where a reader placed the jambs on a thick line.
+        tolerance = max(3 * scale, min(0.35, span * 0.3))
+        nearby = []
+        alternatives = set()
+        for index, (kind, c, d) in enumerate(candidates):
+            distance = _span_distance(a, b, c, d)
+            if distance > tolerance:
+                continue
+            if kind == o.kind:
+                nearby.append((distance, index))
+            else:
+                alternatives.add(kind)
+        choices.append([index for _, index in sorted(nearby)])
+        other_kinds.append(alternatives)
+
+    # Keep an adjacent opening available if another observation can only match that one.
+    owners = {}
+
+    def match(observation, visited):
+        for index in choices[observation]:
+            if index in visited:
+                continue
+            visited.add(index)
+            if index not in owners or match(owners[index], visited):
+                owners[index] = observation
+                return True
+        return False
+
+    findings = []
+    names = {"door": "门", "window": "窗", "passage": "通道"}
+    for i, o in enumerate(clear):
+        if match(i, set()):
+            continue
+        xs, ys = zip(o.a, o.b)
+        padding = max(4, math.dist(o.a, o.b) * 0.25)
+        name = names[o.kind]
+        message = f"原图此处标有{name}，当前结构缺少位置和宽度相符的{name}。"
+        if len(other_kinds[i]) == 1 and not choices[i]:
+            actual = names[next(iter(other_kinds[i]))]
+            message = f"原图此处标为{name}，当前结构识别为{actual}，请核对类型。"
+        findings.append({
+            "code": "opening_mismatch", "blocking": True,
+            "message": message,
+            "box": [max(0, min(xs) - padding), max(0, min(ys) - padding),
+                    min(alignment["image_width"], max(xs) + padding), min(alignment["image_height"], max(ys) + padding)],
+        })
+    return findings
+
+
+def compare_source(layout, evidence, alignment, *, source=None):
     origin, scale = alignment["origin_px"], alignment["meters_per_pixel"]
 
     def px(p):
@@ -189,7 +313,7 @@ def compare_source(layout, evidence, alignment):
 
     expected = Polygon(evidence.outline_px)
     actual = Polygon([px(p) for p in layout["outline"]])
-    findings = []
+    findings = opening_findings(layout, evidence, alignment)
     overlap = actual.intersection(expected).area / actual.union(expected).area
     if overlap < 0.9:
         findings.append({"code": "outline_mismatch", "message": "识别外轮廓与独立读图的边界差异较大，请检查凹口是否被填平或漏掉。", "blocking": True})
@@ -210,13 +334,7 @@ def compare_source(layout, evidence, alignment):
             x, y = label.point
             findings.append({"code": "room_position", "message": f"原图“{label.name}”的位置与当前房间划分不同，请对照检查。", "blocking": True,
                              "box": [max(0, x - 20), max(0, y - 20), min(alignment["image_width"], x + 20), min(alignment["image_height"], y + 20)]})
-    if evidence.walls_px and layout["walls"]:
-        expected_walls = unary_union([LineString([w.a, w.b]) for w in evidence.walls_px if w.a != w.b])
-        actual_walls = unary_union([LineString([px(w["start"]), px(w["end"])]) for w in layout["walls"]])
-        tolerance = max(2, math.hypot(alignment["image_width"], alignment["image_height"]) * 0.006)
-        unsupported = actual_walls.difference(expected_walls.buffer(tolerance)).length
-        if actual_walls.length and unsupported / actual_walls.length > 0.2:
-            findings.append({"code": "wall_position", "message": "部分识别墙线偏离独立读图的墙线，请在叠加图中检查多画、漏画或错位。", "blocking": True})
+    findings.extend(wall_findings(layout, evidence, alignment, source=source))
     if alignment["scale_uncertain"]:
         findings.append({"code": "scale_uncertain", "message": "尺寸比例仍需确认，请先检查平面图。", "blocking": True})
     return {"outline_overlap": round(overlap, 4), "findings": findings}

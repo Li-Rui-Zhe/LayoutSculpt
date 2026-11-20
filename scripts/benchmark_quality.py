@@ -7,6 +7,7 @@ the configured runtime; no user task, draft or human confirmation is modified.
 import argparse
 import asyncio
 import json
+import math
 import shutil
 import sqlite3
 import sys
@@ -20,7 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from PIL import Image, ImageDraw, ImageFont
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from shapely.geometry import Polygon, Point
+from shapely.geometry import LineString, Polygon, Point
+from shapely.ops import unary_union
+from backend.app.architecture import opening_footprint, wall_footprint
 from backend.app.ai_cache import read_metrics
 from backend.app.codex import CodexClient
 from backend.app.config import Settings
@@ -39,6 +42,9 @@ def fixtures(folder):
     expected = {"size": [8, 6], "area": 48, "bedrooms": 1, "windows": 2, "doors": 1,
                 "room_points": [["living", 2, 3], ["bedroom", 6.5, 3]],
                 "opening_points": [["window", 2.05, 0], ["window", 6.65, 0], ["door", 4.5, 3.4]],
+                "door_leaves": [[[4.5, 3.9], [5.5, 3.9]]],
+                "solid_walls": [[[4.5, .25], [4.5, 2.65]], [[4.5, 4.1], [4.5, 5.75]]],
+                "open_paths": [[[2, 1], [2, 5]], [[4, 3.4], [5, 3.4]]],
                 "outline": [[0, 0], [8, 0], [8, 6], [0, 6]]}
     # A concavity and separate kitchen exercise a different topology.
     plan = Image.new("RGB", (1000, 850), "white")
@@ -64,6 +70,9 @@ def fixtures(folder):
         "size": [8, 6], "area": 40, "bedrooms": 1, "windows": 2, "doors": 2,
         "room_points": [["living", 2, 1.5], ["bedroom", 6, 2], ["kitchen", 2, 4.5]],
         "opening_points": [["window", 1.9, 0], ["window", 5.9, 0], ["door", 4, 1.85], ["door", 2.05, 3]],
+        "door_leaves": [[[4, 2.3], [4.9, 2.3]], [[1.6, 3], [1.6, 3.9]]],
+        "solid_walls": [[[4, .25], [4, 1.2]], [[4, 2.5], [4, 3.75]], [[.25, 3], [1.4, 3]]],
+        "open_paths": [[[3.5, 1.85], [4.5, 1.85]], [[2.05, 2.5], [2.05, 3.5]]],
         "outline": [[0, 0], [8, 0], [8, 4], [4, 4], [4, 6], [0, 6]]}}
 
 
@@ -86,6 +95,7 @@ def assess(layout, expected):
         for r in layout.get("rooms", [])) for kind,x,y in expected["room_points"])
     walls = {w["id"]: w for w in layout.get("walls", [])}
     centers = []
+    leaves = []
     for opening in layout.get("openings", []):
         wall = walls.get(opening["wall_id"])
         if not wall:
@@ -95,8 +105,35 @@ def assess(layout, expected):
         if length:
             t = (opening["offset"]+opening["width"]/2)/length
             centers.append((opening["kind"], Point(a["x"]+(b["x"]-a["x"])*t-x0, a["y"]+(b["y"]-a["y"])*t-y0)))
+            if opening["kind"] == "door" and opening.get("door_style", "hinged") == "hinged" and opening.get("door_leaf", True):
+                end_hinge = opening.get("hinge") == "end"
+                along = opening["offset"] + (opening["width"] if end_hinge else 0)
+                dx, dy = (b["x"] - a["x"]) / length, (b["y"] - a["y"]) / length
+                hinge = (a["x"] + along * dx - x0, a["y"] + along * dy - y0)
+                angle = math.atan2(dy, dx) + (math.pi if end_hinge else 0)
+                turn = math.radians(opening.get("angle", 90))
+                angle += turn if opening.get("swing") == "right" else -turn
+                tip = (hinge[0] + opening["width"] * math.cos(angle), hinge[1] + opening["width"] * math.sin(angle))
+                leaves.append((hinge, tip))
     checks["opening_positions"] = all(any(k == kind and p.distance(Point(x,y)) <= .45 for k,p in centers)
                                        for kind,x,y in expected["opening_points"])
+    if expected.get("door_leaves"):
+        checks["door_swings"] = all(
+            any(math.dist(hinge, pivot) <= .45 and math.dist(tip, free_end) <= .45 for hinge, tip in leaves)
+            for pivot, free_end in expected["door_leaves"]
+        )
+    if expected.get("solid_walls") or expected.get("open_paths"):
+        # Check the annotated partitions and traversable passages at body height.
+        solids = unary_union([wall_footprint(w) for w in walls.values() if w["height"] > 1.0])
+        voids = unary_union([opening_footprint(walls[o["wall_id"]], o) for o in layout.get("openings", [])
+                             if o["wall_id"] in walls and o["kind"] in {"door", "passage"}
+                             and o["bottom"] <= .05 and o["height"] >= 1.8])
+        section = solids.difference(voids)
+        for key in ("solid_walls", "open_paths"):
+            if key in expected:
+                spans = [LineString([(x+x0, y+y0) for x, y in points]) for points in expected[key]]
+                checks[key] = (all(section.buffer(.18).covers(span) for span in spans) if key == "solid_walls"
+                               else all(section.disjoint(span) for span in spans))
     return {"passed": all(checks.values()), "checks": checks, "outline_iou": round(iou, 4),
             "area": round(shape.area, 2), "bedrooms": bedrooms, "openings": dict(counts)}
 

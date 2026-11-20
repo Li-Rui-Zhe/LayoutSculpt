@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { openingPoints } from "../editor/geometry.js";
+import DoorLeafLines from "./DoorLeafLines.jsx";
 import {
   sourcePixel,
   validSourceAlignment,
@@ -53,7 +54,7 @@ export default function SourceOverlay({ job, layout }) {
         <div>
           <h3>把识别线叠在原图上看</h3>
           <p>
-            绿色是识别墙线，橙色虚线是
+            绿色是墙线，蓝色是窗，紫色是门或通道。橙色虚线是
             {alignment.independent_review ? "独立" : "初步"}
             读图的边界。红框是需要核对的位置。
           </p>
@@ -157,15 +158,24 @@ export default function SourceOverlay({ job, layout }) {
                 if (!wall) return null;
                 const [a, b] = openingPoints(o, wall).map(px);
                 return (
-                  <line
+                  <g
                     key={i}
-                    x1={a.x}
-                    y1={a.y}
-                    x2={b.x}
-                    y2={b.y}
                     stroke={o.kind === "window" ? "#0076c0" : "#a343b7"}
-                    strokeWidth="3.5"
-                  />
+                  >
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      strokeWidth="3.5"
+                    />
+                    <DoorLeafLines
+                      opening={o}
+                      wall={wall}
+                      project={px}
+                      strokeWidth="2"
+                    />
+                  </g>
                 );
               })}
               {(alignment.findings || [])
@@ -222,7 +232,7 @@ export default function SourceOverlay({ job, layout }) {
         </ul>
       )}
       <p className="field-note">
-        对照提示来自独立读图结果，不代表已证明还原准确；请以原图为准。
+        请对照原图判断标出的位置，发现偏差时可选择“调整识别结构”。
       </p>
     </section>
   );

@@ -153,6 +153,7 @@ class FakeCodex:
             if title == "SourceEvidence":
                 output = {"input_check": check, "outline_px": [px(p) for p in data["outline"]],
                           "walls_px": [{"a": px(w["a"]), "b": px(w["b"])} for w in data["walls"]],
+                          "openings_px": [{"kind": "door", "a": px([1, 0]), "b": px([1.9, 0]), "certainty": "clear"}],
                           "labels": [{"name": "客厅", "kind": "living", "point": px([4, 3]), "certainty": "clear"}],
                           "dimensions": [{"a": px([0, 0]), "b": px([8, 0]), "meters": 8, "evidence": "上方总宽标注 8 米"}],
                           "regions": [], "warnings": []}

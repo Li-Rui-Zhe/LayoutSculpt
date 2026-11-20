@@ -40,6 +40,7 @@ try {
     exact: true,
   });
   await expect(confirm).toBeEnabled();
+  await page.getByRole("button", { name: "并排对照", exact: true }).click();
   await expect(page.getByAltText("用于核对的原始户型图")).toBeVisible();
   await page.screenshot({
     path: `${output}/structure-review.png`,

@@ -11,6 +11,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, StateGraph
 from PIL import Image
+from shapely.geometry import LineString
 
 from .ai_cache import StageCache, compact_json, read_metrics, record_metric
 from .ai_contracts import (
@@ -46,16 +47,19 @@ from .schemas import (
     validate_furnishing,
 )
 from .source_evidence import (
+    DetailRegion,
     PixelLayoutExtraction,
     SourceEvidence,
     alignment_from_evidence,
     compare_source,
     detail_views,
     image_wall_findings,
+    opening_findings,
     pixel_wire,
     update_comparison,
     validate_evidence,
 )
+from .wall_evidence import apply_wall_detail, combine_wall_observations, wall_findings
 
 
 class State(TypedDict, total=False):
@@ -130,7 +134,7 @@ def create_graph(
             "status": "running",
         }
         started_at = time.perf_counter()
-        agent_name = {"source_evidence": "原图定位", "recognition_pixels": "户型识别", "source_audit": "独立复核"}.get(role, role)
+        agent_name = {"source_evidence": "原图定位", "recognition_pixels": "户型识别", "source_audit": "独立复核", "wall_detail": "墙段复核"}.get(role, role)
         if role == "recognition":
             from .recognition_contract import RecognitionContract
 
@@ -141,7 +145,7 @@ def create_graph(
                 library=state["options"].get("furniture_mode", "library") == "library",
                 surface_catalog=payload.get("surface_catalog"),
             )
-        elif role == "review":
+        elif role in {"review", "wall_detail"}:
             response_schema = review_schema()
         else:
             response_schema = output_type.model_json_schema()
@@ -204,13 +208,13 @@ def create_graph(
         )
         variables = {
             "task": f"执行项目技能 {skill}，用中文返回符合约定的结构化结果。",
-            "notes": "" if role in {"source_evidence", "source_audit"} else state["options"].get("notes", ""),
+            "notes": "" if role in {"source_evidence", "source_audit", "wall_detail"} else state["options"].get("notes", ""),
             "payload": compact_json(payload),
             "repair": "",
         }
         trace["input_chars"] = len(instructions) + len(prompt.format(**variables))
         cache_runtime = getattr(client, "cache_identity", None)
-        if state.get("reidentify_of") and role in {"recognition", "recognition_pixels", "source_evidence", "source_audit", "review"}:
+        if state.get("reidentify_of") and role in {"recognition", "recognition_pixels", "source_evidence", "source_audit", "review", "wall_detail"}:
             # New user-requested reads get their own cache namespace. A later
             # continuation of this same job can still reuse its valid stages.
             cache_runtime = [cache_runtime, state["job_id"]]
@@ -286,7 +290,7 @@ def create_graph(
                                 time.perf_counter() - started_at
                             )
                             if (
-                                not temporary
+                                role == "wall_detail" or not temporary
                                 or trace.get("connection_retries", 0) >= 1
                                 or remaining < 15
                             ):
@@ -331,7 +335,7 @@ def create_graph(
                                 raise RecognitionCheckpoint(recognition_candidate, recognition_attempts, trace) from exc
                         if (
                             not isinstance(exc, (ValueError, OutputParserException))
-                            or attempt
+                            or attempt or role == "wall_detail"
                         ):
                             if isinstance(exc, (ValueError, OutputParserException)):
                                 trace["failure"] = {
@@ -458,6 +462,16 @@ def create_graph(
         def meters(output):
             return validate_recognition(RecognitionExtraction.model_validate(pixel_wire(output, alignment)))
 
+        def verify_pixel_layout(output):
+            layout = meters(output)
+            differences = opening_findings(layout.model_dump(), evidence, alignment)
+            if differences:
+                regions = "；".join(
+                    f"{f['message']} 整图像素范围 {[round(v) for v in f['box']]}"
+                    for f in differences
+                )
+                raise ValueError(f"请重新对照原图检查洞口，仅修改图上有依据的部分。{regions}")
+
         checkpoint = None
         prepared_audit = None
         try:
@@ -465,7 +479,7 @@ def create_graph(
                 state, "recognition_pixels", "floorplan-pixel-recognition", PixelLayoutExtraction,
                 {"image_size": list(size), "source_evidence": evidence_data, "image_views": views,
                  "meters_per_pixel": alignment["meters_per_pixel"], "task": "固定建筑骨架，再划分净空房间和安装门窗；所有二维点使用整图像素坐标"},
-                meters, artifact="recognition-pixels", reference_images=images,
+                verify_pixel_layout, artifact="recognition-pixels", reference_images=images,
             )
             if state["options"].get("collaboration"):
                 await store.update(state["job_id"], message="正在细读房间，同时独立核对原图；两次读取互不参考结果")
@@ -486,8 +500,24 @@ def create_graph(
             "source": "image_dimensions" if alignment["scale_basis"]["anchor_count"] else "estimated",
             "anchors": [], "inconsistent": alignment["scale_uncertain"],
         }
+        detail_agents = []
         if not checkpoint or checkpoint["can_continue"]:
-            alignment = update_comparison(alignment, compare_source(layout, evidence, alignment))
+            comparison = await asyncio.to_thread(compare_source, layout, evidence, alignment, source=source)
+            if not checkpoint and trace["attempts"] <= 1:
+                audit = None
+                audit_walls = []
+                if prepared_audit and prepared_audit["status"] == "completed":
+                    audit = SourceEvidence.model_validate(prepared_audit["data"])
+                    audit_walls = await asyncio.to_thread(wall_findings, layout, audit, alignment, source=source, check_extra=False)
+                disputed = [f for f in combine_wall_observations(comparison["findings"], audit_walls) if f["blocking"]]
+                if disputed:
+                    candidate = Layout.model_validate(layout)
+                    repaired = await repair_wall_spans(state, candidate, disputed[:3], evidence, audit, alignment, source)
+                    if repaired:
+                        layout, detail_trace = repaired
+                        detail_agents.append(detail_trace)
+                        comparison = await asyncio.to_thread(compare_source, layout, evidence, alignment, source=source)
+            alignment = update_comparison(alignment, comparison)
             alignment["image_findings"] = await asyncio.to_thread(image_wall_findings, source, layout, alignment)
             alignment["findings"].extend(alignment["image_findings"])
             (workspace / "recognition.json").write_text(json.dumps(layout, ensure_ascii=False), encoding="utf-8")
@@ -495,7 +525,7 @@ def create_graph(
         layout["warnings"] = list(dict.fromkeys(layout["warnings"] + alignment["warnings"]))[:30]
         (workspace / "source-alignment.json").write_text(json.dumps(alignment, ensure_ascii=False), encoding="utf-8")
         result = {"layout": layout, "source_alignment": alignment, "source_evidence": evidence_data,
-                  "agents": [evidence_trace, trace]}
+                  "agents": [evidence_trace, trace, *detail_agents]}
         if prepared_audit:
             result["prepared_audit"] = prepared_audit
         if checkpoint:
@@ -503,6 +533,53 @@ def create_graph(
         elif any(f["blocking"] for f in alignment["findings"]):
             result["ai_review"] = {"status": "needs_review", "message": "原图证据与当前识别存在差异，请先检查平面图。"}
         return result
+
+    async def repair_wall_spans(state, candidate, findings, evidence, audit, alignment, source):
+        # Include both junctions and the adjacent space so a cabinet or doorway can be distinguished.
+        pad = max(18, .6 / alignment["meters_per_pixel"])
+        regions = []
+        for f in findings:
+            x0, y0, x1, y1 = f["box"]
+            regions.append(DetailRegion(box=[max(0, x0-pad), max(0, y0-pad),
+                min(alignment["image_width"], x1+pad), min(alignment["image_height"], y1+pad)], reason=f["message"]))
+        workspace = settings.workspace(state["job_id"])
+        images, views = await asyncio.to_thread(detail_views, source, workspace,
+            evidence.model_copy(update={"regions": regions}), prefix="wall-detail")
+        if not images:
+            return None
+        await store.update(state["job_id"], stage="核对疑似漏墙", progress=18, agent="墙段复核",
+                           message="正在对照疑似缺墙的位置及两端交点，检查墙段、门洞和家具边线")
+
+        observations = [evidence, audit] if audit else [evidence]
+
+        def compare(layout):
+            return [compare_source(layout, observed, alignment, source=source)["findings"] for observed in observations]
+
+        baseline = await asyncio.to_thread(compare, candidate.model_dump())
+
+        def validate_detail(patch):
+            data = apply_wall_detail(candidate, patch, findings, views, alignment).model_dump()
+            checks = compare(data)
+            remaining = combine_wall_observations(checks[0], checks[1] if audit else [])
+            for target in findings:
+                span = LineString(target["span_px"]).buffer(4)
+                if any(span.intersection(LineString(f["span_px"])).length >= 8 for f in remaining):
+                    raise ValueError("修正后疑点位置仍有墙线缺失")
+            for old, new in zip(baseline, checks):
+                if any(f["blocking"] and f["code"] != "missing_wall" and f not in old for f in new):
+                    raise ValueError("修正引入了新的原图分歧，请核对候选结构")
+
+        try:
+            async with asyncio.timeout(min(settings.review_timeout, settings.codex_timeout)):
+                patch, trace = await run_agent(state, "wall_detail", "floorplan-review", LayoutReviewPatch,
+                    {"task": "仅复核所列墙段。第一张是整图，其后局部图按 image_views 对应。只提交有图像依据的局部增量补丁；保留洞口、开放空间和无关结构，拿不准时在 warnings 说明。",
+                     "layout": layout_input(candidate), "base_revision": structure_hash(candidate),
+                     "local_findings": findings, "image_views": views, "origin_px": alignment["origin_px"],
+                     "meters_per_pixel": alignment["meters_per_pixel"]},
+                    validate_detail, artifact="wall-detail-patch", reference_images=images)
+            return apply_review_patch(candidate, patch).model_dump(), trace
+        except (ValueError, TimeoutError, CodexError, ConnectionError):
+            return None
 
     async def review(state):
         if state.get("source_alignment") and state["options"].get("recognition_mode") == "precise":
@@ -584,7 +661,7 @@ def create_graph(
         workspace = settings.workspace(state["job_id"])
         size = (state["source_alignment"]["image_width"], state["source_alignment"]["image_height"])
         await store.update(state["job_id"], stage="独立对照原图", progress=40,
-            message="复核先独立读图，再比较外轮廓、卧室数量与房间位置；不会把几何通过当作还原准确", agent="原图复核")
+            message="正在对照独立读图结果，核对外轮廓、房间与门窗洞口", agent="原图复核")
         try:
             views = state["source_alignment"].get("views", [])
             images = [workspace / f"recognition-detail-{i + 1}.png" for i in range(len(views))]
@@ -601,7 +678,11 @@ def create_graph(
             else:
                 audit_data, trace = await read_source_audit(state, size, views, images)
             audit = SourceEvidence.model_validate(audit_data)
-            alignment = update_comparison(state["source_alignment"], compare_source(state["layout"], audit, state["source_alignment"]), independent=True)
+            previous = state["source_alignment"]
+            comparison = await asyncio.to_thread(compare_source, state["layout"], audit, previous, source=workspace / "source.png")
+            walls = combine_wall_observations(previous["findings"], comparison["findings"])
+            comparison["findings"] = [f for f in comparison["findings"] if f["code"] != "missing_wall"] + walls
+            alignment = update_comparison(previous, comparison, independent=True)
             alignment["findings"].extend(alignment.get("image_findings", []))
             audit_scale = alignment_from_evidence(audit, size)
             if audit.dimensions and abs(audit_scale["meters_per_pixel"] / alignment["meters_per_pixel"] - 1) > 0.12:

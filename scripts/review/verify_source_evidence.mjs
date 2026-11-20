@@ -19,6 +19,7 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(base);
   await page.getByRole("button", { name: "新建生成任务", exact: true }).click();
+  await page.getByText("高级设置 · 默认已配置", { exact: true }).click();
   await expect(page.getByRole("radio", { name: /精细识别/ })).toBeChecked();
   await page.getByRole("button", { name: /使用示例户型/ }).click();
   const submitted = page.waitForResponse(
@@ -37,7 +38,9 @@ try {
   ).json();
   expect(paused.status).toBe("awaiting_review");
   expect(paused.result.ai_review.status).toBe("needs_review");
-  await review.getByRole("button", { name: "原图叠加", exact: true }).click();
+  await expect(
+    review.getByRole("button", { name: "原图叠加", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   const overlay = page.getByRole("region", { name: "原图叠加对照" });
   await expect(
     overlay.getByRole("img", { name: "原图上的识别墙线和对照位置" }),
@@ -45,6 +48,14 @@ try {
   const metadata = await (
     await page.request.get(base + paused.result.source_alignment_url)
   ).json();
+  expect(
+    metadata.findings.some((f) => f.code === "opening_mismatch" && f.blocking),
+  ).toBe(true);
+  await expect(
+    overlay
+      .getByRole("listitem")
+      .filter({ hasText: "原图此处标为窗，当前结构识别为门" }),
+  ).toBeVisible();
   expect(
     Number(await overlay.locator("svg line").first().getAttribute("x1")),
   ).toBeCloseTo(metadata.origin_px[0]);
@@ -70,7 +81,6 @@ try {
   await page.screenshot({ path: output + "/overlay-mobile.png" });
   await page.reload();
   await expect(review).toBeVisible();
-  await review.getByRole("button", { name: "原图叠加", exact: true }).click();
   await expect(overlay.locator("svg")).toBeVisible();
   checks.push("手机无横向溢出，刷新后候选、定位数据与差异状态均保留");
   await review
@@ -107,6 +117,7 @@ try {
   );
   await old.goto(base);
   await old.getByRole("button", { name: "新建生成任务", exact: true }).click();
+  await old.getByText("高级设置 · 默认已配置", { exact: true }).click();
   await old.getByRole("button", { name: /使用示例户型/ }).click();
   await expect(
     old.getByRole("button", { name: "创建并开始生成", exact: true }),
