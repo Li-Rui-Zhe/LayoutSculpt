@@ -101,6 +101,21 @@ def test_occupied_unknown_service_stays_running(setup, monkeypatch):
     assert startup.inspect_service(setup, True) == "free"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX socket reuse semantics")
+def test_recently_stopped_server_port_can_be_restarted():
+    with socket.socket() as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        address = server.getsockname()
+        assert not startup.port_available(address[1])
+        with socket.create_connection(address) as client:
+            connection, _ = server.accept()
+            connection.close()
+            assert client.recv(1) == b""
+    assert startup.port_available(address[1])
+
+
 def test_concurrent_start_is_rejected_and_lock_released(tmp_path, monkeypatch):
     monkeypatch.setattr(startup, "ROOT", tmp_path)
     with startup.startup_lock():

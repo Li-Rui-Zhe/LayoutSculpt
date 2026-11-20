@@ -140,6 +140,44 @@ test("草稿修订冲突读取远端并重新保存合并结果", async () => {
   assert.deepEqual(last, server.document);
 });
 
+test("合并草稿时读取远端短暂失败，恢复后继续保存最新编辑", async () => {
+  const remote = { revision: 2, document: { x: 1, y: 3 } };
+  let offline = true,
+    status;
+  const session = createDraftSession(
+    "a",
+    1,
+    async (_, body) => {
+      if (body.revision !== remote.revision)
+        throw Object.assign(new Error("版本冲突"), { status: 409 });
+      remote.document = body.document;
+      return {
+        revision: ++remote.revision,
+        updated_at: new Date().toISOString(),
+      };
+    },
+    (value) => {
+      status = value;
+    },
+    10000,
+    {
+      baseDocument: { x: 1, y: 1 },
+      read: async () => {
+        if (offline) throw new Error("暂时离线");
+        return remote;
+      },
+    },
+  );
+  session.schedule({ x: 2, y: 1 });
+  await session.flush();
+  assert.equal(status.phase, "offline");
+  offline = false;
+  session.schedule({ x: 4, y: 1 });
+  await session.flush();
+  assert.equal(status.phase, "saved");
+  assert.deepEqual(remote.document, { x: 4, y: 3 });
+});
+
 test("隔离墙体保留墙厚余量，共享家具材质不会随之扩大裁切边界", () => {
   const m = new THREE.MeshStandardMaterial(),
     wall = new THREE.Mesh(new THREE.BoxGeometry(), m),

@@ -24,6 +24,7 @@ try {
   await page.getByRole("button", { name: /使用示例户型/ }).click();
   await expect(page.locator(".upload-drop img")).toBeVisible();
   await page.getByLabel("任务名称").fill("浏览器验收 · 独立测试数据");
+  await page.getByText("高级设置 · 默认已配置", { exact: true }).click();
   await page
     .getByRole("checkbox", { name: "先看平面图，确认后再生成 3D", exact: true })
     .check();
@@ -65,7 +66,7 @@ try {
   ).toBeVisible();
   await page.getByRole("button", { name: "调整识别结构" }).click();
   await expect(
-    page.getByRole("button", { name: "确认修改并继续生成" }),
+    page.getByRole("button", { name: "请先核对墙体和门窗" }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "返回结构核对", exact: true }).click();
   await confirm.click();
@@ -132,23 +133,30 @@ try {
     .getByRole("textbox", { name: "家具名称", exact: true })
     .fill("验收家具 · 新名称");
   await page.getByRole("textbox", { name: "家具名称", exact: true }).blur();
-  await page.getByRole("button", { name: "返回方案预览", exact: true }).click();
+  await page.locator(".editor-more summary").click();
+  await page.getByRole("button", { name: "查看上一版（保留草稿）" }).click();
   await page.getByRole("button", { name: "交付成果", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "更新并导出成果包", exact: true }),
   ).toBeEnabled({ timeout: 15000 });
   const downloadReady = page.waitForEvent("download", { timeout: 90000 });
+  const bundleReady = page.waitForResponse(
+    (response) =>
+      /\/api\/jobs\/[0-9a-f]{32}\/bundle$/.test(response.url()) &&
+      response.ok(),
+    { timeout: 90000 },
+  );
   await page
     .getByRole("button", { name: "更新并导出成果包", exact: true })
     .click();
   const updatedDownload = await downloadReady;
   expect(await updatedDownload.failure()).toBeNull();
-  const latestLink = page.getByRole("link", {
+  const latestButton = page.getByRole("button", {
     name: "重新下载最新成果包",
     exact: true,
   });
-  await expect(latestLink).toBeVisible();
-  const latestId = (await latestLink.getAttribute("href")).split("/")[3];
+  await expect(latestButton).toBeVisible();
+  const latestId = new URL((await bundleReady).url()).pathname.split("/")[3];
   const updatedLayout = await (
     await page.request.get(`${base}/api/jobs/${latestId}/artifacts/layout.json`)
   ).json();
@@ -219,10 +227,12 @@ try {
       throw new DOMException("Storage unavailable", "SecurityError");
     };
   });
-  await blocked.goto(base);
-  await expect(blocked.locator("#viewport canvas")).toBeVisible({
-    timeout: 30000,
-  });
+  await blocked.goto(`${base}/?project=${latestId}`);
+  await expect(blocked.locator("#viewport canvas")).toHaveAttribute(
+    "data-model-url",
+    new RegExp(`/api/jobs/${latestId}/artifacts/model\\.glb`),
+    { timeout: 30000 },
+  );
   await expect(blocked.getByText(/浏览器存储不可用/)).toBeVisible();
   await blocked.getByRole("button", { name: /^环境：/ }).click();
   await blocked
@@ -236,9 +246,8 @@ try {
     .getByRole("button", { name: "新建生成任务", exact: true })
     .first()
     .click();
-  await expect(
-    blocked.getByRole("heading", { level: 1, name: /^新建设计/ }),
-  ).toBeVisible();
+  await expect(blocked.getByLabel("任务名称")).toBeVisible();
+  await blocked.getByText("高级设置 · 默认已配置", { exact: true }).click();
   await expect(blocked.getByLabel("生成模型", { exact: true })).toHaveValue(
     "test-default",
   );

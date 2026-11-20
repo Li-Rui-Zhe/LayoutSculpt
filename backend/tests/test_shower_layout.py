@@ -39,8 +39,11 @@ def test_mounting_window_and_front_access_are_checked():
     layout.openings.append(layout.openings[0].model_copy(update={"wall_id": "study_bath", "offset": 2.5, "width": .8, "bottom": 1, "height": 1.2}))
     assert any("完整实墙" in s for s in placement_issues(shower, layout))
     layout, shower = sample()
-    obstacle = shower.model_copy(update={"kind": "cabinet", "name": "入口障碍", "y": 8.05, "width": .6, "depth": .4, "height": .8})
+    front = shower.y + shower.depth / 2
+    obstacle = shower.model_copy(update={"kind": "cabinet", "name": "入口障碍", "y": front + .25, "width": .6, "depth": .4, "height": .8})
     assert any("入口受阻" in s for s in furnishing_issues(Furnishing(items=[shower, obstacle], notes=[]), layout))
+    clear = obstacle.model_copy(update={"y": front + .55 + obstacle.depth / 2 + .01})
+    assert not any("入口受阻" in s for s in furnishing_issues(Furnishing(items=[shower, clear], notes=[]), layout))
     for changes in [{"width": .6}, {"depth": .6}, {"height": 1.5}, {"elevation": .4}]:
         assert placement_issues(shower.model_copy(update=changes), layout)
 

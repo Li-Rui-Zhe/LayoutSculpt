@@ -12,11 +12,10 @@ import {
 export function useProjects() {
   const [jobs, setJobs] = useState([]);
   const [selectedId, setSelectedId] = useState(() => {
+    const linkedProject = readContext("project");
+    if (linkedProject) return linkedProject;
     try {
-      return readContext(
-        "project",
-        localStorage.getItem("habitat-job") || "sample",
-      );
+      return localStorage.getItem("habitat-job") || "sample";
     } catch {
       return "sample";
     }

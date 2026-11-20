@@ -40,6 +40,9 @@ def port_available(port):
     with socket.socket() as sock:
         if os.name == "nt":
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            # Match the server's bind behavior when old connections are in TIME_WAIT.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind(("127.0.0.1", port))
             return True
@@ -205,7 +208,8 @@ class Launcher:
                     if os.name == "nt" and python.name.lower() == "pythonw.exe":
                         python = python.with_name("python.exe")
                     process = self.spawn([str(python), "-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8000"], "backend")
-                    self.wait_ready(settings, process)
+                    # First-time imports of native modeling dependencies can exceed 45 seconds.
+                    self.wait_ready(settings, process, timeout=120)
                 if self.mode == "all":
                     if frontend_state == "free":
                         self.notify("后端已就绪，正在启动开发页面…")

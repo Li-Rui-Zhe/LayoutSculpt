@@ -73,7 +73,7 @@ export function createDraftSession(
                   error.message = `有 ${merged.conflicts.length} 处修改冲突，已保留当前草稿。请备份后读取最新内容：${merged.conflicts.slice(0, 3).join("、")}`;
                 }
               } catch (mergeError) {
-                error.message = mergeError.message;
+                error = mergeError;
               }
             }
             const retryable =

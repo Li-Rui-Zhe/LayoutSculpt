@@ -18,6 +18,7 @@ try {
     .first()
     .click();
   await expect(page.getByLabel("家具方案")).not.toBeVisible();
+  await page.getByText("高级设置 · 默认已配置", { exact: true }).click();
   await page.getByRole("radio", { name: /快速识别/ }).check();
   await expect(
     page.getByRole("checkbox", {
