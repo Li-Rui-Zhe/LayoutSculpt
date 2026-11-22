@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 import numpy as np
 from PIL import Image
-from pydantic import Field
+from pydantic import Field, field_validator
 from shapely.geometry import LineString, Point, Polygon
 
 from .architecture import wall_line
@@ -80,6 +80,13 @@ class PixelWall(StrictModel):
     boundary_type: Literal["wall", "parapet", "glass_railing", "glazing"] = "wall"
     sill_height: float = Field(default=0, ge=0, le=4.5)
     finish: Literal["default", "white", "cream", "sage", "gray"] = "default"
+
+    @field_validator("finish", mode="before")
+    @classmethod
+    def normalize_finish(cls, value):
+        if isinstance(value, str) and value not in {"default", "white", "cream", "sage", "gray"}:
+            return "default"
+        return value
 
 
 class DoorLeafPixels(StrictModel):

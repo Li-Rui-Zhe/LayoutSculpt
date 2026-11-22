@@ -115,7 +115,7 @@ export default function RoomTourOverlay({
           返回鸟瞰
         </button>
         <div>
-          <small>看看我家 · 当前设计</small>
+          <small>室内行走</small>
           <h3>{room?.name}</h3>
         </div>
         <div className="tour-lighting" role="group" aria-label="室内光照">

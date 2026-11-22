@@ -21,3 +21,11 @@ export async function launchReviewBrowser() {
     );
   }
 }
+
+export async function openInspector(page, section) {
+  const inspector = page.locator(".inspector");
+  if (!(await inspector.isVisible())) {
+    await page.getByRole("button", { name: "方案面板", exact: true }).click();
+  }
+  await inspector.getByRole("button", { name: section, exact: true }).click();
+}

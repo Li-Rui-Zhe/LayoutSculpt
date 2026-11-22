@@ -303,7 +303,7 @@ try {
   await expect(
     page.locator('.scene-object-label[data-state="loading"]'),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "平面设计", exact: true }).click();
+  await page.getByRole("button", { name: "编辑布局", exact: true }).click();
   await page.getByRole("button", { name: "三维设计", exact: true }).click();
   await expect(page.locator(".scene-sync")).toHaveText("已同步");
   // 浏览器刷新恢复草稿后，先载入已有模型，再本地同步这些参数。

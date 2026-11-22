@@ -1,4 +1,4 @@
-import { launchReviewBrowser } from "./browser.mjs";
+import { launchReviewBrowser, openInspector } from "./browser.mjs";
 import { expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
@@ -28,7 +28,7 @@ try {
     `/api/jobs/${jobId}/artifacts/model.glb`,
     { timeout: 30000 },
   );
-  await page.getByRole("button", { name: "外观设置", exact: true }).click();
+  await openInspector(page, "外观");
   await page.getByRole("button", { name: /夜晚/ }).click();
   await expect(canvas).toHaveAttribute("data-lighting-preset", "night");
   expect(

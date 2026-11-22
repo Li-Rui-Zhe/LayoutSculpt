@@ -1,3 +1,4 @@
+import WorkspaceSidebar from "../components/WorkspaceSidebar.jsx";
 import { InlineProgress } from "../components/LoadingProgress.jsx";
 import OperationStatus from "../components/OperationStatus.jsx";
 import { useBoundaryLoad } from "../components/ProgressBoundary.jsx";
@@ -325,7 +326,7 @@ export default function AiConnections() {
           </div>
         ) : (
           <div className="ai-settings-layout">
-            <div className="ai-source-column">
+            <WorkspaceSidebar label="AI 接入侧栏" className="ai-source-column">
               <div
                 className="ai-provider-cards"
                 role="group"
@@ -374,7 +375,7 @@ export default function AiConnections() {
                     )}
                 </div>
               </section>
-            </div>
+            </WorkspaceSidebar>
             <div className="ai-provider-detail">
               <section
                 className="ai-connection-panel"

@@ -78,7 +78,7 @@ try {
   await expect(status).toHaveText("正在连接工作台");
   release();
   await expect(status).toHaveText("工作台在线 · DeepSeek 已配置");
-  await page.getByRole("button", { name: "新建生成任务", exact: true }).click();
+  await page.getByRole("button", { name: "新建方案", exact: true }).click();
   const requirements = page.getByPlaceholder(
     "例如：保留原图墙体与门窗，客厅使用三人沙发和原木家具。",
   );

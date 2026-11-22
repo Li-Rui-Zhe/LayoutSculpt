@@ -7,6 +7,8 @@ import {
   Check,
   SlidersHorizontal,
   FolderOpen,
+  Box,
+  Compass,
   X,
 } from "lucide-react";
 import { useModels } from "../hooks/useModels.js";
@@ -34,7 +36,11 @@ export default function GenerationForm({
   onCancel,
   onCreated,
   replacementJob,
+  mode = "model",
+  onModeChange,
+  onImportModel,
 }) {
+  const whiteModel = mode === "roam";
   const completion = useProgressGate();
   const textureStatus = useCustomTextures();
   const [finishes, setFinishes] = useState({ walls: "", floor: "" });
@@ -70,13 +76,15 @@ export default function GenerationForm({
     };
   }, [file]);
   const [name, setName] = useState("");
-  const [style, setStyle] = useState("natural");
+  const [selectedStyle, setStyle] = useState("natural");
+  const style = whiteModel ? "natural" : selectedStyle;
   const [styleDescription, setStyleDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [collaboration, setCollaboration] = useState(true);
   const [manualReview, setManualReview] = useState(false);
   const [recognitionMode, setRecognitionMode] = useState("precise");
-  const [furnitureMode, setFurnitureMode] = useState("library");
+  const [selectedFurnitureMode, setFurnitureMode] = useState("library");
+  const furnitureMode = whiteModel ? "basic" : selectedFurnitureMode;
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -103,14 +111,14 @@ export default function GenerationForm({
   const currentDraft = {
     file,
     name,
-    style,
+    style: selectedStyle,
     styleDescription,
     notes,
     finishes,
     collaboration,
     manualReview,
     recognitionMode,
-    furnitureMode,
+    furnitureMode: selectedFurnitureMode,
   };
   const hasDraft = hasGenerationDraft(currentDraft);
   const clearDraft = async () => {
@@ -120,7 +128,7 @@ export default function GenerationForm({
     flushDraft.current = null;
     clearTimeout(draftTimer.current);
     try {
-      await clearGenerationDraft();
+      await clearGenerationDraft(mode);
       applyDraft();
       setPreparing(false);
       setError("");
@@ -135,7 +143,7 @@ export default function GenerationForm({
   };
   useEffect(() => {
     let live = true;
-    readGenerationDraft()
+    readGenerationDraft(mode)
       .then((value) => {
         draftReadable.current = true;
         if (
@@ -179,19 +187,19 @@ export default function GenerationForm({
         version: 1,
         file,
         name,
-        style,
+        style: selectedStyle,
         styleDescription,
         notes,
         finishes,
         collaboration,
         manualReview,
         recognitionMode,
-        furnitureMode,
+        furnitureMode: selectedFurnitureMode,
       });
       return (
         hasGenerationDraft(value)
-          ? saveGenerationDraft(value)
-          : clearGenerationDraft()
+          ? saveGenerationDraft(value, mode)
+          : clearGenerationDraft(mode)
       )
         .then(() => setDraftError(""))
         .catch(() => setDraftError("生成草稿未能保存到浏览器，请勿关闭页面。"));
@@ -211,14 +219,15 @@ export default function GenerationForm({
     clearing,
     file,
     name,
-    style,
+    selectedStyle,
     styleDescription,
     notes,
     finishes,
     collaboration,
     manualReview,
     recognitionMode,
-    furnitureMode,
+    selectedFurnitureMode,
+    mode,
   ]);
   useEffect(
     () => () => {
@@ -294,14 +303,14 @@ export default function GenerationForm({
         model: models.model,
         reasoning_effort: models.effort,
         furniture_mode: furnitureMode,
-        wall_material: finishes.walls,
-        floor_material: finishes.floor,
+        wall_material: whiteModel ? "" : finishes.walls,
+        floor_material: whiteModel ? "" : finishes.floor,
       }))
         form.append(key, value);
       await projects.create(form);
       submitted.current = true;
       clearTimeout(draftTimer.current);
-      await clearGenerationDraft().catch(() => {});
+      await clearGenerationDraft(mode).catch(() => {});
       if (await completion.finish()) onCreated();
     } catch (e) {
       setError(e.message);
@@ -311,7 +320,7 @@ export default function GenerationForm({
     }
   };
   const blockedReason = !file
-    ? "先上传一张户型图，也可以使用示例体验"
+    ? "请选择户型图"
     : models.loading
       ? "正在检查 AI 接入，请稍候"
       : !models.ready
@@ -325,64 +334,133 @@ export default function GenerationForm({
               : furnitureMode === "library" &&
                   !projects.health?.furniture_library?.available
                 ? "精细家具库尚未就绪，请检查服务或在高级设置中更换方案"
-                : "准备就绪，生成后可继续调整设计";
+                : whiteModel
+                  ? "可以生成白模"
+                  : "可以生成 3D 模型";
+  const nameField = (
+    <div className="field">
+      <label htmlFor="task-name">
+        {whiteModel ? "漫游名称" : "任务名称"}
+        <small>选填</small>
+      </label>
+      <input
+        id="task-name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={120}
+        placeholder={
+          whiteModel ? "例如：望江公寓" : "例如：望江公寓 · 原木方案"
+        }
+      />
+    </div>
+  );
   return (
-    <div className="new-task-page">
+    <div className="new-task-page" data-mode={mode}>
       {draftError && <p role="alert">{draftError}</p>}
       <header className="page-heading">
         <div>
-          <span className="studio-eyebrow">从一张户型图开始</span>
-          <h1>把想象中的家，<wbr />变成眼前的空间。</h1>
-          <p>上传户型，选一个喜欢的风格。生成后，家具、墙面和地板都可以继续调整。</p>
+          <h1>新建方案</h1>
         </div>
         <div className="creation-import">
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={busy || clearing || !draftLoaded || !hasDraft}
-            onClick={clearDraft}
-          >
-            {clearing ? "正在清空…" : "清空重填"}
-          </button>
-          <input
-            type="file"
-            accept=".zip"
-            hidden
-            ref={backupPicker}
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (!f) return;
-              if (submitLock.current) return;
-              submitLock.current = true;
-              completion.reset();
-              setImporting(true);
-              setBusy(true);
-              setError("");
-              try {
-                const form = new FormData();
-                form.append("file", f);
-                await projects.importProject(form);
-                if (await completion.finish()) onCreated();
-              } catch (e) {
-                setError(e.message);
-              } finally {
-                submitLock.current = false;
-                setImporting(false);
-                setBusy(false);
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={busy}
-            onClick={() => backupPicker.current.click()}
-          >
-            <FolderOpen size={16} /> 导入项目 ZIP
-          </button>
+          {hasDraft && (
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy || clearing || !draftLoaded}
+              onClick={clearDraft}
+            >
+              {clearing ? "正在清空…" : "清空重填"}
+            </button>
+          )}
+          {!whiteModel && (
+            <details
+              className="creation-import-menu"
+              onBlur={({ currentTarget, relatedTarget }) => {
+                if (!currentTarget.contains(relatedTarget))
+                  currentTarget.open = false;
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.currentTarget.open = false;
+                  event.currentTarget.querySelector("summary").focus();
+                }
+              }}
+            >
+              <summary>
+                <FolderOpen size={15} /> 导入已有文件
+              </summary>
+              <div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={onImportModel}
+                >
+                  <Box size={16} /> 导入本地 GLB
+                </button>
+                <input
+                  type="file"
+                  accept=".zip"
+                  hidden
+                  ref={backupPicker}
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    if (submitLock.current) return;
+                    submitLock.current = true;
+                    completion.reset();
+                    setImporting(true);
+                    setBusy(true);
+                    setError("");
+                    try {
+                      const form = new FormData();
+                      form.append("file", f);
+                      await projects.importProject(form);
+                      if (await completion.finish()) onCreated();
+                    } catch (e) {
+                      setError(e.message);
+                    } finally {
+                      submitLock.current = false;
+                      setImporting(false);
+                      setBusy(false);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() => backupPicker.current.click()}
+                >
+                  <FolderOpen size={16} /> 导入项目 ZIP
+                </button>
+              </div>
+            </details>
+          )}
         </div>
       </header>
+      <div className="creation-modes" role="group" aria-label="创建模式">
+        {[
+          ["model", Box, "自主 3D 模型", "编辑户型、家具和材质"],
+          ["roam", Compass, "真实漫游", "生成写实全景，跨房间浏览"],
+        ].map(([id, Icon, title, description]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={mode === id}
+            disabled={busy || clearing || !draftLoaded}
+            onClick={() => onModeChange(id)}
+          >
+            <Icon size={19} aria-hidden="true" />
+            <span>
+              <strong>{title}</strong>
+              <small>{description}</small>
+            </span>
+            {mode === id && <Check size={15} className="mode-check" />}
+          </button>
+        ))}
+      </div>
       {preparing && file && (
         <ImagePreparation
           file={file}
@@ -400,9 +478,7 @@ export default function GenerationForm({
         >
           <section className="upload-card">
             <div className="section-heading">
-              <h2>
-                <span>01</span>上传户型图
-              </h2>
+              <h2>上传户型图</h2>
               {file && (
                 <span className="creation-tag">
                   <Check size={14} /> 已选择
@@ -512,10 +588,8 @@ export default function GenerationForm({
                       stroke="#b6c7b9"
                     />
                   </svg>
-                  <b>把户型图放在这里</b>
-                  <span>拖入图片，或点击下方上传</span>
                   <span className="upload-select">
-                    <UploadCloud size={17} /> 选择户型图
+                    <UploadCloud size={17} /> 选择或拖入户型图
                   </span>
                   <small>PNG、JPG、WebP · 最大 20 MB</small>
                 </>
@@ -570,7 +644,10 @@ export default function GenerationForm({
                 设计偏好已带入，请选择新的户型图。原任务和原图仍保留。
               </p>
             )}
-            <FloorplanExamples />
+            <details className="roam-plan-guide">
+              <summary>查看上传示例</summary>
+              <FloorplanExamples />
+            </details>
             {file && (
               <div className="upload-actions">
                 <button
@@ -592,31 +669,11 @@ export default function GenerationForm({
                 </button>
               </div>
             )}
-            <div className="field">
-              <label htmlFor="task-name">
-                任务名称 <small>可稍后修改</small>
-              </label>
-              <input
-                id="task-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={120}
-                placeholder="例如：望江公寓 · 原木方案"
-              />
-            </div>
-            <div className="creation-note">
-              <ShieldCheck size={18} />
-              <div>
-                <p>每份设计独立保存，随时回来继续。</p>
-              </div>
-            </div>
+            {!whiteModel && nameField}
           </section>
           <section className="generation-options">
             <div className="section-heading">
-              <h2>
-                <span>02</span>设计偏好
-              </h2>
-              <span className="creation-tag">已有默认方案</span>
+              <h2>{whiteModel ? "漫游设置" : "设计偏好"}</h2>
             </div>
             <OperationStatus
               active={busy && !completion.completed}
@@ -626,7 +683,8 @@ export default function GenerationForm({
               label={importing ? "正在导入项目" : "正在上传户型并创建任务"}
               detail="提交成功后会进入任务页，请勿重复提交。"
             />
-            <div className="field">
+            {whiteModel && nameField}
+            <div className="field" hidden={whiteModel}>
               <label>
                 空间风格 <small>材质搭配参考</small>
               </label>
@@ -723,18 +781,22 @@ export default function GenerationForm({
             </div>
             <div className="field">
               <label htmlFor="project-notes">
-                设计要求 <small>选填</small>
+                {whiteModel ? "户型备注" : "设计要求"} <small>选填</small>
               </label>
               <textarea
                 id="project-notes"
                 value={notes}
                 maxLength={3000}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="例如：保留原图墙体与门窗，客厅使用三人沙发和原木家具。"
+                placeholder={
+                  whiteModel
+                    ? "例如：厨房与客厅相通，阳台保留推拉门。"
+                    : "例如：保留原图墙体与门窗，客厅使用三人沙发和原木家具。"
+                }
               />
             </div>
 
-            <details className="creation-materials">
+            <details className="creation-materials" hidden={whiteModel}>
               <summary>
                 <span>墙面与地板</span>
                 <small>
@@ -793,9 +855,9 @@ export default function GenerationForm({
               </div>
             </details>
             <details className="model-advanced" ref={modelOptions}>
-              <summary>高级设置 · 默认已配置</summary>
+              <summary>{whiteModel ? "识别设置" : "高级设置"}</summary>
               <ModelFields models={models} />
-              <div className="field">
+              <div className="field" hidden={whiteModel}>
                 <label htmlFor="furniture-mode">家具方案</label>
                 <select
                   id="furniture-mode"
@@ -820,58 +882,64 @@ export default function GenerationForm({
                 </span>
                 <ShieldCheck size={18} />
               </label>
-            <fieldset className="recognition-mode-options">
-              <legend>识别方式</legend>
-              {[
-                ["fast", "快速识别", "整图识别，优先减少等待。"],
-                ["precise", "精细识别", "先定位墙线，再按疑点细读，耗时较长。"],
-              ].map(([id, title, description]) => (
-                <label key={id} data-selected={recognitionMode === id}>
+              <fieldset className="recognition-mode-options">
+                <legend>识别方式</legend>
+                {[
+                  ["fast", "快速识别", "整图识别，优先减少等待。"],
+                  [
+                    "precise",
+                    "精细识别",
+                    "先定位墙线，再按疑点细读，耗时较长。",
+                  ],
+                ].map(([id, title, description]) => (
+                  <label key={id} data-selected={recognitionMode === id}>
+                    <input
+                      type="radio"
+                      name="recognition-mode"
+                      value={id}
+                      checked={recognitionMode === id}
+                      onChange={() => setRecognitionMode(id)}
+                    />
+                    <span>
+                      <b>{title}</b>
+                      <small>{description}</small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              {preciseUnsupported && (
+                <p className="field-note" role="status">
+                  当前运行的工作台尚未支持精细识别，请更新并重启服务，或先选择快速识别。
+                </p>
+              )}
+              <div
+                className="generation-review-choice"
+                data-selected={manualReview}
+              >
+                <label>
                   <input
-                    type="radio"
-                    name="recognition-mode"
-                    value={id}
-                    checked={recognitionMode === id}
-                    onChange={() => setRecognitionMode(id)}
+                    type="checkbox"
+                    checked={manualReview}
+                    onChange={(e) => setManualReview(e.target.checked)}
+                    aria-labelledby="review-before-3d-title"
+                    aria-describedby="review-before-3d-help"
                   />
                   <span>
-                    <b>{title}</b>
-                    <small>{description}</small>
+                    <b id="review-before-3d-title">
+                      先看平面图，确认后再生成 3D
+                    </b>
+                    <small id="review-before-3d-help">
+                      AI
+                      识别后先停下来，你可以对照原图检查、调整墙体、门窗和房间，确认满意后再继续。
+                    </small>
                   </span>
                 </label>
-              ))}
-            </fieldset>
-            {preciseUnsupported && (
-              <p className="field-note" role="status">
-                当前运行的工作台尚未支持精细识别，请更新并重启服务，或先选择快速识别。
-              </p>
-            )}
-            <div
-              className="generation-review-choice"
-              data-selected={manualReview}
-            >
-              <label>
-                <input
-                  type="checkbox"
-                  checked={manualReview}
-                  onChange={(e) => setManualReview(e.target.checked)}
-                  aria-labelledby="review-before-3d-title"
-                  aria-describedby="review-before-3d-help"
-                />
-                <span>
-                  <b id="review-before-3d-title">先看平面图，确认后再生成 3D</b>
-                  <small id="review-before-3d-help">
-                    AI
-                    识别后先停下来，你可以对照原图检查、调整墙体、门窗和房间，确认满意后再继续。
-                  </small>
-                </span>
-              </label>
-              <p aria-live="polite">
-                {manualReview
-                  ? "已开启：先检查平面图，由你决定何时生成 3D。"
-                  : "不勾选则自动生成 3D，无需中途确认。"}
-              </p>
-            </div>
+                <p aria-live="polite">
+                  {manualReview
+                    ? "已开启：先检查平面图，由你决定何时生成 3D。"
+                    : "不勾选则自动生成 3D，无需中途确认。"}
+                </p>
+              </div>
             </details>
             <div
               className="model-capability"
@@ -898,7 +966,11 @@ export default function GenerationForm({
                 {models.ready ? "更改" : "设置接入"}
               </button>
             </div>
-            <p className="field-note">默认自动完成识别与三维生成；遇到无法可靠判断的结构时，会保留结果并提示核对。</p>
+            {!whiteModel && (
+              <p className="field-note">
+                默认自动完成识别与三维生成；遇到无法可靠判断的结构时，会保留结果并提示核对。
+              </p>
+            )}
           </section>
         </fieldset>
         {error && (
@@ -956,7 +1028,9 @@ export default function GenerationForm({
                 ? importing
                   ? "正在导入项目"
                   : "正在创建任务"
-                : "创建并开始生成"}
+                : whiteModel
+                  ? "生成漫游白模"
+                  : "生成 3D 模型"}
             </button>
           </div>
         </div>

@@ -2,6 +2,19 @@
 /data/
 /artifacts/
 /logs/
+/backups/
+/uploads/
+/exports/
+/screenshots/
+
+# Local floor plan inference runtimes and model weights
+/floorplan-model/
+/floorplan-runtime/
+*.onnx
+*.onnx.data
+*.pt
+*.pth
+*.safetensors
 
 # Dependencies and build output
 node_modules/
@@ -35,6 +48,7 @@ test-results/
 .envrc
 .direnv/
 .codex/
+.ssh/
 *.local.json
 *.local.toml
 .npmrc
@@ -43,6 +57,8 @@ test-results/
 .netrc
 _netrc
 secrets/
+secrets.json
+secrets.json.*
 credentials.json
 auth.json
 auth.json.*
@@ -52,6 +68,8 @@ credentials.json.*
 *.p12
 *.pfx
 *.ppk
+*.jks
+*.keystore
 id_ed25519*
 id_ecdsa*
 id_dsa*

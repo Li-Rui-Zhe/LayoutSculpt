@@ -504,28 +504,45 @@ button {
   border-top: 1px solid var(--line);
   padding: 12px 15px 16px;
 }
-.rail-bottom > button {
+.sample-entry {
   display: flex;
   align-items: center;
   width: 100%;
   gap: 10px;
   text-align: left;
-  padding: 10px 8px;
-  border-radius: 6px;
-  color: #aec2c2;
+  padding: 10px 12px;
+  border: 1px solid #d9e5da;
+  border-radius: 9px;
+  background: #f5f8f4;
+  color: #31584a;
 }
-.rail-bottom > button.selected {
-  background: #26373b;
+.sample-entry[aria-current="page"] {
+  border-color: #92ae9a;
+  background: #e7f0e6;
+  color: #244e40;
 }
-.rail-bottom button > span:first-of-type {
+.sample-entry:hover {
+  border-color: #789983;
+}
+.sample-entry:where(:not([aria-current])):hover {
+  background: #edf4ec;
+}
+.sample-entry:active {
+  background: #dcebdc;
+}
+.sample-entry > svg {
+  flex-shrink: 0;
+}
+.sample-entry-copy {
+  display: grid;
+  gap: 3px;
   flex: 1;
-  font-size: 11px;
+  min-width: 0;
+  font-size: 12px;
 }
-.rail-bottom small {
-  display: block;
-  font-size: 9px;
-  color: #6f8c90;
-  margin-top: 5px;
+.sample-entry-copy > small {
+  font-size: 10px;
+  color: #536f60;
 }
 .rail-bottom p {
   font-size: 9px;
@@ -1437,6 +1454,40 @@ input[type="checkbox"] {
 }
 .creation-shell::-webkit-scrollbar {
   display: none;
+}
+.creation-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.creation-modes button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 11px 14px;
+  border: 1px solid var(--studio-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--studio-ink);
+}
+.creation-modes button[aria-pressed="true"] {
+  border-color: #729581;
+  background: #eaf3ea;
+  box-shadow: inset 0 0 0 1px #729581;
+}
+.creation-modes button svg {
+  flex: none;
+}
+.creation-modes button span {
+  display: grid;
+  gap: 3px;
+  line-height: 1.4;
+}
+.creation-modes button small {
+  color: var(--studio-muted);
+  font-size: 12px;
 }
 .new-task-page {
   max-width: 1180px;

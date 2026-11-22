@@ -26,9 +26,10 @@ function ordered(mode, action) {
   queue = result.catch(() => {});
   return result;
 }
-export const readGenerationDraft = () =>
-  ordered("readonly", (store) => store.get("current"));
-export const saveGenerationDraft = (value) =>
-  ordered("readwrite", (store) => store.put(value, "current"));
-export const clearGenerationDraft = () =>
-  ordered("readwrite", (store) => store.delete("current"));
+const draftKey = (mode) => (mode === "roam" ? "roam" : "current");
+export const readGenerationDraft = (mode) =>
+  ordered("readonly", (store) => store.get(draftKey(mode)));
+export const saveGenerationDraft = (value, mode) =>
+  ordered("readwrite", (store) => store.put(value, draftKey(mode)));
+export const clearGenerationDraft = (mode) =>
+  ordered("readwrite", (store) => store.delete(draftKey(mode)));

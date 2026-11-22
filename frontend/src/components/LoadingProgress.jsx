@@ -109,22 +109,27 @@ export default function LoadingProgress({
   operationKey = estimateKey,
   onComplete,
   estimated = false,
+  showSlow = true,
+  indeterminate = false,
 }) {
   const [slow, setSlow] = useState(false);
   const known = Number.isFinite(progress);
-  const elapsed = useElapsed(estimateKey, !known && !complete);
+  const pending = indeterminate && !complete;
+  const elapsed = useElapsed(estimateKey, !known && !complete && !pending);
   useEffect(() => {
     setSlow(false);
-    if (complete) return;
+    if (complete || !showSlow) return;
     const timer = setTimeout(() => setSlow(true), 15000);
     return () => clearTimeout(timer);
-  }, [label, complete]);
+  }, [label, complete, showSlow]);
   const target = complete
     ? 100
-    : known
-      ? Math.max(0, Math.min(99, progress))
-      : estimateFrom +
-        (estimateTo - estimateFrom) * (1 - Math.exp(-elapsed / 14000));
+    : pending
+      ? 32
+      : known
+        ? Math.max(0, Math.min(99, progress))
+        : estimateFrom +
+          (estimateTo - estimateFrom) * (1 - Math.exp(-elapsed / 14000));
   const value = useSmoothProgress(target, operationKey, complete);
   const finished = complete && value >= 100;
   useEffect(() => {
@@ -135,7 +140,8 @@ export default function LoadingProgress({
     <div
       className={`loading-progress ${compact ? "is-compact" : ""} ${className}`}
       data-complete={finished}
-      data-estimated={(estimated || !known) && !complete}
+      data-estimated={(estimated || !known) && !complete && !pending}
+      data-indeterminate={pending}
       aria-busy={!complete}
     >
       <div
@@ -145,11 +151,13 @@ export default function LoadingProgress({
       >
         <Icon size={16} aria-hidden="true" />
         <strong>{label}</strong>
-        <span>
-          {finished
-            ? "100% · 已完成"
-            : `${!complete && (estimated || !known) ? "预计 " : ""}${Math.floor(value)}%`}
-        </span>
+        {!pending && (
+          <span>
+            {finished
+              ? "100% · 已完成"
+              : `${!complete && (estimated || !known) ? "预计 " : ""}${Math.floor(value)}%`}
+          </span>
+        )}
       </div>
       <div
         className="loading-progress-track"
@@ -157,8 +165,12 @@ export default function LoadingProgress({
         aria-label={label}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={Math.floor(value)}
-        aria-valuetext={`${(estimated || !known) && !complete ? "预计进度 " : ""}${Math.floor(value)}%`}
+        aria-valuenow={pending ? undefined : Math.floor(value)}
+        aria-valuetext={
+          pending
+            ? undefined
+            : `${(estimated || !known) && !complete ? "预计进度 " : ""}${Math.floor(value)}%`
+        }
       >
         <span
           className="loading-progress-fill"
@@ -181,7 +193,7 @@ export default function LoadingProgress({
         </div>
       )}
       {detail && <p className="loading-progress-detail">{detail}</p>}
-      {slow && !complete && (
+      {showSlow && slow && !complete && (
         <small className="loading-progress-slow" role="status">
           这一步耗时稍长，完成后会自动更新。
         </small>

@@ -14,11 +14,11 @@ page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto(base);
   await page
-    .getByRole("button", { name: "新建生成任务", exact: true })
+    .getByRole("button", { name: "新建方案", exact: true })
     .first()
     .click();
   await expect(page.getByLabel("家具方案")).not.toBeVisible();
-  await page.getByText("高级设置 · 默认已配置", { exact: true }).click();
+  await page.getByText("高级设置", { exact: true }).click();
   await page.getByRole("radio", { name: /快速识别/ }).check();
   await expect(
     page.getByRole("checkbox", {
@@ -31,7 +31,7 @@ try {
   const submitted = page.waitForResponse(
     (r) => r.url() === `${base}/api/jobs` && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "创建并开始生成" }).click();
+  await page.getByRole("button", { name: "生成 3D 模型" }).click();
   const created = await (await submitted).json();
   expect(created.options.review_mode).toBe("preview");
   await expect(page.locator("#viewport canvas")).toHaveAttribute(

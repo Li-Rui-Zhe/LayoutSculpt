@@ -1,11 +1,17 @@
-import { launchReviewBrowser } from "./browser.mjs";
+import { launchReviewBrowser, openInspector } from "./browser.mjs";
 import { expect } from "@playwright/test";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 
-const showcase = JSON.parse(await readFile(new URL("../../frontend/src/showcase.json", import.meta.url), "utf8"));
+const showcase = JSON.parse(
+  await readFile(
+    new URL("../../frontend/src/showcase.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 const id = process.argv[2];
 if (!/^[a-f0-9]{32}$/.test(id || "")) throw Error("请提供成功任务 ID。");
+const base = process.env.STUDIO_BASE_URL || "http://127.0.0.1:5173";
 const output = "data/visual-review/layout-entry";
 await mkdir(output, { recursive: true });
 const browser = await launchReviewBrowser();
@@ -18,15 +24,15 @@ try {
     (jobId) => localStorage.setItem("habitat-job", jobId),
     id,
   );
-  const sourceUrl = `http://127.0.0.1:5173/api/jobs/${id}/artifacts/layout.json`;
+  const sourceUrl = `${base}/api/jobs/${id}/artifacts/layout.json`;
   const original = await (await page.request.get(sourceUrl)).text();
   for (const width of [1440, 800, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("http://127.0.0.1:5173/", {
+    await page.goto(`${base}/?project=${id}#workspace`, {
       waitUntil: "domcontentloaded",
     });
     const entry = page.getByRole("button", {
-      name: "手动调整布局",
+      name: "编辑布局",
       exact: true,
     });
     await expect(entry).toBeVisible();
@@ -46,7 +52,7 @@ try {
       ),
     ).toBe(true);
     if (width > 1000) {
-      await page.getByRole("button", { name: "外观设置", exact: true }).click();
+      await openInspector(page, "外观");
       await expect(entry).toBeVisible();
       await page
         .getByRole("button", { name: "收起设置面板", exact: true })
@@ -66,27 +72,34 @@ try {
       page.getByRole("application", { name: "人工设计平面图" }),
     ).toBeVisible({ timeout: 30000 });
     await expect(entry).toBeHidden();
-    await page.getByRole("button", { name: "返回三维", exact: true }).click();
+    await page.locator(".editor-return").click();
     await expect(entry).toBeVisible();
     await page.getByRole("button", { name: "原始户型", exact: true }).click();
     await entry.click();
     await expect(
       page.getByRole("application", { name: "人工设计平面图" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "返回三维", exact: true }).click();
+    await page.locator(".editor-return").click();
     checks.push(
       `${width}px：顶部文字入口可见，无横向溢出，键盘与鼠标均可直接进入并返回`,
     );
   }
   expect(await (await page.request.get(sourceUrl)).text()).toBe(original);
+  await page.getByRole("button", { name: "我的方案" }).click();
   await page.getByRole("button", { name: "探索示例空间", exact: true }).click();
-  await expect(page.locator("#viewport canvas")).toHaveAttribute(
-    "data-model-url",
-    showcase.model_url,
-    { timeout: 30000 },
-  );
+  await expect
+    .poll(
+      async () => {
+        const url = await page
+          .locator("#viewport canvas")
+          .getAttribute("data-model-url");
+        return url?.split("?")[0];
+      },
+      { timeout: 30000 },
+    )
+    .toBe(showcase.model_url);
   await expect(
-    page.getByRole("button", { name: "手动调整布局", exact: true }),
+    page.getByRole("button", { name: "编辑布局", exact: true }),
   ).toHaveCount(0);
   checks.push("示例模型不展示无效编辑入口，已有任务的布局数据保持不变");
   expect(errors).toEqual([]);

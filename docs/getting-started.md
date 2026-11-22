@@ -139,3 +139,27 @@ AI 缓存每 6 小时检查，最多保留 30 天及 512 MB；清理不会删除
 ---
 
 [← 文档中心](README.md) · [返回项目首页](../README.md)
+
+### 本地墙体、门窗识别（可选）
+
+精细识别可以使用本机 ONNX 模型生成墙、窗、门的像素分割。在任务的「原图叠加」里勾选「本地墙、门、窗分割」即可查看。本地分割会与首次读图并行运行。程序优先用已有的原图裁切区域核对门窗，整图之外最多附带三张局部图。外轮廓在横纵两向都出现明显分歧时，详细读图会重看原图，结合本地候选坐标重新判断。独立复核仍用原图和自己的输入，跨度过大的结构差异会进入人工核对。模型或运行环境不可用时，工作台继续使用已有的识别流程。
+
+把兼容的单文件 ONNX 模型放到 `data/floorplan-model/structure.onnx`。模型输入是固定尺寸的 RGB float32 张量 `[1, 3, H, W]`，使用 ImageNet 归一化，输出是同尺寸的四通道 logits，顺序为背景、墙、窗、门。可以在独立的 Python 3.13 环境安装运行依赖。
+
+Windows PowerShell：
+
+```powershell
+py -3.13 -m venv data\floorplan-runtime
+.\data\floorplan-runtime\Scripts\python.exe -m pip install -r backend/requirements-floorplan.txt
+```
+
+macOS：
+
+```sh
+python3.13 -m venv data/floorplan-runtime
+data/floorplan-runtime/bin/python -m pip install -r backend/requirements-floorplan.txt
+```
+
+Windows 默认可用 CPU。兼容 DirectX 12 的显卡可在识别环境中用 `onnxruntime-directml` 替换 `onnxruntime`，两者选装一个。macOS 的 ONNX Runtime 会在可用时优先使用 Core ML。找不到适用的加速后端时使用 CPU，也可在 `.env` 里设置 `STUDIO_FLOORPLAN_DEVICE=cpu`。使用自定义数据目录时，默认的模型和运行环境目录也跟随数据目录。可分别用 `STUDIO_FLOORPLAN_MODEL` 和 `STUDIO_FLOORPLAN_PYTHON` 指定绝对路径。
+
+如果已获得可用于你的用途的 OpenBIM FloorPlan AI M2-DA 权重，可在单独的导出环境安装 `torch`、`torchvision`、`onnx` 与 `segmentation-models-pytorch`，然后运行 `python scripts/export_floorplan_model.py 权重.pt data/floorplan-model/structure.onnx`。项目仓库不附带第三方权重。发布前需按具体权重和训练数据的许可核对使用范围。

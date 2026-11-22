@@ -71,6 +71,13 @@
   animation: none;
   opacity: 0;
 }
+.loading-progress[data-indeterminate="true"] .loading-progress-fill {
+  animation: loading-sweep 1.9s ease-in-out infinite;
+}
+.loading-progress[data-indeterminate="true"] .loading-progress-fill::after {
+  animation: none;
+  opacity: 0;
+}
 .loading-progress .loading-progress-detail {
   margin: 10px 0 0;
   color: #78876e;
@@ -174,6 +181,14 @@
 @keyframes loading-glow {
   to {
     transform: translateX(100%);
+  }
+}
+@keyframes loading-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(315%);
   }
 }
 @keyframes loading-reveal {

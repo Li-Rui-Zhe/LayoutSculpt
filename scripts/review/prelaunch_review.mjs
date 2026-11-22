@@ -1,4 +1,4 @@
-import { launchReviewBrowser } from "./browser.mjs";
+import { launchReviewBrowser, openInspector } from "./browser.mjs";
 import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 
@@ -18,20 +18,20 @@ try {
     timeout: 30000,
   });
   await page
-    .getByRole("button", { name: "新建生成任务", exact: true })
+    .getByRole("button", { name: "新建方案", exact: true })
     .first()
     .click();
   await page.getByRole("button", { name: /使用示例户型/ }).click();
   await expect(page.locator(".upload-drop img")).toBeVisible();
   await page.getByLabel("任务名称").fill("浏览器验收 · 独立测试数据");
-  await page.getByText("高级设置 · 默认已配置", { exact: true }).click();
+  await page.getByText("高级设置", { exact: true }).click();
   await page
     .getByRole("checkbox", { name: "先看平面图，确认后再生成 3D", exact: true })
     .check();
   await expect(
-    page.getByRole("button", { name: "创建并开始生成" }),
+    page.getByRole("button", { name: "生成 3D 模型" }),
   ).toBeEnabled({ timeout: 30000 });
-  await page.getByRole("button", { name: "创建并开始生成" }).click();
+  await page.getByRole("button", { name: "生成 3D 模型" }).click();
   await expect(
     page.getByRole("heading", { name: "先确认结构，再生成三维" }),
   ).toBeVisible({ timeout: 30000 });
@@ -77,7 +77,7 @@ try {
     // 包含独立 Python 冷启动与真实 GLB 构建，不作为响应时间基准。
     { timeout: 120000 },
   );
-  await page.getByRole("button", { name: "外观设置", exact: true }).click();
+  await openInspector(page, "外观");
   await expect(
     page.getByText("原图结构已人工核对 · 模型截面校验通过", { exact: true }),
   ).toBeVisible();
@@ -99,7 +99,7 @@ try {
     "刷新保留待核对状态，确认后真实 GLB 与一致性证明交付，夜晚灯具点亮",
   );
 
-  await page.getByRole("button", { name: "方案概览", exact: true }).click();
+  await openInspector(page, "概览");
   await page.getByRole("button", { name: "改进方案", exact: true }).click();
   await expect(
     page.getByRole("dialog", { name: "改进当前方案" }),
@@ -187,7 +187,7 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByRole("button", { name: "切换任务栏" }).click();
+  await page.getByRole("button", { name: "我的方案" }).click();
   await expect(page.locator("#task-drawer")).toBeVisible();
   const backdrop = page.getByRole("button", { name: "收起任务栏" });
   const backdropBox = await backdrop.boundingBox();
@@ -244,11 +244,11 @@ try {
     "night",
   );
   await blocked
-    .getByRole("button", { name: "新建生成任务", exact: true })
+    .getByRole("button", { name: "新建方案", exact: true })
     .first()
     .click();
   await expect(blocked.getByLabel("任务名称")).toBeVisible();
-  await blocked.getByText("高级设置 · 默认已配置", { exact: true }).click();
+  await blocked.getByText("高级设置", { exact: true }).click();
   await expect(blocked.getByLabel("生成模型", { exact: true })).toHaveValue(
     "test-default",
   );

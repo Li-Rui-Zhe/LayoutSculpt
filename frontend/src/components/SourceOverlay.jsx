@@ -14,11 +14,13 @@ export default function SourceOverlay({ job, layout }) {
   const [matchedImage, setMatchedImage] = useState(false);
   const [opacity, setOpacity] = useState(0.75);
   const [labels, setLabels] = useState(false);
+  const [showLocal, setShowLocal] = useState(false);
   useEffect(() => {
     let live = true;
     setAlignment(null);
     setError("");
     setMatchedImage(false);
+    setShowLocal(false);
     if (!job.result?.source_alignment_url) return;
     api(`/jobs/${job.id}/artifacts/source-alignment.json`)
       .then((value) => {
@@ -45,6 +47,10 @@ export default function SourceOverlay({ job, layout }) {
         {error || "正在准备原图叠加对照…"}
       </p>
     );
+  const local =
+    alignment.local_segmentation?.artifact === "local-floorplan-mask.png"
+      ? alignment.local_segmentation
+      : null;
   const px = (p) => sourcePixel(p, alignment);
   const walls = new Map(layout.walls.map((w) => [w.id, w]));
   const boundary = alignment.audit_outline || alignment.evidence_outline || [];
@@ -80,6 +86,16 @@ export default function SourceOverlay({ job, layout }) {
             />
             显示房间名称
           </label>
+          {local && (
+            <label>
+              <input
+                type="checkbox"
+                checked={showLocal}
+                onChange={(event) => setShowLocal(event.target.checked)}
+              />
+              本地墙、门、窗分割
+            </label>
+          )}
         </div>
       </header>
       {error && <p role="alert">{error}</p>}
@@ -117,6 +133,15 @@ export default function SourceOverlay({ job, layout }) {
             role="img"
             aria-label="原图上的识别墙线和对照位置"
           >
+            {local && showLocal && (
+              <image
+                href={`/api/jobs/${job.id}/artifacts/${local.artifact}`}
+                width={alignment.image_width}
+                height={alignment.image_height}
+                preserveAspectRatio="none"
+                opacity=".55"
+              />
+            )}
             <g opacity={opacity}>
               <polygon
                 points={layout.outline
@@ -178,7 +203,10 @@ export default function SourceOverlay({ job, layout }) {
                   </g>
                 );
               })}
-              {(alignment.findings || [])
+              {[
+                ...(alignment.findings || []),
+                ...(showLocal ? local?.findings || [] : []),
+              ]
                 .filter((f) => Array.isArray(f.box) && f.box.length === 4)
                 .map((f, i) => (
                   <rect
@@ -228,6 +256,13 @@ export default function SourceOverlay({ job, layout }) {
         <ul>
           {alignment.findings.map((f, i) => (
             <li key={i}>{f.message}</li>
+          ))}
+        </ul>
+      )}
+      {showLocal && local?.findings?.length > 0 && (
+        <ul aria-label="本地识别差异">
+          {local.findings.map((finding, index) => (
+            <li key={index}>{finding.message}</li>
           ))}
         </ul>
       )}

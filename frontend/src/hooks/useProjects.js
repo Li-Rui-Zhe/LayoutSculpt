@@ -178,7 +178,14 @@ export function useProjects() {
     const id = item?.id || "sample";
     selection.current = id;
     setSelectedId(id);
-    writeContext({ project: id, object: null, room: null, tab: null });
+    writeContext({
+      project: id,
+      object: null,
+      room: null,
+      roamRoom: null,
+      roamVersion: null,
+      tab: null,
+    });
     try {
       localStorage.setItem("habitat-job", id);
     } catch {

@@ -1,3 +1,4 @@
+import WorkspaceSidebar from "../components/WorkspaceSidebar.jsx";
 import ProjectTargetSelect from "./ProjectTargetSelect.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -396,37 +397,6 @@ export default function AssetLibrary({
             </h1>
           </div>
         </div>
-        <div className="library-navigation">
-          <div className="library-tabs library-type-tabs" aria-label="素材类型">
-            <button
-              aria-pressed={assetType === "models"}
-              onClick={() => setAssetType("models")}
-            >
-              <Box size={16} />
-              三维模型
-            </button>
-            <button
-              aria-pressed={assetType === "materials"}
-              onClick={() => setAssetType("materials")}
-            >
-              <Palette size={16} />
-              装修材质
-            </button>
-            <button
-              aria-pressed={assetType === "architecture"}
-              onClick={() => setAssetType("architecture")}
-            >
-              <BrickWall size={16} />
-              建筑构件
-            </button>
-            <button
-              aria-pressed={assetType === "lighting"}
-              onClick={() => setAssetType("lighting")}
-            >
-              灯具
-            </button>
-          </div>
-        </div>
         <div className="library-actions">
           <AssetManager onChange={() => setRevision((r) => r + 1)} />
           <details className="library-import" hidden={assetType !== "models"}>
@@ -534,535 +504,600 @@ export default function AssetLibrary({
           {openError}
         </p>
       )}
-      {assetType === "lighting" ? (
-        <LightingLibrary
-          job={architectureJob}
-          jobs={jobs}
-          onSelectProject={onSelectArchitectureProject}
-          onApply={onApplyBoundary}
-        />
-      ) : assetType === "architecture" ? (
-        <ArchitectureLibrary
-          refreshKey={revision}
-          job={architectureJob}
-          document={architectureDocument}
-          selectedWallId={selectedWallId}
-          onApply={onApplyBoundary}
-          jobs={jobs}
-          onSelectProject={onSelectArchitectureProject}
-        />
-      ) : assetType === "materials" ? (
-        <MaterialLibrary
-          rooms={materialRooms}
-          onApply={onApplyMaterial}
-          targetName={materialTargetName || targetName || "当前方案"}
-          floorOnly={floorOnly}
-          initialRoomId={materialRoomId}
-          initialCategory={materialCategory}
-          onCategoryChange={(category) => {
-            setMaterialCategory(category);
-            if (!onClose) writeContext({ materialCategory: category });
-          }}
-        />
-      ) : (
-        <>
-          {preferences.error && (
-            <p className="form-error" role="status">
-              收藏已保留在当前页面，正在等待同步。
-              <button className="text-button" onClick={preferences.reload}>
-                重试同步
-              </button>
-            </p>
-          )}
-          <div className="library-filters library-model-filters">
+      <div className="asset-sidebar-layout">
+        <WorkspaceSidebar
+          label="素材库侧栏"
+          className="asset-filter-sidebar"
+          compactToggle="素材分类与筛选"
+        >
+          <div className="library-navigation">
             <div
-              className="library-tabs library-source-tabs"
-              aria-label="素材来源"
+              className="library-tabs library-type-tabs"
+              aria-label="素材类型"
             >
-              {Object.entries(sources).map(([id, name]) => (
-                <button
-                  key={id}
-                  aria-pressed={source === id}
-                  onClick={() => {
-                    setSource(id);
-                    setCategory("all");
+              <button
+                aria-pressed={assetType === "models"}
+                onClick={() => setAssetType("models")}
+              >
+                <Box size={16} />
+                三维模型
+              </button>
+              <button
+                aria-pressed={assetType === "materials"}
+                onClick={() => setAssetType("materials")}
+              >
+                <Palette size={16} />
+                装修材质
+              </button>
+              <button
+                aria-pressed={assetType === "architecture"}
+                onClick={() => setAssetType("architecture")}
+              >
+                <BrickWall size={16} />
+                建筑构件
+              </button>
+              <button
+                aria-pressed={assetType === "lighting"}
+                onClick={() => setAssetType("lighting")}
+              >
+                灯具
+              </button>
+            </div>
+          </div>
+          {assetType === "models" && (
+            <div className="library-filters library-model-filters">
+              <div
+                className="library-tabs library-source-tabs"
+                aria-label="素材来源"
+              >
+                {Object.entries(sources).map(([id, name]) => (
+                  <button
+                    key={id}
+                    aria-pressed={source === id}
+                    onClick={() => {
+                      setSource(id);
+                      setCategory("all");
+                      setFamily("all");
+                      setStyle("all");
+                    }}
+                  >
+                    {name}
+                    <small>
+                      {loading && !items.length
+                        ? "—"
+                        : id === "all"
+                          ? items.length
+                          : items.filter((i) => i.source === id).length}
+                    </small>
+                  </button>
+                ))}
+              </div>
+              <div className="library-filter-main">
+                <label className="library-search">
+                  <Search size={15} />
+                  <input
+                    type="search"
+                    aria-label="搜索 GLB 素材"
+                    placeholder="搜家具、款式、空间，如：沙发 左贵妃"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                </label>
+                <select
+                  aria-label="家具用途分类"
+                  value={category}
+                  onChange={(e) => {
+                    setCategory(e.target.value);
                     setFamily("all");
                     setStyle("all");
                   }}
                 >
-                  {name}
-                  <small>
-                    {loading && !items.length
-                      ? "—"
-                      : id === "all"
-                        ? items.length
-                        : items.filter((i) => i.source === id).length}
-                  </small>
+                  <option value="all">全部空间</option>
+                  {categories.map((label) => (
+                    <option key={label} value={label}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="家具品类"
+                  value={family}
+                  onChange={(e) => setFamily(e.target.value)}
+                >
+                  <option value="all">全部品类</option>
+                  {families.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="家具风格"
+                  value={style}
+                  onChange={(e) => setStyle(e.target.value)}
+                >
+                  <option value="all">全部风格</option>
+                  {styles.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="素材排序"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                >
+                  <option value="source">按来源排列</option>
+                  <option value="recent">最近更新</option>
+                  <option value="name">按名称排列</option>
+                </select>
+              </div>
+              <div className="library-filter-options">
+                <button
+                  aria-pressed={favoritesOnly}
+                  onClick={() => setFavoritesOnly(!favoritesOnly)}
+                >
+                  <Star
+                    size={14}
+                    fill={favoritesOnly ? "currentColor" : "none"}
+                  />
+                  我的收藏
                 </button>
-              ))}
-            </div>
-            <div className="library-filter-main">
-              <label className="library-search">
-                <Search size={15} />
-                <input
-                  type="search"
-                  aria-label="搜索 GLB 素材"
-                  placeholder="搜家具、款式、空间，如：沙发 左贵妃"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-              <select
-                aria-label="家具用途分类"
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  setFamily("all");
-                  setStyle("all");
-                }}
-              >
-                <option value="all">全部空间</option>
-                {categories.map((label) => (
-                  <option key={label} value={label}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="家具品类"
-                value={family}
-                onChange={(e) => setFamily(e.target.value)}
-              >
-                <option value="all">全部品类</option>
-                {families.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="家具风格"
-                value={style}
-                onChange={(e) => setStyle(e.target.value)}
-              >
-                <option value="all">全部风格</option>
-                {styles.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="素材排序"
-                value={sort}
-                onChange={(e) => setSort(e.target.value)}
-              >
-                <option value="source">按来源排列</option>
-                <option value="recent">最近更新</option>
-                <option value="name">按名称排列</option>
-              </select>
-            </div>
-            <div className="library-filter-options">
-              <button
-                aria-pressed={favoritesOnly}
-                onClick={() => setFavoritesOnly(!favoritesOnly)}
-              >
-                <Star
-                  size={14}
-                  fill={favoritesOnly ? "currentColor" : "none"}
-                />
-                我的收藏
-              </button>
-              <details className="library-extra-filters">
-                <summary>
-                  <SlidersHorizontal size={14} />
-                  更多筛选
-                </summary>
-                <div>
-                  <button
-                    aria-pressed={archivedOnly}
-                    onClick={() => setArchivedOnly(!archivedOnly)}
-                  >
-                    已归档
-                  </button>
-                  <button
-                    aria-pressed={recentOnly}
-                    onClick={() => setRecentOnly(!recentOnly)}
-                  >
-                    <Clock3 size={14} />
-                    最近使用
-                  </button>
-                  <label>
-                    最大宽度{" "}
-                    <input
-                      aria-label="素材最大宽度（米）"
-                      type="number"
-                      min=".1"
-                      max="60"
-                      step=".1"
-                      value={maxWidth}
-                      placeholder="不限"
-                      onChange={(e) => setMaxWidth(e.target.value)}
-                      style={{ width: 75 }}
-                    />{" "}
-                    m
-                  </label>
-                </div>
-              </details>
-              <button className="text-button" onClick={resetFilters}>
-                重置筛选
-              </button>
-            </div>
-          </div>
-          {error && (
-            <div className="diy-error" role="alert">
-              {error}
-              <button onClick={() => setRevision((r) => r + 1)}>重试</button>
+                <details className="library-extra-filters">
+                  <summary>
+                    <SlidersHorizontal size={14} />
+                    更多筛选
+                  </summary>
+                  <div>
+                    <button
+                      aria-pressed={archivedOnly}
+                      onClick={() => setArchivedOnly(!archivedOnly)}
+                    >
+                      已归档
+                    </button>
+                    <button
+                      aria-pressed={recentOnly}
+                      onClick={() => setRecentOnly(!recentOnly)}
+                    >
+                      <Clock3 size={14} />
+                      最近使用
+                    </button>
+                    <label>
+                      最大宽度{" "}
+                      <input
+                        aria-label="素材最大宽度（米）"
+                        type="number"
+                        min=".1"
+                        max="60"
+                        step=".1"
+                        value={maxWidth}
+                        placeholder="不限"
+                        onChange={(e) => setMaxWidth(e.target.value)}
+                        style={{ width: 75 }}
+                      />{" "}
+                      m
+                    </label>
+                  </div>
+                </details>
+                <button className="text-button" onClick={resetFilters}>
+                  重置筛选
+                </button>
+              </div>
             </div>
           )}
-          <OperationStatus
-            active={loading}
-            failed={!!error}
-            successLabel="素材列表已更新"
-            background={items.length > 0}
-            label={items.length ? "正在刷新素材列表" : "正在读取本地素材"}
-          />
-          <div className="library-content">
-            <div className="library-browser">
-              <div className="library-result-label">
-                <h2>
-                  素材{" "}
-                  <span>{loading && !items.length ? "—" : visible.length}</span>
-                </h2>
-                <span>选择素材，查看三维细节</span>
-              </div>
-              <div className="library-cards" aria-label="GLB 素材列表">
-                {visible.slice(0, cardLimit).map((item) => (
-                  <button
-                    className="library-card"
-                    key={item.id}
-                    aria-pressed={selected?.id === item.id}
-                    onClick={() => choose(item.id)}
-                  >
-                    <div className={`library-card-symbol ${item.source}`}>
-                      {selected?.id === item.id && (
-                        <i className="library-card-check" aria-hidden="true">
-                          <Check size={12} />
-                        </i>
-                      )}
-                      <Thumbnail item={item} />
-                    </div>
-                    <strong>{item.name}</strong>
-                    <small>
-                      {item.family || item.category || sources[item.source]} ·{" "}
-                      {item.variant || sources[item.source]}
-                    </small>
-                    {item.dimensions && (
-                      <span className="library-card-dimensions">
-                        {dimensionLabel(item)}
-                      </span>
-                    )}
+        </WorkspaceSidebar>
+        <div className="asset-sidebar-body">
+          {assetType === "lighting" ? (
+            <LightingLibrary
+              job={architectureJob}
+              jobs={jobs}
+              onSelectProject={onSelectArchitectureProject}
+              onApply={onApplyBoundary}
+            />
+          ) : assetType === "architecture" ? (
+            <ArchitectureLibrary
+              refreshKey={revision}
+              job={architectureJob}
+              document={architectureDocument}
+              selectedWallId={selectedWallId}
+              onApply={onApplyBoundary}
+              jobs={jobs}
+              onSelectProject={onSelectArchitectureProject}
+            />
+          ) : assetType === "materials" ? (
+            <MaterialLibrary
+              rooms={materialRooms}
+              onApply={onApplyMaterial}
+              targetName={materialTargetName || targetName || "当前方案"}
+              floorOnly={floorOnly}
+              initialRoomId={materialRoomId}
+              initialCategory={materialCategory}
+              onCategoryChange={(category) => {
+                setMaterialCategory(category);
+                if (!onClose) writeContext({ materialCategory: category });
+              }}
+            />
+          ) : (
+            <>
+              {preferences.error && (
+                <p className="form-error" role="status">
+                  收藏已保留在当前页面，正在等待同步。
+                  <button className="text-button" onClick={preferences.reload}>
+                    重试同步
                   </button>
-                ))}
-              </div>
-              {visible.length > cardLimit && (
-                <button
-                  className="secondary-button"
-                  onClick={() => setCardLimit((n) => n + 48)}
-                >
-                  加载更多素材（已显示 {Math.min(cardLimit, visible.length)} /{" "}
-                  {visible.length}）
-                </button>
+                </p>
               )}
-              {!loading && !visible.length && (
-                <div className="library-empty">
-                  <Boxes size={36} />
-                  <h2>没有匹配的模型</h2>
-                  <p>换一个关键词或分类，也可以去 DIY 生成新素材。</p>
-                  <button
-                    className="secondary-button"
-                    onClick={() => {
-                      resetFilters();
-                      setSource("all");
-                    }}
-                  >
-                    查看全部模型
+              {error && (
+                <div className="diy-error" role="alert">
+                  {error}
+                  <button onClick={() => setRevision((r) => r + 1)}>
+                    重试
                   </button>
                 </div>
               )}
-            </div>
-            <aside className="library-inspector" ref={inspector}>
-              {selected ? (
-                <>
-                  <div className="library-selection">
-                    <div className="library-selection-actions">
+              <OperationStatus
+                active={loading}
+                failed={!!error}
+                successLabel="素材列表已更新"
+                background={items.length > 0}
+                label={items.length ? "正在刷新素材列表" : "正在读取本地素材"}
+              />
+              <div className="library-content">
+                <div className="library-browser">
+                  <div className="library-result-label">
+                    <h2>
+                      素材{" "}
+                      <span>
+                        {loading && !items.length ? "—" : visible.length}
+                      </span>
+                    </h2>
+                    <span>选择素材，查看三维细节</span>
+                  </div>
+                  <div className="library-cards" aria-label="GLB 素材列表">
+                    {visible.slice(0, cardLimit).map((item) => (
                       <button
-                        className="text-button"
-                        disabled={!preferences.ready}
-                        onClick={async () => {
-                          if (selected.source !== "imported") {
-                            preferences.change("archived", selected.id);
-                            return;
-                          }
-                          try {
-                            await api("/library/manage", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                id: selected.id,
-                                archived: !(
-                                  selected.archived ||
+                        className="library-card"
+                        key={item.id}
+                        aria-pressed={selected?.id === item.id}
+                        onClick={() => choose(item.id)}
+                      >
+                        <div className={`library-card-symbol ${item.source}`}>
+                          {selected?.id === item.id && (
+                            <i
+                              className="library-card-check"
+                              aria-hidden="true"
+                            >
+                              <Check size={12} />
+                            </i>
+                          )}
+                          <Thumbnail item={item} />
+                        </div>
+                        <strong>{item.name}</strong>
+                        <small>
+                          {item.family || item.category || sources[item.source]}{" "}
+                          · {item.variant || sources[item.source]}
+                        </small>
+                        {item.dimensions && (
+                          <span className="library-card-dimensions">
+                            {dimensionLabel(item)}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {visible.length > cardLimit && (
+                    <button
+                      className="secondary-button"
+                      onClick={() => setCardLimit((n) => n + 48)}
+                    >
+                      加载更多素材（已显示 {Math.min(cardLimit, visible.length)}{" "}
+                      / {visible.length}）
+                    </button>
+                  )}
+                  {!loading && !visible.length && (
+                    <div className="library-empty">
+                      <Boxes size={36} />
+                      <h2>没有匹配的模型</h2>
+                      <p>换一个关键词或分类，也可以去 DIY 生成新素材。</p>
+                      <button
+                        className="secondary-button"
+                        onClick={() => {
+                          resetFilters();
+                          setSource("all");
+                        }}
+                      >
+                        查看全部模型
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <aside
+                  className="library-inspector"
+                  aria-label="素材预览与应用"
+                  ref={inspector}
+                >
+                  {selected ? (
+                    <>
+                      <div className="library-selection">
+                        <div className="library-selection-actions">
+                          <button
+                            className="text-button"
+                            disabled={!preferences.ready}
+                            onClick={async () => {
+                              if (selected.source !== "imported") {
+                                preferences.change("archived", selected.id);
+                                return;
+                              }
+                              try {
+                                await api("/library/manage", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({
+                                    id: selected.id,
+                                    archived: !(
+                                      selected.archived ||
+                                      preferences.value.archived?.includes(
+                                        selected.id,
+                                      )
+                                    ),
+                                  }),
+                                });
+                                if (
                                   preferences.value.archived?.includes(
                                     selected.id,
                                   )
-                                ),
-                              }),
-                            });
-                            if (
-                              preferences.value.archived?.includes(selected.id)
-                            )
-                              preferences.change("archived", selected.id);
-                            setRevision((r) => r + 1);
-                          } catch (e) {
-                            setError(e.message);
-                          }
-                        }}
-                      >
-                        {selected.archived ||
-                        preferences.value.archived?.includes(selected.id)
-                          ? "恢复到素材库"
-                          : "归档素材"}
-                      </button>
-                      <button
-                        className="text-button"
-                        onClick={() => toggleFavorite(selected.id)}
-                      >
-                        {favorites.includes(selected.id)
-                          ? "★ 已收藏"
-                          : "☆ 收藏素材"}
-                      </button>
-                      <span>{sources[selected.source]}</span>
-                    </div>
-                    <h2>{selected.name}</h2>
-                    <p>
-                      {selected.family
-                        ? `${selected.category} / ${selected.family} / ${selected.variant}`
-                        : selected.filename}
-                    </p>
-                    {["imported", "diy"].includes(selected.source) && (
-                      <label className="library-ai-option">
-                        <input
-                          type="checkbox"
-                          disabled={!preferences.ready || !!preferences.error}
-                          checked={
-                            preferences.value.aiEnabled?.includes(
-                              selected.id,
-                            ) || false
-                          }
-                          onChange={() =>
-                            preferences.change("aiEnabled", selected.id)
-                          }
-                        />
-                        允许 AI 自动使用此素材
-                        <small>关闭后仍可手动放置，已有方案保留。</small>
-                      </label>
-                    )}
-                  </div>
-                  <DiyPreview
-                    defaultGrid={false}
-                    modelUrl={selected.model_url}
-                    onInfo={setInfo}
-                    frontDirection={selected.source === "builtin" ? 1 : -1}
-                  />
-                  {selected.description && (
-                    <p className="library-description">
-                      {selected.description}
-                    </p>
-                  )}
-                  {variants.length > 1 && (
-                    <section
-                      className="library-variants"
-                      aria-label="同类家具款式"
-                    >
-                      <header>
-                        <strong>{selected.family} · 款式选择</strong>
-                        <small>{variants.length} 款</small>
-                      </header>
-                      <div>
-                        {variants.map((item) => (
-                          <button
-                            key={item.id}
-                            aria-pressed={selected.id === item.id}
-                            onClick={() => {
-                              resetFilters();
-                              setSource("builtin");
-                              setFamily(item.family);
-                              choose(item.id);
+                                )
+                                  preferences.change("archived", selected.id);
+                                setRevision((r) => r + 1);
+                              } catch (e) {
+                                setError(e.message);
+                              }
                             }}
                           >
-                            <Thumbnail item={item} />
-                            <span>
-                              {item.variant}
-                              <small>{dimensionLabel(item)}</small>
-                            </span>
+                            {selected.archived ||
+                            preferences.value.archived?.includes(selected.id)
+                              ? "恢复到素材库"
+                              : "归档素材"}
                           </button>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                  <dl className="library-metadata">
-                    <div>
-                      <dt>宽 × 深 × 高</dt>
-                      <dd>
-                        {(info?.dimensions || selected.dimensions)
-                          ?.map((n) => n.toFixed(2))
-                          .join(" × ") || "等待预览读取"}
-                        {(info || selected.dimensions) && " m"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>文件大小</dt>
-                      <dd>{bytes(info?.bytes ?? selected.size_bytes)}</dd>
-                    </div>
-                    <div>
-                      <dt>网格 / 三角面</dt>
-                      <dd>
-                        {info
-                          ? `${info.meshes} / ${info.triangles.toLocaleString()}`
-                          : "等待预览读取"}
-                      </dd>
-                    </div>
-                  </dl>
-                  <div className="library-actions">
-                    {selected.placeable && onPlace && (
-                      <div className="library-placement">
-                        {targetName ? (
-                          <strong>放入：{targetName}</strong>
-                        ) : (
-                          <label>
-                            目标方案
-                            <ProjectTargetSelect
-                              jobs={jobs}
-                              value={targetId}
-                              currentId={currentJobId}
-                              label="放入目标方案"
-                              disabled={placing}
-                              onChange={setTargetId}
+                          <button
+                            className="text-button"
+                            onClick={() => toggleFavorite(selected.id)}
+                          >
+                            {favorites.includes(selected.id)
+                              ? "★ 已收藏"
+                              : "☆ 收藏素材"}
+                          </button>
+                          <span>{sources[selected.source]}</span>
+                        </div>
+                        <h2>{selected.name}</h2>
+                        <p>
+                          {selected.family
+                            ? `${selected.category} / ${selected.family} / ${selected.variant}`
+                            : selected.filename}
+                        </p>
+                        {["imported", "diy"].includes(selected.source) && (
+                          <label className="library-ai-option">
+                            <input
+                              type="checkbox"
+                              disabled={
+                                !preferences.ready || !!preferences.error
+                              }
+                              checked={
+                                preferences.value.aiEnabled?.includes(
+                                  selected.id,
+                                ) || false
+                              }
+                              onChange={() =>
+                                preferences.change("aiEnabled", selected.id)
+                              }
                             />
+                            允许 AI 自动使用此素材
+                            <small>关闭后仍可手动放置，已有方案保留。</small>
                           </label>
                         )}
-                        <label>
-                          放置比例（%）
-                          <input
-                            aria-label="素材放置比例"
-                            type="number"
-                            min="10"
-                            max="200"
-                            value={scale}
-                            disabled={placing}
-                            onChange={(e) => setScale(e.target.value)}
-                          />
-                        </label>
-                        <button
-                          className="primary-button"
-                          disabled={
-                            placing ||
-                            (!targetName &&
-                              !jobs.some(
-                                (j) =>
-                                  j.id === targetId && j.status === "succeeded",
-                              ))
-                          }
-                          onClick={place}
+                      </div>
+                      <DiyPreview
+                        defaultGrid={false}
+                        modelUrl={selected.model_url}
+                        onInfo={setInfo}
+                        frontDirection={selected.source === "builtin" ? 1 : -1}
+                      />
+                      {selected.description && (
+                        <p className="library-description">
+                          {selected.description}
+                        </p>
+                      )}
+                      {variants.length > 1 && (
+                        <section
+                          className="library-variants"
+                          aria-label="同类家具款式"
                         >
-                          {placing ? "正在准备家具…" : "去户型选择位置"}
-                        </button>
-                        {placing && (
-                          <div
-                            className="asset-placement-feedback"
-                            role="status"
-                          >
-                            正在准备所选家具，完成后进入户型选择位置。
-                            <i
-                              className="object-loading-rail"
-                              aria-hidden="true"
-                            />
+                          <header>
+                            <strong>{selected.family} · 款式选择</strong>
+                            <small>{variants.length} 款</small>
+                          </header>
+                          <div>
+                            {variants.map((item) => (
+                              <button
+                                key={item.id}
+                                aria-pressed={selected.id === item.id}
+                                onClick={() => {
+                                  resetFilters();
+                                  setSource("builtin");
+                                  setFamily(item.family);
+                                  choose(item.id);
+                                }}
+                              >
+                                <Thumbnail item={item} />
+                                <span>
+                                  {item.variant}
+                                  <small>{dimensionLabel(item)}</small>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                      <dl className="library-metadata">
+                        <div>
+                          <dt>宽 × 深 × 高</dt>
+                          <dd>
+                            {(info?.dimensions || selected.dimensions)
+                              ?.map((n) => n.toFixed(2))
+                              .join(" × ") || "等待预览读取"}
+                            {(info || selected.dimensions) && " m"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>文件大小</dt>
+                          <dd>{bytes(info?.bytes ?? selected.size_bytes)}</dd>
+                        </div>
+                        <div>
+                          <dt>网格 / 三角面</dt>
+                          <dd>
+                            {info
+                              ? `${info.meshes} / ${info.triangles.toLocaleString()}`
+                              : "等待预览读取"}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="library-actions">
+                        {selected.placeable && onPlace && (
+                          <div className="library-placement">
+                            {targetName ? (
+                              <strong>放入：{targetName}</strong>
+                            ) : (
+                              <label>
+                                目标方案
+                                <ProjectTargetSelect
+                                  jobs={jobs}
+                                  value={targetId}
+                                  currentId={currentJobId}
+                                  label="放入目标方案"
+                                  disabled={placing}
+                                  onChange={setTargetId}
+                                />
+                              </label>
+                            )}
+                            <label>
+                              放置比例（%）
+                              <input
+                                aria-label="素材放置比例"
+                                type="number"
+                                min="10"
+                                max="200"
+                                value={scale}
+                                disabled={placing}
+                                onChange={(e) => setScale(e.target.value)}
+                              />
+                            </label>
+                            <button
+                              className="primary-button"
+                              disabled={
+                                placing ||
+                                (!targetName &&
+                                  !jobs.some(
+                                    (j) =>
+                                      j.id === targetId &&
+                                      j.status === "succeeded",
+                                  ))
+                              }
+                              onClick={place}
+                            >
+                              {placing ? "正在准备家具…" : "去户型选择位置"}
+                            </button>
+                            {placing && (
+                              <div
+                                className="asset-placement-feedback"
+                                role="status"
+                              >
+                                正在准备所选家具，完成后进入户型选择位置。
+                                <i
+                                  className="object-loading-rail"
+                                  aria-hidden="true"
+                                />
+                              </div>
+                            )}
+                            {placeError && (
+                              <p className="diy-error" role="alert">
+                                {placeError}
+                              </p>
+                            )}
+                            <small>
+                              {selected.kind === "wall_television" ||
+                              selected.placement_surface === "wall"
+                                ? "进入人工设计后点击墙边放置，自动贴合完整墙面；也可自动找空位。可在右侧调整安装高度。"
+                                : selected.placement_surface === "countertop"
+                                  ? "点击尺寸足够的桌面或台面放置，自动贴合台面高度；也可自动寻找合适台面。"
+                                  : "进入人工设计后预览占地并点击放下，也可自动找空位。确认前不会添加，放下后仍可拖动和精调。"}
+                            </small>
                           </div>
                         )}
-                        {placeError && (
-                          <p className="diy-error" role="alert">
-                            {placeError}
-                          </p>
+                        <a
+                          className="secondary-button"
+                          href={selected.model_url}
+                          download={selected.filename}
+                        >
+                          <Download size={14} />
+                          下载 GLB
+                        </a>
+                        {selected.source === "diy" && onEditDiy && (
+                          <button
+                            className="primary-button"
+                            disabled={opening || !selected.asset_id}
+                            onClick={() =>
+                              openAction(
+                                () => onEditDiy(selected.asset_id),
+                                "selection",
+                              )
+                            }
+                          >
+                            <Sparkles size={14} />
+                            编辑 DIY 部件
+                          </button>
                         )}
-                        <small>
-                          {(selected.kind === "wall_television" || selected.placement_surface === "wall")
-                            ? "进入人工设计后点击墙边放置，自动贴合完整墙面；也可自动找空位。可在右侧调整安装高度。"
-                            : selected.placement_surface === "countertop"
-                              ? "点击尺寸足够的桌面或台面放置，自动贴合台面高度；也可自动寻找合适台面。"
-                              : "进入人工设计后预览占地并点击放下，也可自动找空位。确认前不会添加，放下后仍可拖动和精调。"}
-                        </small>
+                        {selected.source === "generated" && onOpenJob && (
+                          <button
+                            className="primary-button"
+                            disabled={opening || !selected.job_id}
+                            onClick={() =>
+                              openAction(
+                                () => onOpenJob(selected.job_id),
+                                "selection",
+                              )
+                            }
+                          >
+                            <ArrowUpRight size={14} />
+                            {opening ? "正在打开方案…" : "打开方案"}
+                          </button>
+                        )}
                       </div>
-                    )}
-                    <a
-                      className="secondary-button"
-                      href={selected.model_url}
-                      download={selected.filename}
-                    >
-                      <Download size={14} />
-                      下载 GLB
-                    </a>
-                    {selected.source === "diy" && onEditDiy && (
-                      <button
-                        className="primary-button"
-                        disabled={opening || !selected.asset_id}
-                        onClick={() =>
-                          openAction(
-                            () => onEditDiy(selected.asset_id),
-                            "selection",
-                          )
-                        }
-                      >
-                        <Sparkles size={14} />
-                        编辑 DIY 部件
-                      </button>
-                    )}
-                    {selected.source === "generated" && onOpenJob && (
-                      <button
-                        className="primary-button"
-                        disabled={opening || !selected.job_id}
-                        onClick={() =>
-                          openAction(
-                            () => onOpenJob(selected.job_id),
-                            "selection",
-                          )
-                        }
-                      >
-                        <ArrowUpRight size={14} />
-                        {opening ? "正在打开方案…" : "打开方案"}
-                      </button>
-                    )}
-                  </div>
-                  <p className="library-note">
-                    {openError && openOrigin === "selection" && (
-                      <span role="alert">
-                        {openError}
-                        <br />
-                      </span>
-                    )}
-                    展示实际 GLB 网格及材质。DIY
-                    素材支持部件编辑；家具放置在人工设计页完成。
-                  </p>
-                </>
-              ) : (
-                <div className="library-empty">
-                  <Box size={40} />
-                  <p>选择模型后，可旋转查看三维细节。</p>
-                </div>
-              )}
-            </aside>
-          </div>
-        </>
-      )}
+                      <p className="library-note">
+                        {openError && openOrigin === "selection" && (
+                          <span role="alert">
+                            {openError}
+                            <br />
+                          </span>
+                        )}
+                        展示实际 GLB 网格及材质。DIY
+                        素材支持部件编辑；家具放置在人工设计页完成。
+                      </p>
+                    </>
+                  ) : (
+                    <div className="library-empty">
+                      <Box size={40} />
+                      <p>选择模型后，可旋转查看三维细节。</p>
+                    </div>
+                  )}
+                </aside>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

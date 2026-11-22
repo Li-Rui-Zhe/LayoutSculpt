@@ -22,7 +22,11 @@ export function pollInteriorHistory({
       if (stopped) return;
       failures = 0;
       onData(value);
-      if (value.items.some((item) => item.status === "generating"))
+      if (
+        value.items.some((item) =>
+          ["queued", "generating"].includes(item.status),
+        )
+      )
         timer = schedule(poll, 2000);
     } catch (error) {
       if (stopped) return;

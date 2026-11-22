@@ -1,6 +1,6 @@
 // Public demonstration capture. Uses authored assets and synthetic settings only.
 import { expect as baseExpect } from "@playwright/test";
-import { launchReviewBrowser } from "./browser.mjs";
+import { launchReviewBrowser, openInspector } from "./browser.mjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 const expect = baseExpect.configure({ timeout: 60000 });
@@ -298,7 +298,7 @@ async function record(name) {
     }
     if (name === "materials") {
       await sample();
-      await page.getByRole("button", { name: "外观设置", exact: true }).click();
+      await openInspector(page, "外观");
       await expect(page.locator(".material-dock")).toBeVisible();
       await shot("保留布局 · 从原始材质开始", 1100);
       await applyMaterial("浅橡木饰面");

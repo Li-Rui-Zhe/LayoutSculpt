@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   Box,
   Check,
+  ChevronRight,
   Clock3,
   AlertCircle,
   FolderOpen,
@@ -38,7 +39,14 @@ export function StatusBadge({ status }) {
     </span>
   );
 }
-export default function TaskRail({ projects, creating, open, onSelect }) {
+export default function TaskRail({
+  projects,
+  creating,
+  open,
+  onSelect,
+  sampleActive,
+  onOpenSample,
+}) {
   const [comparing, setComparing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [name, setName] = useState("");
@@ -94,7 +102,7 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
       <div className="rail-top">
         <div className="rail-title">
           <LayoutGrid size={17} />
-          <h2>我的任务</h2>
+          <h2>我的方案</h2>
           <span>{counts.all.toString().padStart(2, "0")}</span>
         </div>
         <label className="task-search">
@@ -223,38 +231,41 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
                 <TaskProgress job={job} compact />
               )}
             </button>
-            <div className="project-version-actions">
-              {job.status === "succeeded" && (
-                <button onClick={() => setComparing(job)}>比较</button>
-              )}
-              <button
-                onClick={() => {
-                  setEditing(job);
-                  setName(job.name);
-                  setError("");
-                }}
-              >
-                重命名
-              </button>
-              <button
-                disabled={busy || !terminal(job.status)}
-                onClick={async () => {
-                  setBusy(true);
-                  setError("");
-                  try {
-                    await projects.changeMetadata(job.id, {
-                      archived: !job.archived,
-                    });
-                  } catch (e) {
-                    setError(e.message);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                {job.archived ? "恢复" : "归档"}
-              </button>
-            </div>
+            <details className="task-more">
+              <summary aria-label={`${job.name}的版本操作`}>版本操作</summary>
+              <div className="project-version-actions">
+                {job.status === "succeeded" && (
+                  <button onClick={() => setComparing(job)}>比较</button>
+                )}
+                <button
+                  onClick={() => {
+                    setEditing(job);
+                    setName(job.name);
+                    setError("");
+                  }}
+                >
+                  重命名
+                </button>
+                <button
+                  disabled={busy || !terminal(job.status)}
+                  onClick={async () => {
+                    setBusy(true);
+                    setError("");
+                    try {
+                      await projects.changeMetadata(job.id, {
+                        archived: !job.archived,
+                      });
+                    } catch (e) {
+                      setError(e.message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  {job.archived ? "恢复" : "归档"}
+                </button>
+              </div>
+            </details>
           </div>
         ))}
         {projects.hasMoreHistory && (
@@ -323,18 +334,22 @@ export default function TaskRail({ projects, creating, open, onSelect }) {
       )}
       <div className="rail-bottom">
         <button
-          className={
-            !creating && !projects.job && projects.selectedId === "sample"
-              ? "selected"
-              : ""
-          }
-          onClick={() => onSelect(null)}
+          type="button"
+          className="sample-entry"
+          aria-label="探索示例空间"
+          aria-current={sampleActive ? "page" : undefined}
+          onClick={onOpenSample}
         >
-          <Box size={17} />
-          <span>
-            探索示例空间<small>体验三维设计与材质搭配</small>
+          <Box size={17} aria-hidden="true" />
+          <span className="sample-entry-copy">
+            <strong>探索示例空间</strong>
+            <small>体验三维设计与材质搭配</small>
           </span>
-          <span>↗</span>
+          {sampleActive ? (
+            <Check size={16} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={16} aria-hidden="true" />
+          )}
         </button>
         <p>
           <i />

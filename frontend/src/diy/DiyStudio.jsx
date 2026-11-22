@@ -725,7 +725,7 @@ export default function DiyStudio({
           </div>
         )}
         <div className="diy-columns">
-          <aside className="diy-library">
+          <aside className="diy-library" aria-label="家具部件与素材">
             <div className="creative-panel-heading">
               <Sparkles size={16} />
               <h3>设计助手</h3>
@@ -1126,7 +1126,7 @@ export default function DiyStudio({
               <span>圆角、面板、圆柱与软包部件</span>
             </div>
           </section>
-          <aside className="diy-properties">
+          <aside className="diy-properties" aria-label="家具部件属性">
             <div className="creative-panel-heading">
               <SlidersHorizontal size={16} />
               <h3>设计属性</h3>

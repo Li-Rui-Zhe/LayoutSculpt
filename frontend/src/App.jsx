@@ -7,23 +7,26 @@ import {
   Plus,
   PanelLeftClose,
   PanelLeftOpen,
-  Home,
+  Box,
   Sparkles,
   ImagePlus,
   Armchair,
   Layers,
   Grid2X2,
   PlugZap,
+  Compass,
   CircleHelp,
 } from "lucide-react";
 import { useProjects } from "./hooks/useProjects.js";
 import TaskRail from "./components/TaskRail.jsx";
+import WorkspaceSidebar from "./components/WorkspaceSidebar.jsx";
 import TaskWorkspace from "./components/TaskWorkspace.jsx";
 import InteriorImageWorkspace from "./components/InteriorImageWorkspace.jsx";
 import Modal from "./components/Modal.jsx";
 import useInteriorDraft from "./hooks/useInteriorDraft.js";
 import GenerationForm from "./components/GenerationForm.jsx";
 const AiConnections = lazy(() => import("./settings/AiConnections.jsx"));
+const RealRoam = lazy(() => import("./components/RealRoam.jsx"));
 const SurfaceStudio = lazy(() => import("./diy/SurfaceStudio.jsx"));
 const DiyStudio = lazy(() => import("./diy/DiyStudio.jsx"));
 import WorkspaceHelp from "./components/WorkspaceHelp.jsx";
@@ -44,11 +47,24 @@ const surfaceTitles = {
   effects: "效果图 · 三维取景",
   library: "素材库 · 模型与材质",
   ai: "AI 接入 · 模型与连接",
+  roam: "真实漫游 · 实验",
 };
+
+const workspaceLinks = [
+  ["workspace", Box, "自主 3D"],
+  ["roam", Compass, "真实漫游"],
+  ["diy", Sparkles, "DIY 创作"],
+  ["effects", ImagePlus, "效果图"],
+  ["library", Boxes, "素材库"],
+  ["ai", PlugZap, "AI 接入"],
+];
 
 function surfaceFromHash() {
   const hash = location.hash.slice(1);
-  return Object.hasOwn(surfaceTitles, hash) ? hash : "workspace";
+  return ["new-model", "new-roam"].includes(hash) ||
+    Object.hasOwn(surfaceTitles, hash)
+    ? hash
+    : "workspace";
 }
 
 export default function App() {
@@ -87,9 +103,9 @@ export default function App() {
   const [materialRequest, setMaterialRequest] = useState(null);
   const [surfaceToApply, setSurfaceToApply] = useState(null);
   const [materialContext, setMaterialContext] = useState({ id: "", rooms: [] });
-  const navigate = (next) => {
+  const navigate = (next, reviewId = null) => {
+    writeContext({ roamReview: reviewId });
     setSurface(next);
-    setCreating(false);
     setRailOpen(false);
     if (next === "diy") setDiyVisited(true);
     location.hash = next;
@@ -98,19 +114,33 @@ export default function App() {
     const change = () => {
       const next = surfaceFromHash();
       setSurface(next);
-      if (next !== "workspace") setCreating(false);
+      setRailOpen(false);
       if (next === "diy") setDiyVisited(true);
     };
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
-  const [creating, setCreating] = useState(false);
+  const creating = surface === "new-model" || surface === "new-roam";
+  const creationMode = surface === "new-roam" ? "roam" : "model";
+  useEffect(() => {
+    const job = projects.job;
+    if (
+      surface === "workspace" &&
+      job?.id === readContext("roamReview") &&
+      ["queued", "running", "succeeded"].includes(job.status)
+    )
+      navigate("roam");
+  }, [surface, projects.job?.id, projects.job?.status]);
+  const [roamEditorRequest, setRoamEditorRequest] = useState(null);
+  const [modelImport, setModelImport] = useState(null);
   const [replacementJob, setReplacementJob] = useState(null);
   const [draft, setDraft] = useState(0);
   const [railOpen, setRailOpen] = useState(false);
   const [headingHost, setHeadingHost] = useState(null);
   const creationHost = useRef(null);
   const taskMenu = useRef(null);
+
+  const modelPicker = useRef(null);
   useEffect(() => {
     if (!railOpen) return;
     const close = (event) => {
@@ -125,17 +155,17 @@ export default function App() {
   useEffect(() => {
     if (creating) creationHost.current?.scrollTo({ top: 0 });
   }, [creating]);
-  const activeCount = projects.jobs.filter((job) =>
-    ["queued", "running"].includes(job.status),
-  ).length;
-  const reviewCount = projects.jobs.filter(
-    (job) => job.status === "awaiting_review",
-  ).length;
-  const select = (job) => {
-    navigate("workspace");
+  const select = (job, destination = "workspace") => {
+    navigate(destination);
     projects.select(job);
-    setCreating(false);
     setRailOpen(false);
+  };
+  const sampleSelected = projects.selectedId === "sample";
+  const sampleActive = surface === "workspace" && !creating && sampleSelected;
+  const openSample = () => {
+    if (sampleSelected) navigate("workspace");
+    else select(null);
+    taskMenu.current?.focus();
   };
   const chooseInteriorView = () => {
     const sourceId = interiorView?.projectId;
@@ -155,12 +185,31 @@ export default function App() {
       room: projectId === sourceId ? interiorView.room : null,
     });
   };
+  const newFloorPlan = (mode = "model", replacement = null) => {
+    setReplacementJob(replacement);
+    navigate(mode === "roam" ? "new-roam" : "new-model");
+  };
   return (
     <main className="factory result-first studio-shell">
       <BuildNotice />
       <ConnectionNotice
         serviceError={projects.error}
         onRetry={projects.recheck}
+      />
+      <input
+        ref={modelPicker}
+        type="file"
+        accept=".glb"
+        aria-label="导入三维模型"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) {
+            select(null);
+            setModelImport(file);
+          }
+        }}
       />
       <header className="factory-header">
         <a
@@ -180,13 +229,11 @@ export default function App() {
           </strong>
         </a>
         <div className="project-heading-host" ref={setHeadingHost}>
-          {creating && surface === "workspace" && <strong>新建户型</strong>}
-          {surface !== "workspace" && <strong>{surfaceTitles[surface]}</strong>}
+          {surface !== "roam" && surfaceTitles[surface] && (
+            <strong>{surfaceTitles[surface]}</strong>
+          )}
         </div>
         <div className="header-meta">
-          <button className="text-button" onClick={() => setHelpOpen(true)}>
-            使用帮助
-          </button>
           <span
             className={`connection ${projects.health ? "online" : ""}`}
             title="工作台负责保存任务和生成三维，使用 DeepSeek API 也需要工作台运行。"
@@ -288,8 +335,8 @@ export default function App() {
           <button
             className={railOpen ? "active" : ""}
             ref={taskMenu}
-            aria-label="切换任务栏"
-            title="我的任务"
+            aria-label="我的方案"
+            title="我的方案"
             aria-expanded={railOpen}
             aria-controls="task-drawer"
             onClick={() => setRailOpen(!railOpen)}
@@ -302,87 +349,37 @@ export default function App() {
             <span>我的方案</span>
           </button>
           <button
-            aria-label="新建生成任务"
-            title="新建户型"
+            aria-label="新建方案"
+            title="新建方案"
             className={creating ? "active" : ""}
             aria-current={creating ? "page" : undefined}
-            onClick={() => {
-              navigate("workspace");
-              setCreating(true);
-              setRailOpen(false);
-            }}
+            onClick={() =>
+              newFloorPlan(
+                surface === "roam" || creationMode === "roam"
+                  ? "roam"
+                  : "model",
+              )
+            }
           >
             <Plus size={20} />
-            <span>新建户型</span>
+            <span>新建方案</span>
           </button>
-          <button
-            aria-label="探索示例空间"
-            title="示例空间"
-            aria-current={
-              surface === "workspace" &&
-              !creating &&
-              projects.selectedId === "sample"
-                ? "page"
-                : undefined
-            }
-            className={
-              surface === "workspace" &&
-              !creating &&
-              projects.selectedId === "sample"
-                ? "active"
-                : ""
-            }
-            onClick={() => select(null)}
-          >
-            <Home size={20} />
-            <span>示例空间</span>
-          </button>
-          <button
-            aria-label="打开 DIY 设计"
-            title="DIY 设计 · 家具、墙面、地板"
-            className={surface === "diy" ? "active" : ""}
-            aria-current={surface === "diy" ? "page" : undefined}
-            onClick={() => navigate("diy")}
-          >
-            <Sparkles size={20} />
-            <span>DIY 创作</span>
-          </button>
-          <button
-            aria-label="打开效果图工作区"
-            title="效果图 · 三维取景与 AI 出图"
-            className={surface === "effects" ? "active" : ""}
-            aria-current={surface === "effects" ? "page" : undefined}
-            onClick={() => navigate("effects")}
-          >
-            <ImagePlus size={20} />
-            <span>效果图</span>
-          </button>
-          <button
-            aria-label="打开素材库"
-            title="素材库 · 模型与材质"
-            className={surface === "library" ? "active" : ""}
-            aria-current={surface === "library" ? "page" : undefined}
-            onClick={() => navigate("library")}
-          >
-            <Boxes size={20} />
-            <span>素材库</span>
-          </button>
-          <button
-            aria-label="打开 AI 接入"
-            title="AI 接入 · Codex 与 DeepSeek"
-            className={surface === "ai" ? "active" : ""}
-            aria-current={surface === "ai" ? "page" : undefined}
-            onClick={() => navigate("ai")}
-          >
-            <PlugZap size={20} />
-            <span style={{ whiteSpace: "nowrap" }}>AI 接入</span>
-          </button>
-          <button
-            className="mobile-help"
-            aria-label="使用帮助"
-            onClick={() => setHelpOpen(true)}
-          >
-            <CircleHelp size={20} />
+          <span className="nav-divider" aria-hidden="true" />
+          {workspaceLinks.map(([id, Icon, label]) => (
+            <button
+              key={id}
+              aria-label={`打开${label}`}
+              title={label}
+              className={surface === id ? "active" : ""}
+              aria-current={surface === id ? "page" : undefined}
+              onClick={() => navigate(id)}
+            >
+              <Icon size={20} aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+          <button aria-label="使用帮助" onClick={() => setHelpOpen(true)}>
+            <CircleHelp size={20} aria-hidden="true" />
             <span>帮助</span>
           </button>
         </nav>
@@ -397,7 +394,16 @@ export default function App() {
           projects={projects}
           creating={creating}
           open={railOpen}
-          onSelect={select}
+          onSelect={(job) =>
+            select(
+              job,
+              surface === "roam" || surface === "new-roam"
+                ? "roam"
+                : "workspace",
+            )
+          }
+          sampleActive={sampleActive}
+          onOpenSample={openSample}
         />
         <section
           className={`factory-workspace ${surface !== "workspace" ? "creation-workspace" : ""}`}
@@ -415,106 +421,132 @@ export default function App() {
               <AiConnections />
             </ProgressBoundary>
           )}
-          {surface === "diy" && (
-            <div className="diy-hub-nav">
-              <div className="creative-nav-title">
-                <Sparkles size={19} />
-                <strong>DIY 创作</strong>
-              </div>
-              <div role="tablist" aria-label="DIY 设计类型">
-                {[
-                  ["furniture", "家具 DIY", Armchair],
-                  ["walls", "墙面 DIY", Layers],
-                  ["floor", "地板 DIY", Grid2X2],
-                ].map(([id, title, Icon]) => (
-                  <button
-                    key={id}
-                    role="tab"
-                    aria-selected={diyMode === id}
-                    onClick={() => setDiyMode(id)}
-                  >
-                    <Icon size={15} />
-                    {title}
-                  </button>
-                ))}
-              </div>
-              <p>
-                {surfaceDiy
-                  ? "独立制作墙地面材质，保存到素材库后可用于任意户型。"
-                  : "创建家具素材，再放入你的户型方案。"}
-              </p>
-            </div>
-          )}
-          {surfaceDiy && (
-            <ProgressBoundary label="正在打开材质设计…">
-              <SurfaceStudio
-                key={diyMode}
-                category={diyMode}
-                onApply={(material) =>
-                  setSurfaceToApply({ material, category: diyMode })
-                }
-                onLibrary={() => {
-                  writeContext({
-                    assetType: "materials",
-                    materialCategory: diyMode,
-                  });
-                  navigate("library");
+          {surface === "roam" && (
+            <ProgressBoundary label="正在打开真实漫游…">
+              <RealRoam
+                key={projects.selectedId}
+                projectId={projects.selectedId}
+                job={projects.job}
+                jobs={projects.jobs}
+                projects={projects}
+                onProject={() => navigate("workspace")}
+                onEditStructure={() => {
+                  setRoamEditorRequest({ id: projects.selectedId });
+                  navigate("workspace", projects.selectedId);
+                }}
+                onHistoryTask={async (id, version) => {
+                  const job =
+                    id === "sample"
+                      ? null
+                      : projects.jobs.find((item) => item.id === id) ||
+                        (await api(`/jobs/${id}`));
+                  select(job, "roam");
+                  if (version)
+                    writeContext({
+                      roamRoom: version.context.roomId,
+                      roamVersion: version.id,
+                    });
                 }}
               />
             </ProgressBoundary>
           )}
           {diyVisited && (
-            <div
-              className="studio-page-host"
-              hidden={surface !== "diy" || surfaceDiy}
-            >
-              <ProgressBoundary label="正在打开家具设计…">
-                <DiyStudio
-                  active={surface === "diy" && !surfaceDiy}
-                  openAssetRequest={diyAssetId}
-                  saveBeforeUse
-                  closeAfterUse={false}
-                  useLabel="保存并选择放置位置"
-                  onLibrary={(assetId) => {
-                    try {
-                      sessionStorage.setItem(
-                        "library-context:page",
-                        JSON.stringify({
+            <div className="diy-workspace-layout" hidden={surface !== "diy"}>
+              <WorkspaceSidebar
+                label="DIY 创作侧栏"
+                className="diy-mode-sidebar"
+                compactToggle="DIY 类型"
+              >
+                <nav aria-label="DIY 设计类型">
+                  {[
+                    ["furniture", "家具 DIY", Armchair],
+                    ["walls", "墙面 DIY", Layers],
+                    ["floor", "地板 DIY", Grid2X2],
+                  ].map(([id, title, Icon]) => (
+                    <button
+                      type="button"
+                      key={id}
+                      aria-current={diyMode === id ? "true" : undefined}
+                      onClick={() => setDiyMode(id)}
+                    >
+                      <Icon size={16} aria-hidden="true" />
+                      {title}
+                    </button>
+                  ))}
+                </nav>
+              </WorkspaceSidebar>
+              <div className="diy-workspace-body">
+                {surfaceDiy && (
+                  <ProgressBoundary label="正在打开材质设计…">
+                    <SurfaceStudio
+                      key={diyMode}
+                      category={diyMode}
+                      onApply={(material) =>
+                        setSurfaceToApply({ material, category: diyMode })
+                      }
+                      onLibrary={() => {
+                        writeContext({
+                          assetType: "materials",
+                          materialCategory: diyMode,
+                        });
+                        navigate("library");
+                      }}
+                    />
+                  </ProgressBoundary>
+                )}
+                <div
+                  className="studio-page-host"
+                  hidden={surface !== "diy" || surfaceDiy}
+                >
+                  <ProgressBoundary label="正在打开家具设计…">
+                    <DiyStudio
+                      active={surface === "diy" && !surfaceDiy}
+                      openAssetRequest={diyAssetId}
+                      saveBeforeUse
+                      closeAfterUse={false}
+                      useLabel="保存并选择放置位置"
+                      onLibrary={(assetId) => {
+                        try {
+                          sessionStorage.setItem(
+                            "library-context:page",
+                            JSON.stringify({
+                              assetType: "models",
+                              source: "diy",
+                              query: "",
+                              selectedId: `diy:${assetId}`,
+                              category: "all",
+                              family: "all",
+                              style: "all",
+                            }),
+                          );
+                        } catch {
+                          /* URL 仍指向 DIY 素材。 */
+                        }
+                        writeContext({
                           assetType: "models",
-                          source: "diy",
-                          query: "",
-                          selectedId: `diy:${assetId}`,
+                          librarySource: "diy",
                           category: "all",
                           family: "all",
-                          style: "all",
-                        }),
-                      );
-                    } catch {
-                      /* URL 仍指向 DIY 素材。 */
-                    }
-                    writeContext({
-                      assetType: "models",
-                      librarySource: "diy",
-                      category: "all",
-                      family: "all",
-                      furnitureStyle: "all",
-                      libraryAsset: `diy:${assetId}`,
-                      q: null,
-                    });
-                    navigate("library");
-                  }}
-                  onUse={async (design) =>
-                    setFurnitureDestination({
-                      design,
-                      targetId:
-                        projects.job?.status === "succeeded"
-                          ? projects.job.id
-                          : "",
-                    })
-                  }
-                  onClose={() => navigate("workspace")}
-                />
-              </ProgressBoundary>
+                          furnitureStyle: "all",
+                          libraryAsset: `diy:${assetId}`,
+                          q: null,
+                        });
+                        navigate("library");
+                      }}
+                      onUse={async (design) =>
+                        setFurnitureDestination({
+                          design,
+                          targetId:
+                            projects.job?.status === "succeeded"
+                              ? projects.job.id
+                              : "",
+                        })
+                      }
+                      onClose={() => navigate("workspace")}
+                    />
+                  </ProgressBoundary>
+                </div>
+              </div>
             </div>
           )}
           {surface === "library" && (
@@ -602,48 +634,58 @@ export default function App() {
               }}
             />
           )}
-          <div className="workspace-breadcrumb" hidden={!creating}>
-            <span>设计工厂</span>
-            <span>/</span>
-            <b>
-              {creating
-                ? "新建生成任务"
-                : projects.job
-                  ? "任务工作区"
-                  : "示例工作区"}
-            </b>
-            <span className="workspace-count">
-              {[
-                activeCount && `${activeCount} 个任务正在处理`,
-                reviewCount && `${reviewCount} 个待核对结构`,
-              ]
-                .filter(Boolean)
-                .join(" · ") || "让设计有序发生"}
-            </span>
-          </div>
-          <div ref={creationHost} hidden={!creating} className="creation-shell">
-            <GenerationForm
-              key={draft}
-              replacementJob={replacementJob}
-              projects={projects}
-              onCancel={() => setCreating(false)}
-              onCreated={() => {
-                setReplacementJob(null);
-                setCreating(false);
-                setDraft((value) => value + 1);
-              }}
-            />
-          </div>
+          {creating && (
+            <div ref={creationHost} className="creation-shell">
+              <GenerationForm
+                key={`${draft}:${creationMode}`}
+                replacementJob={replacementJob}
+                mode={creationMode}
+                onModeChange={(mode) => {
+                  if (mode === creationMode) return;
+                  setReplacementJob(null);
+                  navigate(mode === "roam" ? "new-roam" : "new-model");
+                }}
+                onImportModel={() => modelPicker.current.click()}
+                projects={projects}
+                onCancel={() =>
+                  creationMode === "roam"
+                    ? navigate("roam")
+                    : navigate("workspace")
+                }
+                onCreated={() => {
+                  setReplacementJob(null);
+                  navigate(creationMode === "roam" ? "roam" : "workspace");
+                  setDraft((value) => value + 1);
+                }}
+              />
+            </div>
+          )}
           {projects.selectedId === "sample" || projects.job ? (
             <TaskWorkspace
               key={projects.job?.id || "sample"}
               active={!creating && surface === "workspace"}
+              reviewEditorRequest={
+                roamEditorRequest?.id === projects.job?.id
+                  ? roamEditorRequest
+                  : null
+              }
+              onReturnToRoamReview={
+                projects.job?.id &&
+                readContext("roamReview") === projects.job.id
+                  ? () => navigate("roam")
+                  : null
+              }
               diyMode={null}
               onDiyModeChange={setDiyMode}
               onExitDiy={() => navigate("workspace")}
               job={projects.job}
               headingHost={headingHost}
               projects={projects}
+              modelImport={
+                projects.selectedId === "sample" ? modelImport : null
+              }
+              onImportModel={() => modelPicker.current.click()}
+              onModelImported={() => setModelImport(null)}
               onConnections={() => navigate("ai")}
               onInteriorView={(view) => {
                 interiorDraft.choose(view);
@@ -677,11 +719,12 @@ export default function App() {
               onMaterialConsumed={() => setMaterialRequest(null)}
               onMaterialContext={setMaterialContext}
               onCreate={(source) => {
-                if (source?.result?.failure?.code === "input_image_rejected") {
-                  setReplacementJob(source);
-                  setDraft((value) => value + 1);
-                }
-                setCreating(true);
+                newFloorPlan(
+                  "model",
+                  source?.result?.failure?.code === "input_image_rejected"
+                    ? source
+                    : null,
+                );
               }}
             />
           ) : (
@@ -692,10 +735,7 @@ export default function App() {
               <Boxes size={38} />
               <h2>{projects.loading ? "正在恢复任务" : "任务暂不可用"}</h2>
               <p>可以从左侧选择任务，或新建一个设计。</p>
-              <button
-                className="primary-button"
-                onClick={() => setCreating(true)}
-              >
+              <button className="primary-button" onClick={() => newFloorPlan()}>
                 新建任务
               </button>
             </div>

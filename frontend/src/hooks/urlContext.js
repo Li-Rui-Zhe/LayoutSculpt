@@ -19,8 +19,9 @@ export function readContext(key, fallback = "") {
   )
     return fallback;
   if (
-    ["project", "diyAsset"].includes(key) &&
-    !/^(sample|[a-f0-9]{32})$/.test(value)
+    (["project", "diyAsset"].includes(key) &&
+      !/^(sample|[a-f0-9]{32})$/.test(value)) ||
+    (key === "roamVersion" && !/^[a-f0-9]{32}$/.test(value))
   )
     return fallback;
   return value;

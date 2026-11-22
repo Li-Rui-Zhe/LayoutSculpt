@@ -81,7 +81,11 @@ test("家具占位被排除，不能为满屋家具强行找一个站位", () =>
   assert.ok(points.every((p) => p.x >= 3.28));
 });
 test("狭窄或无效房间不提供不安全站位", () => {
-  assert.deepEqual(standPoints(rect(0, 0, 0.4, 4)), []);
+  const narrowRoom = rect(0, 0, 0.4, 4);
+  assert.deepEqual(standPoints(narrowRoom), []);
+  const panoramaPoints = standPoints(narrowRoom, [], 0.12);
+  assert.ok(panoramaPoints.length > 0);
+  assert.ok(panoramaPoints.every((p) => roomClearance(p, narrowRoom) >= 0.12));
   assert.deepEqual(standPoints([]), []);
 });
 test("大房间候选点数量有上限，站位之间保留距离", () => {

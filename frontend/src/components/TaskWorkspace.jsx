@@ -27,7 +27,6 @@ import {
   Square,
   SlidersHorizontal,
   Upload,
-  Info,
   ArrowRight,
   PencilRuler,
   TriangleAlert,
@@ -44,11 +43,12 @@ import { effortLabel } from "../hooks/useModels.js";
 import { showcase } from "../catalog.js";
 import { api, terminal } from "../api.js";
 import { StatusBadge } from "./TaskRail.jsx";
+import WorkspaceSidebar from "./WorkspaceSidebar.jsx";
 const ManualEditor = lazy(() => import("../editor/ManualEditor.jsx"));
 import StructureReview from "./StructureReview.jsx";
 import RetryDialog from "./RetryDialog.jsx";
 import { generationError } from "../hooks/modelSelection.js";
-import { useUrlContext, writeContext } from "../hooks/urlContext.js";
+import { useUrlContext } from "../hooks/urlContext.js";
 import { materialSelection } from "../materials/assignments.js";
 
 const defaultSettings = {
@@ -194,6 +194,8 @@ export default function TaskWorkspace({
   onConnections,
   active = true,
   headingHost,
+  reviewEditorRequest,
+  onReturnToRoamReview,
   placementRequest,
   onPlacementConsumed,
   boundaryRequest,
@@ -205,6 +207,9 @@ export default function TaskWorkspace({
   onInteriorView,
   interiorViewRequest,
   onInteriorViewRequestConsumed,
+  modelImport,
+  onImportModel,
+  onModelImported,
   diyMode = null,
   onExitDiy,
   onDiyModeChange,
@@ -266,7 +271,10 @@ export default function TaskWorkspace({
     )
       setTab("edit");
   }, [boundaryRequest, job?.status]);
-  const [panel, setPanel] = useState(hasModel ? "overview" : "task");
+  useEffect(() => {
+    if (active && reviewing && reviewEditorRequest) setTab("edit");
+  }, [reviewEditorRequest, reviewing]);
+  const [panel, setPanel] = useState(hasModel ? "rooms" : "task");
   useEffect(() => {
     if (!materialRequest || lastMaterialRequest.current === materialRequest.id)
       return;
@@ -300,7 +308,7 @@ export default function TaskWorkspace({
     const media = matchMedia("(max-width: 1000px)");
     const change = () => {
       setMobile(media.matches);
-      if (!tour) setInspectorOpen(!media.matches);
+      if (media.matches) setInspectorOpen(false);
     };
     media.addEventListener("change", change);
     return () => media.removeEventListener("change", change);
@@ -310,9 +318,7 @@ export default function TaskWorkspace({
     const close = (event) => {
       if (event.key === "Escape") {
         setInspectorOpen(false);
-        host.current
-          ?.querySelector('.workspace-tools button[aria-expanded="true"]')
-          ?.focus();
+        host.current?.querySelector(".workspace-tools button")?.focus();
       }
     };
     document.addEventListener("keydown", close);
@@ -333,6 +339,16 @@ export default function TaskWorkspace({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [imported, setImported] = useState(null);
+  useEffect(() => {
+    if (!active || !modelImport) return;
+    setModelError("");
+    setImported({
+      url: URL.createObjectURL(modelImport),
+      name: modelImport.name,
+    });
+    setTab("design");
+    onModelImported();
+  }, [active, modelImport, onModelImported, setTab]);
   const [notice, setNotice] = useState("");
   const [reviewNoticeDismissed, setReviewNoticeDismissed] = useState(false);
   const [improving, setImproving] = useState(false);
@@ -372,7 +388,6 @@ export default function TaskWorkspace({
     }
   }, [captureRequested, tab, loading, modelError]);
   const viewer = useRef(null),
-    picker = useRef(null),
     host = useRef(null);
   useEffect(() => {
     if (!active || !interiorViewRequest) return;
@@ -519,32 +534,26 @@ export default function TaskWorkspace({
       </div>
       {job?.status === "succeeded" && (
         <div className="project-actions">
-          {tab !== "edit" &&
-            [
-              ["plan", "平面设计"],
-              ["scene", "三维设计"],
-            ].map(([view, label]) => (
-              <button
-                key={view}
-                type="button"
-                className="primary-button layout-edit-button"
-                title="手动调整墙体、门窗、家具和灯具"
-                onClick={() => {
-                  writeContext({ editorView: view });
-                  setTab("edit");
-                }}
-              >
-                <PencilRuler size={16} />
-                <span>{label}</span>
-              </button>
-            ))}
-          <button
-            className="secondary-button export-button"
-            aria-label="导出成果"
-            onClick={() => setTab("assets")}
-          >
-            <Download size={15} /> <span>导出成果</span>
-          </button>
+          {tab !== "edit" ? (
+            <button
+              type="button"
+              className="primary-button layout-edit-button"
+              title="调整墙体、门窗与家具"
+              onClick={() => setTab("edit")}
+            >
+              <PencilRuler size={16} />
+              <span>编辑布局</span>
+            </button>
+          ) : (
+            <button
+              className="secondary-button export-button"
+              aria-label="导出成果"
+              onClick={() => setTab("assets")}
+            >
+              <Download size={15} />
+              <span>导出成果</span>
+            </button>
+          )}
         </div>
       )}
     </header>
@@ -588,12 +597,13 @@ export default function TaskWorkspace({
             onFloorConsumed={() => setFloorRequest(null)}
             onClose={() => {
               setTab(reviewing ? "review" : hasModel ? "design" : "activity");
-              if (diyMode) onExitDiy?.();
+              if (onReturnToRoamReview) onReturnToRoamReview();
+              else if (diyMode) onExitDiy?.();
             }}
           />
         </ProgressBoundary>
       )}
-      {reviewing && tab !== "edit" && (
+      {active && reviewing && tab !== "edit" && (
         <StructureReview
           job={job}
           projects={projects}
@@ -601,7 +611,7 @@ export default function TaskWorkspace({
         />
       )}
       <div
-        className={`workspace-columns ${inspectorVisible ? "has-inspector" : "preview-only"} ${tour ? "tour-workspace" : ""}`}
+        className={`workspace-columns ${inspectorVisible ? "has-inspector" : "preview-only"} ${tour ? "tour-workspace" : ""} ${hasModel && tab === "design" ? "model-preview-columns" : ""}`}
         hidden={tab === "edit" || reviewing}
       >
         <div className="design-column">
@@ -693,55 +703,17 @@ export default function TaskWorkspace({
                 </button>
               ))}
             <div className="workspace-tools" hidden={!!tour}>
-              {hasModel && (
-                <button
-                  aria-label="外观设置"
-                  aria-expanded={inspectorOpen && panel === "design"}
-                  aria-controls={`inspector-${id}`}
-                  className={
-                    inspectorOpen && panel === "design" ? "active" : ""
-                  }
-                  onClick={() => {
-                    setInspectorOpen(!(inspectorOpen && panel === "design"));
-                    setPanel("design");
-                  }}
-                >
-                  <SlidersHorizontal size={15} />
-                  <span className="tool-label">外观设置</span>
-                </button>
-              )}
-              {job && (
-                <button
-                  aria-label="方案概览"
-                  aria-expanded={inspectorOpen && panel === "overview"}
-                  aria-controls={`inspector-${id}`}
-                  className={
-                    inspectorOpen && panel === "overview" ? "active" : ""
-                  }
-                  onClick={() => {
-                    setPanel("overview");
-                    setInspectorOpen(!(inspectorOpen && panel === "overview"));
-                  }}
-                >
-                  <Box size={15} />
-                  <span className="tool-label">方案概览</span>
-                </button>
-              )}
-              {job && (
-                <button
-                  aria-label="任务详情"
-                  aria-expanded={inspectorOpen && panel === "task"}
-                  aria-controls={`inspector-${id}`}
-                  className={inspectorOpen && panel === "task" ? "active" : ""}
-                  onClick={() => {
-                    setInspectorOpen(!(inspectorOpen && panel === "task"));
-                    setPanel("task");
-                  }}
-                >
-                  <Info size={15} />
-                  <span className="tool-label">任务详情</span>
-                </button>
-              )}
+              <button
+                aria-label="方案面板"
+                title="房间、概览、外观与任务"
+                aria-expanded={inspectorVisible}
+                aria-controls={`inspector-${id}`}
+                className={inspectorVisible ? "active" : ""}
+                onClick={() => setInspectorOpen(!inspectorOpen)}
+              >
+                <SlidersHorizontal size={15} />
+                <span className="tool-label">方案面板</span>
+              </button>
             </div>
           </nav>
           <div
@@ -791,11 +763,7 @@ export default function TaskWorkspace({
                   <Viewport
                     ref={viewer}
                     url={url}
-                    active={
-                      active &&
-                      tab === "design" &&
-                      !(mobile && inspectorVisible)
-                    }
+                    active={active && tab === "design"}
                     state={state}
                     settings={settings}
                     onLoading={(v) => {
@@ -955,26 +923,6 @@ export default function TaskWorkspace({
                     </div>
                   </div>
                   <div className="room-view-tools">
-                    <select
-                      aria-label="定位房间"
-                      value={roomView}
-                      onChange={(e) => {
-                        if (roomIsolated)
-                          viewer.current?.isolateRoom(e.target.value || null);
-                        if (!e.target.value) setRoomIsolated(false);
-                        setRoomView(e.target.value);
-                        if (e.target.value)
-                          viewer.current?.focusRoom(e.target.value, false);
-                        else reset();
-                      }}
-                    >
-                      <option value="">全屋视角</option>
-                      {rooms.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                        </option>
-                      ))}
-                    </select>
                     <button
                       className="tour-entry"
                       disabled={loading || !!modelError || !rooms.length}
@@ -988,27 +936,9 @@ export default function TaskWorkspace({
                       }}
                     >
                       <Focus size={14} />
-                      看看我家
+                      室内行走
                     </button>
 
-                    <button
-                      disabled={!roomView || loading}
-                      aria-pressed={roomIsolated}
-                      onClick={() => {
-                        if (
-                          viewer.current?.isolateRoom(
-                            roomIsolated ? null : roomView,
-                          )
-                        )
-                          setRoomIsolated(!roomIsolated);
-                        else
-                          setNotice(
-                            "此模型没有可用的房间边界，请保存为新的三维版本后重试。",
-                          );
-                      }}
-                    >
-                      {roomIsolated ? "退出房间隔离" : "只看此房间"}
-                    </button>
                     <button
                       disabled={loading}
                       onClick={() => {
@@ -1038,7 +968,8 @@ export default function TaskWorkspace({
                       保存镜头
                     </button>
                     <button
-                      disabled={!savedCamera || loading}
+                      hidden={!savedCamera}
+                      disabled={loading}
                       onClick={() => viewer.current?.restoreCamera(savedCamera)}
                     >
                       恢复镜头
@@ -1185,12 +1116,24 @@ export default function TaskWorkspace({
             </span>
           </div>
         </div>
-        <aside
+        <WorkspaceSidebar
+          label="自主 3D 侧栏"
           className="inspector"
           id={`inspector-${id}`}
           hidden={!inspectorVisible}
         >
           <div className="inspector-tabs">
+            {hasModel && (
+              <button
+                type="button"
+                className={panel === "rooms" ? "active" : ""}
+                aria-pressed={panel === "rooms"}
+                onClick={() => setPanel("rooms")}
+              >
+                房间
+              </button>
+            )}
+
             <button
               className={panel === "overview" ? "active" : ""}
               onClick={() => setPanel("overview")}
@@ -1202,7 +1145,7 @@ export default function TaskWorkspace({
               onClick={() => setPanel("design")}
             >
               <SlidersHorizontal size={14} />
-              设计
+              外观
             </button>
             <button
               className={panel === "task" ? "active" : ""}
@@ -1226,7 +1169,59 @@ export default function TaskWorkspace({
             aria-label={panel === "overview" ? "方案概览内容" : undefined}
             tabIndex={panel === "overview" ? 0 : undefined}
           >
-            {panel === "overview" ? (
+            {panel === "rooms" ? (
+              <section className="model-room-panel" aria-label="三维房间">
+                <h2>房间</h2>
+                {rooms.length > 0 ? (
+                  <>
+                    <select
+                      aria-label="定位房间"
+                      value={roomView}
+                      onChange={(e) => {
+                        setTab("design");
+                        if (roomIsolated)
+                          viewer.current?.isolateRoom(e.target.value || null);
+                        if (!e.target.value) setRoomIsolated(false);
+                        setRoomView(e.target.value);
+                        if (e.target.value)
+                          viewer.current?.focusRoom(e.target.value, false);
+                        else reset();
+                      }}
+                    >
+                      <option value="">全屋视角</option>
+                      {rooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      hidden={!roomView}
+                      disabled={loading}
+                      aria-pressed={roomIsolated}
+                      onClick={() => {
+                        if (
+                          viewer.current?.isolateRoom(
+                            roomIsolated ? null : roomView,
+                          )
+                        )
+                          setRoomIsolated(!roomIsolated);
+                        else
+                          setNotice(
+                            "此模型没有可用的房间边界，请保存为新的三维版本后重试。",
+                          );
+                      }}
+                    >
+                      {roomIsolated ? "退出房间隔离" : "只看此房间"}
+                    </button>
+                  </>
+                ) : (
+                  <p>
+                    {loading ? "正在读取房间…" : "当前模型暂无房间可定位。"}
+                  </p>
+                )}
+              </section>
+            ) : panel === "overview" ? (
               <div className="overview-panel">
                 <div className="overview-heading">
                   <span className="eyebrow">空间方案</span>
@@ -1314,6 +1309,7 @@ export default function TaskWorkspace({
                   <button
                     className="secondary-button full-width"
                     onClick={() => setPanel("design")}
+                    disabled={!hasModel}
                   >
                     <SlidersHorizontal size={16} />
                     调整外观
@@ -1548,7 +1544,7 @@ export default function TaskWorkspace({
                       <div className="inspector-section">
                         <button
                           className="secondary-button full-width"
-                          onClick={() => picker.current.click()}
+                          onClick={onImportModel}
                         >
                           <Upload size={14} />
                           导入本地 GLB
@@ -1778,7 +1774,7 @@ export default function TaskWorkspace({
               <small>当前任务与其他生成相互独立</small>
             </div>
           )}
-        </aside>
+        </WorkspaceSidebar>
       </div>
       {notice && (
         <div className="toast" role="status">
@@ -1891,21 +1887,6 @@ export default function TaskWorkspace({
           onClose={() => setSharing(false)}
         />
       )}
-      <input
-        ref={picker}
-        type="file"
-        accept=".glb"
-        aria-label="导入三维模型"
-        hidden
-        onChange={(e) => {
-          const file = e.target.files[0];
-          if (file) {
-            setModelError("");
-            setImported({ url: URL.createObjectURL(file), name: file.name });
-          }
-          e.target.value = "";
-        }}
-      />
     </div>
   );
 }

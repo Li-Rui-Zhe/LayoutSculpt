@@ -138,7 +138,7 @@ try {
   await expect(page.locator("#viewport canvas")).toBeVisible({
     timeout: 30000,
   });
-  await page.getByRole("button", { name: "平面设计", exact: true }).click();
+  await page.getByRole("button", { name: "编辑布局", exact: true }).click();
   await page
     .locator(".edit-tool-tabs")
     .getByRole("button", { name: "家具", exact: true })

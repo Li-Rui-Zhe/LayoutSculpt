@@ -1,4 +1,4 @@
-import { launchReviewBrowser } from "./browser.mjs";
+import { launchReviewBrowser, openInspector } from "./browser.mjs";
 import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 
@@ -104,7 +104,7 @@ try {
     await expect(canvas).toHaveAttribute("data-lighting-preset", "night");
     await page.waitForTimeout(350);
     await page.screenshot({ path: `${output}/${width}-night.png` });
-    await page.getByRole("button", { name: "外观设置", exact: true }).click();
+    await openInspector(page, "外观");
     await expect(
       page.getByRole("button", { name: "应用雾岛绿", exact: true }),
     ).toBeVisible();
@@ -156,17 +156,17 @@ try {
       page.getByRole("button", { name: "俯视", exact: true }),
     ).toHaveClass("active");
     await page.getByRole("button", { name: "三维", exact: true }).click();
-    await page.getByRole("button", { name: "切换任务栏" }).click();
+    await page.getByRole("button", { name: "我的方案" }).click();
     await expect(page.locator("#task-drawer")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator("#task-drawer")).toBeHidden();
-    await page.getByRole("button", { name: "任务详情", exact: true }).click();
+    await openInspector(page, "任务");
     await expect(
       page.getByRole("heading", { name: "任务状态", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator(".inspector")).toBeHidden();
-    await page.getByRole("button", { name: "方案概览", exact: true }).click();
+    await openInspector(page, "概览");
     await page
       .getByRole("button", { name: "查看原始户型图", exact: true })
       .click();

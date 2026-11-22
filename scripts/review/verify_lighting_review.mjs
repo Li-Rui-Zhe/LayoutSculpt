@@ -65,7 +65,7 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${output}/night-top.png` });
   checks.push("完整墙体、剖切和俯视切换都保留夜晚照明");
-  await page.getByRole("button", { name: "手动调整布局", exact: true }).click();
+  await page.getByRole("button", { name: "编辑布局", exact: true }).click();
   await page.getByRole("button", { name: "灯具", exact: true }).click();
   await expect(
     page.getByRole("application", { name: "人工设计平面图" }),
@@ -100,6 +100,7 @@ try {
   );
   expect(await afterResponse.json()).toEqual(source);
   await page.goto("http://127.0.0.1:5173/");
+  await page.getByRole("button", { name: "我的方案" }).click();
   await page.getByRole("button", { name: "探索示例空间", exact: true }).click();
   await expect(canvas).toHaveAttribute(
     "data-model-url",

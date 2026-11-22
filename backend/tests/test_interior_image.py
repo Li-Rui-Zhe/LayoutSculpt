@@ -134,7 +134,9 @@ def test_interior_image_accepts_only_a_local_view_and_prompt(tmp_path, monkeypat
     assert [json.loads(brief) for brief in received] == [
         {
             "sourceView": {
-                "roomName": "客厅", "framing": "walkthrough", "lighting": "sunset"
+                "roomName": "客厅",
+                "framing": "walkthrough",
+                "lighting": "sunset",
             },
             "visualBrief": "",
             "exteriorBrief": "窗外有远处的湖岸",
@@ -151,6 +153,177 @@ def test_image_brief_distinguishes_explicit_exterior_from_automatic():
     )
     assert selected["visualBrief"] == visual
     assert "city streetscape" in selected["exteriorBrief"]
+
+
+def test_panorama_preserves_landmarks_and_requires_equirectangular_input():
+    landmark = {"label": "客厅沙发", "x": 75}
+    context = interior_image.ImageContext(
+        framing="panorama", roomId="living", landmarks=[landmark], heading=60
+    ).model_dump(exclude_none=True)
+    assert context["roomId"] == "living"
+    brief = json.loads(interior_image.compose_image_brief("自然光", context))
+    assert brief["furnitureLandmarks"] == [landmark]
+    assert "heading" not in brief["sourceView"]
+    assert "roomId" not in brief["sourceView"]
+    standard = interior_image.ImageContext(
+        roomId="living", landmarks=[landmark], heading=60
+    )
+    assert standard.roomId is None
+    assert standard.landmarks is None and standard.heading is None
+
+    wide, ordinary = io.BytesIO(), io.BytesIO()
+    Image.new("RGB", (40, 20)).save(wide, format="JPEG")
+    Image.new("RGB", (40, 30)).save(ordinary, format="JPEG")
+    with Image.open(
+        io.BytesIO(interior_image.normalize_view(wide.getvalue(), panorama=True))
+    ) as image:
+        assert image.size == (40, 20)
+    with pytest.raises(ValueError, match="2:1"):
+        interior_image.normalize_view(ordinary.getvalue(), panorama=True)
+
+
+def post_panorama_batch(client, *rooms):
+    view = io.BytesIO()
+    Image.new("RGB", (40, 20), "white").save(view, format="JPEG")
+    multipart = [("prompt", (None, "自然光"))]
+    for name in rooms:
+        multipart.extend(
+            [
+                (
+                    "context",
+                    (
+                        None,
+                        json.dumps(
+                            {
+                                "framing": "panorama",
+                                "projectId": "sample",
+                                "roomId": name,
+                                "roomName": name,
+                                "rotation": 25,
+                                "exterior": "city",
+                            }
+                        ),
+                    ),
+                ),
+                ("view", ("view.jpg", view.getvalue(), "image/jpeg")),
+            ]
+        )
+    return client.post("/api/interior-images/batch", files=multipart)
+
+
+def wait_for_gallery(client, condition):
+    for _ in range(120):
+        items = client.get("/api/interior-images").json()["items"]
+        if condition(items):
+            return items
+        time.sleep(0.02)
+    pytest.fail("gallery did not reach the expected state")
+
+
+def test_batch_keeps_room_order_and_continues_after_a_failed_image(
+    tmp_path, monkeypatch
+):
+    calls = []
+    blocked = Event()
+    png = io.BytesIO()
+    Image.new("RGB", (40, 20), "white").save(png, format="PNG")
+
+    async def generate(client, brief, reference, *, panorama):
+        assert panorama
+        data = json.loads(brief)
+        assert "city streetscape" in data["exteriorBrief"]
+        name = data["sourceView"]["roomName"]
+        calls.append(name)
+        if name == "living":
+            await asyncio.to_thread(blocked.wait, 3)
+            raise TimeoutError
+        return png.getvalue()
+
+    monkeypatch.setattr(interior_image, "generate_interior_png", generate)
+    with TestClient(
+        app_for(tmp_path, FakeCodex()), client=("127.0.0.1", 1234)
+    ) as client:
+        try:
+            assert post_panorama_batch(client, "living", "living").status_code == 422
+            response = post_panorama_batch(client, "living", "bedroom", "bath")
+            assert response.status_code == 202
+            records = response.json()["items"]
+            assert [r["status"] for r in records] == ["generating", "queued", "queued"]
+            assert {record["context"]["rotation"] for record in records} == {25}
+            assert not post_panorama_batch(client, "living", "bedroom").json()["items"]
+            batch_id = records[0]["batch_id"]
+            assert (
+                client.post(
+                    f"/api/interior-images/{records[2]['id']}/cancel"
+                ).status_code
+                == 200
+            )
+        finally:
+            blocked.set()
+        final = wait_for_gallery(
+            client,
+            lambda items: (
+                not any(i["status"] in {"generating", "queued"} for i in items)
+            ),
+        )
+        assert {i["context"]["roomId"]: i["status"] for i in final} == {
+            "living": "failed",
+            "bedroom": "ready",
+            "bath": "failed",
+        }
+        assert calls == ["living", "bedroom"]
+        assert (
+            client.post(f"/api/interior-images/batches/{batch_id}/cancel").status_code
+            == 200
+        )
+        assert not post_panorama_batch(client, "bedroom").json()["items"]
+
+
+def test_batch_can_stop_waiting_rooms_and_restores_saved_queue(tmp_path, monkeypatch):
+    calls = []
+    release = asyncio.Event()
+    png = io.BytesIO()
+    Image.new("RGB", (40, 20), "white").save(png, format="PNG")
+
+    async def generate(client, brief, reference, *, panorama):
+        name = json.loads(brief)["sourceView"]["roomName"]
+        calls.append(name)
+        if name == "living":
+            await release.wait()
+        return png.getvalue()
+
+    monkeypatch.setattr(interior_image, "generate_interior_png", generate)
+    with TestClient(
+        app_for(tmp_path, FakeCodex()), client=("127.0.0.1", 1234)
+    ) as client:
+        records = post_panorama_batch(client, "living", "bedroom").json()["items"]
+        stop = post_panorama_batch(client, "bath", "entry").json()["items"]
+        assert [i["status"] for i in stop] == ["queued", "queued"]
+        assert (
+            client.post(
+                f"/api/interior-images/batches/{stop[0]['batch_id']}/cancel"
+            ).status_code
+            == 200
+        )
+        assert (
+            client.get("/api/interior-images").json()["items"][-1]["status"]
+            == "generating"
+        )
+        assert records[1]["status"] == "queued"
+
+    with TestClient(
+        app_for(tmp_path, FakeCodex()), client=("127.0.0.1", 1234)
+    ) as restarted:
+        final = wait_for_gallery(
+            restarted, lambda items: any(i["status"] == "ready" for i in items)
+        )
+    assert {i["context"]["roomId"]: i["status"] for i in final} == {
+        "living": "failed",
+        "bedroom": "ready",
+        "bath": "failed",
+        "entry": "failed",
+    }
+    assert calls == ["living", "bedroom"]
 
 
 def test_generated_png_uses_thread_directory_and_strips_metadata(tmp_path):

@@ -812,8 +812,7 @@ button:hover:not(:disabled) {
 .result-first .task-card h3 {
   color: #395247;
 }
-.result-first .rail-title > span,
-.result-first .sample-entry {
+.result-first .rail-title > span {
   background: #eff3e8;
   color: #5b7954;
 }

@@ -22,7 +22,7 @@ try {
   await expect(page.locator(".activity-page .form-error")).toContainText(
     "当前本地 Codex 登录不支持模型",
   );
-  await page.getByRole("button", { name: "新建生成任务", exact: true }).click();
+  await page.getByRole("button", { name: "新建方案", exact: true }).click();
   const model = page.locator("#project-model"),
     effort = page.locator("#project-effort");
   await expect(model).toBeEnabled();

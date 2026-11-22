@@ -23,10 +23,12 @@ export default function WorkspaceHelp({ onClose }) {
           {dataOpen && <DataManagement />}
         </details>
         <ol>
-          <li>新建项目，上传清晰户型图。</li>
+          <li>点“新建方案”，选自主 3D 模型或真实漫游，再上传户型图。</li>
           <li>对照原图核对墙体、房间与门窗。</li>
-          <li>进入人工设计调整布局，在 DIY 中修改家具和饰面。</li>
-          <li>保存新的三维版本，检查效果后导出成果。</li>
+          <li>自主 3D 可以调整布局，真实漫游可以逐间生成全景。</li>
+          <li>
+            从“我的方案”继续以前的任务。切换功能后，侧栏显示当前页面的操作。
+          </li>
         </ol>
         <h3>画布快捷操作</h3>
         <table>

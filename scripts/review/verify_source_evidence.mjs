@@ -18,15 +18,15 @@ try {
   });
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(base);
-  await page.getByRole("button", { name: "新建生成任务", exact: true }).click();
-  await page.getByText("高级设置 · 默认已配置", { exact: true }).click();
+  await page.getByRole("button", { name: "新建方案", exact: true }).click();
+  await page.getByText("高级设置", { exact: true }).click();
   await expect(page.getByRole("radio", { name: /精细识别/ })).toBeChecked();
   await page.getByRole("button", { name: /使用示例户型/ }).click();
   const submitted = page.waitForResponse(
     (r) => r.url().endsWith("/api/jobs") && r.request().method() === "POST",
   );
   await page
-    .getByRole("button", { name: "创建并开始生成", exact: true })
+    .getByRole("button", { name: "生成 3D 模型", exact: true })
     .click();
   const job = await (await submitted).json();
   expect(job.options.recognition_mode).toBe("precise");
@@ -116,18 +116,18 @@ try {
     }),
   );
   await old.goto(base);
-  await old.getByRole("button", { name: "新建生成任务", exact: true }).click();
-  await old.getByText("高级设置 · 默认已配置", { exact: true }).click();
+  await old.getByRole("button", { name: "新建方案", exact: true }).click();
+  await old.getByText("高级设置", { exact: true }).click();
   await old.getByRole("button", { name: /使用示例户型/ }).click();
   await expect(
-    old.getByRole("button", { name: "创建并开始生成", exact: true }),
+    old.getByRole("button", { name: "生成 3D 模型", exact: true }),
   ).toBeDisabled();
   await expect(
     old.getByText("当前运行的工作台尚未支持精细识别", { exact: false }),
   ).toBeVisible();
   await old.getByRole("radio", { name: /快速识别/ }).check();
   await expect(
-    old.getByRole("button", { name: "创建并开始生成", exact: true }),
+    old.getByRole("button", { name: "生成 3D 模型", exact: true }),
   ).toBeEnabled();
   checks.push("旧后端不误报支持精细识别，可明确选择快速模式继续");
   expect(errors).toEqual([]);

@@ -65,6 +65,7 @@ ALLOWED_ORIGINS = {
 }
 ARTIFACTS = {
     "source-alignment.json",
+    "local-floorplan-mask.png",
     "pipeline-metrics.json",
     "source.png",
     "model.glb",
@@ -150,6 +151,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
                 app.state.runner.schedule(job_id, resume=True)
             await diy.resume_queued()
             await surfaces.resume_queued()
+            await resume_interior_images()
             cache_task = asyncio.create_task(maintain_cache())
             try:
                 yield
@@ -376,7 +378,9 @@ def create_app(settings=None, *, client=None, model_builder=None):
 
     install_workspace_routes(app, store, settings, library)
     install_local_review_routes(app, store, settings, codex, registry, resolve_model)
-    close_interior_images = install_interior_image_route(app, codex, settings.data_dir)
+    resume_interior_images, close_interior_images = install_interior_image_route(
+        app, codex, settings.data_dir
+    )
     from .furniture_local import install_furniture_local
     install_furniture_local(app, store, settings, codex, registry, resolve_model, library)
     install_texture_routes(app, settings)
@@ -906,6 +910,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         media = {
             "model.glb": "model/gltf-binary",
             "source.png": "image/png",
+            "local-floorplan-mask.png": "image/png",
             "layout.json": "application/json",
             "manifest.json": "application/json",
             "furniture-report.json": "application/json",
@@ -918,7 +923,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
             media_type=media,
             filename=filename,
             content_disposition_type="inline"
-            if filename in {"source.png", "model.glb"}
+            if filename in {"source.png", "model.glb", "local-floorplan-mask.png"}
             else "attachment",
         )
 

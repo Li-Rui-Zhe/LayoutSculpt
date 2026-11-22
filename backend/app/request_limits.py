@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 
 MiB = 1024 * 1024
 INTERIOR_VIEW_LIMIT = 4 * MiB
+PANORAMA_BATCH_LIMIT = 16
 
 
 class RequestLimits:
@@ -25,6 +26,8 @@ class RequestLimits:
             "/api/materials/source": 11 * MiB,
             "/api/diy/references": 11 * MiB,
             "/api/interior-image": INTERIOR_VIEW_LIMIT + 8 * 1024,
+            "/api/interior-images/batch": PANORAMA_BATCH_LIMIT
+            * (INTERIOR_VIEW_LIMIT + 10 * 1024),
         }.get(route, 3 * MiB)
         headers = dict(scope["headers"])
         try:

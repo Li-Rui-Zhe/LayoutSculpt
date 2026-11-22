@@ -1,8 +1,10 @@
 import { InlineProgress } from "./LoadingProgress.jsx";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, PencilRuler } from "lucide-react";
 import { api } from "../api.js";
 import SourceOverlay from "./SourceOverlay.jsx";
+import RetryDialog from "./RetryDialog.jsx";
 import DoorLeafLines from "./DoorLeafLines.jsx";
 import { toDraft, openingPoints } from "../editor/geometry.js";
 import {
@@ -114,13 +116,21 @@ export function StructurePlan({ layout }) {
   );
 }
 
-export default function StructureReview({ job, projects, onEdit }) {
+export default function StructureReview({
+  job,
+  projects,
+  onEdit,
+  inRoam = false,
+  actionsHost,
+}) {
   const checkpoint = job.result?.recognition_review;
   const [chosenView, setComparisonView] = useState(null);
+  const [selectingModel, setSelectingModel] = useState(false);
   const showDifference =
     job.result?.source_alignment_url &&
     (job.result?.ai_review?.status === "needs_review" || checkpoint);
-  const comparisonView = chosenView ?? (showDifference ? "overlay" : "side");
+  const comparisonView =
+    chosenView ?? (showDifference && !inRoam ? "overlay" : "side");
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -128,6 +138,7 @@ export default function StructureReview({ job, projects, onEdit }) {
   useEffect(() => {
     let alive = true;
     setComparisonView(null);
+    setSelectingModel(false);
     api(`/jobs/${job.id}/artifacts/structure.json`)
       .then((value) => {
         if (alive) {
@@ -169,17 +180,125 @@ export default function StructureReview({ job, projects, onEdit }) {
       setBusy(false);
     }
   };
+  const editButton = (
+    <button className="secondary-button" disabled={busy} onClick={onEdit}>
+      <PencilRuler size={16} />
+      {checkpoint ? "调整平面图" : "调整识别结构"}
+    </button>
+  );
+  const confirmButton = (
+    <button
+      className="primary-button"
+      disabled={!data || busy || (checkpoint && !checkpoint.can_continue)}
+      onClick={confirm}
+    >
+      <InlineProgress
+        active={busy}
+        failed={!!error}
+        cancelled={job.status === "cancelled"}
+        fallback={<Check size={16} />}
+      />
+      {inRoam
+        ? "确认并生成白模"
+        : checkpoint
+          ? "接受平面图，继续生成 3D"
+          : "已核对，继续生成"}
+    </button>
+  );
+  const actions = (
+    <div className="review-actions">
+      {inRoam && (
+        <>
+          {confirmButton}
+          {editButton}
+        </>
+      )}
+      {!checkpoint &&
+        job.options?.recognition_mode !== "precise" &&
+        projects.health?.capabilities?.includes("evidence_recognition") && (
+          <button
+            className="secondary-button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await projects.retry(job.id, {
+                  recognition_mode: "precise",
+                  reidentify: true,
+                });
+              } catch (e) {
+                setError(e.message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            用精细识别重新读取
+          </button>
+        )}
+      {(checkpoint || job.options?.recognition_mode === "precise") && (
+        <button
+          className="secondary-button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await projects.retry(job.id, { reidentify: true });
+            } catch (e) {
+              setError(e.message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          重新识别
+        </button>
+      )}
+      {showDifference && (
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={busy}
+          onClick={() => setSelectingModel(true)}
+        >
+          更换模型重新识别
+        </button>
+      )}
+      <button
+        className="text-button review-cancel"
+        disabled={busy}
+        onClick={cancel}
+      >
+        停止此任务
+      </button>
+      {!inRoam && (
+        <>
+          {editButton}
+          {confirmButton}
+        </>
+      )}
+    </div>
+  );
   return (
-    <section className="structure-review" aria-labelledby="structure-title">
+    <section
+      className={`structure-review ${inRoam ? "roam-structure-review" : ""}`}
+      aria-labelledby="structure-title"
+    >
       <div className="review-heading">
-        <span className="eyebrow">02 · 核对户型</span>
+        {!inRoam && <span className="eyebrow">02 · 核对户型</span>}
         <h2 id="structure-title">
           {checkpoint
             ? "识别遇到卡点，请先看看平面图"
-            : "先确认结构，再生成三维"}
+            : inRoam
+              ? "核对户型"
+              : "先确认结构，再生成三维"}
         </h2>
         <p>
-          对照原图检查平面图，满意后再生成 3D。
+          {inRoam
+            ? "对照原图检查墙体、门窗和房间。"
+            : "对照原图检查平面图，满意后再生成 3D。"}
           {comparisonView === "side" && "蓝色是窗，金色是门或通道。"}
         </p>
         {job.result?.ai_review?.status === "completed" &&
@@ -278,7 +397,7 @@ export default function StructureReview({ job, projects, onEdit }) {
           )}
           <div className="review-notes">
             {data.rooms.some((room) => room.kind === "balcony") && (
-              <details open>
+              <details open={!inRoam}>
                 <summary>阳台围护与高度核对</summary>
                 <p>
                   {data.rooms
@@ -309,7 +428,7 @@ export default function StructureReview({ job, projects, onEdit }) {
             )}
             <p>{data.scale_note}</p>
             {job.result.warnings?.length > 0 && (
-              <details open>
+              <details open={!inRoam}>
                 <summary>
                   需要留意的 {job.result.warnings.length} 项说明
                 </summary>
@@ -321,86 +440,14 @@ export default function StructureReview({ job, projects, onEdit }) {
               </details>
             )}
           </div>
-          <p className="field-note">
-            核对墙体、房间和门窗后，点击“已核对，继续生成”；有偏差可先调整结构。
-          </p>
-          <div className="review-actions">
-            {!checkpoint &&
-              job.options?.recognition_mode !== "precise" &&
-              projects.health?.capabilities?.includes(
-                "evidence_recognition",
-              ) && (
-                <button
-                  className="secondary-button"
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    setError("");
-                    try {
-                      await projects.retry(job.id, {
-                        recognition_mode: "precise",
-                        reidentify: true,
-                      });
-                    } catch (e) {
-                      setError(e.message);
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  用精细识别重新读取
-                </button>
-              )}
-            {(checkpoint || job.options?.recognition_mode === "precise") && (
-              <button
-                className="secondary-button"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  setError("");
-                  try {
-                    await projects.retry(job.id, { reidentify: true });
-                  } catch (e) {
-                    setError(e.message);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                重新识别
-              </button>
-            )}
-            <button
-              className="text-button review-cancel"
-              disabled={busy}
-              onClick={cancel}
-            >
-              停止此任务
-            </button>
-            <button
-              className="secondary-button"
-              disabled={busy}
-              onClick={onEdit}
-            >
-              <PencilRuler size={16} />
-              {checkpoint ? "调整平面图" : "调整识别结构"}
-            </button>
-            <button
-              className="primary-button"
-              disabled={
-                !data || busy || (checkpoint && !checkpoint.can_continue)
-              }
-              onClick={confirm}
-            >
-              <InlineProgress
-                active={busy}
-                failed={!!error}
-                cancelled={job.status === "cancelled"}
-                fallback={<Check size={16} />}
-              />
-              {checkpoint ? "接受平面图，继续生成 3D" : "已核对，继续生成"}
-            </button>
-          </div>
+          {!inRoam && (
+            <p className="field-note">
+              核对墙体、房间和门窗后，点击“已核对，继续生成”；有偏差可先调整结构。
+            </p>
+          )}
+          {actionsHost
+            ? createPortal(actions, actionsHost)
+            : !inRoam && actions}
         </>
       ) : (
         !error && <p role="status">正在读取识别结构…</p>
@@ -415,6 +462,14 @@ export default function StructureReview({ job, projects, onEdit }) {
             重新读取
           </button>
         </div>
+      )}
+      {selectingModel && (
+        <RetryDialog
+          job={job}
+          projects={projects}
+          reidentify
+          onClose={() => setSelectingModel(false)}
+        />
       )}
     </section>
   );

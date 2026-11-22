@@ -79,7 +79,16 @@ function fixtureShades(model, data, position) {
   return shades;
 }
 
-function hidePlaceholderVisuals(model, markers) {
+function fixtureMarkers(model) {
+  const markers = [];
+  model.traverse((marker) => {
+    if (marker.userData.fixture_id)
+      markers.push({ marker, data: marker.userData });
+  });
+  return markers;
+}
+
+export function hidePlaceholderVisuals(model, markers = fixtureMarkers(model)) {
   const legacyKinds = new Set(
     markers
       .filter(
@@ -112,11 +121,7 @@ function hidePlaceholderVisuals(model, markers) {
 
 export function installFixtureLights(model, { sample = false } = {}) {
   if (model.userData.designLights) return;
-  const markers = [];
-  model.traverse((obj) => {
-    if (obj.userData.fixture_id)
-      markers.push({ marker: obj, data: obj.userData });
-  });
+  const markers = fixtureMarkers(model);
   if (sample && markers.length === 0) {
     for (const fixture of sampleFixtures) {
       const marker =
@@ -149,7 +154,9 @@ export function installFixtureLights(model, { sample = false } = {}) {
   }
   model.updateMatrixWorld(true);
   model.userData.designLights = markers.map(({ marker, data }) => {
-    const LightType = ["pendant", "downlight", "ceiling"].includes(data.fixture_kind)
+    const LightType = ["pendant", "downlight", "ceiling"].includes(
+      data.fixture_kind,
+    )
       ? THREE.SpotLight
       : THREE.PointLight;
     const light = new LightType(
@@ -162,7 +169,8 @@ export function installFixtureLights(model, { sample = false } = {}) {
     if (data.presentation_layer_id) {
       light.userData.presentation_layer_id = data.presentation_layer_id;
       if (light.isSpotLight)
-        light.target.userData.presentation_layer_id = data.presentation_layer_id;
+        light.target.userData.presentation_layer_id =
+          data.presentation_layer_id;
     }
     // GLB may bake elevation into vertices rather than the node transform.
     // Anchor illumination to the emitting surface, including already saved GLBs.
@@ -176,7 +184,13 @@ export function installFixtureLights(model, { sample = false } = {}) {
     }
     light.position.copy(model.worldToLocal(emitter));
     if (light.isSpotLight) {
-      light.angle = Math.PI * (data.fixture_kind === "downlight" ? 0.18 : data.fixture_kind === "ceiling" ? 0.42 : 0.38);
+      light.angle =
+        Math.PI *
+        (data.fixture_kind === "downlight"
+          ? 0.18
+          : data.fixture_kind === "ceiling"
+            ? 0.42
+            : 0.38);
       light.penumbra = 1;
       light.decay = 2;
       light.target.position
@@ -200,10 +214,13 @@ export function installFixtureLights(model, { sample = false } = {}) {
       if (obj.isMesh) {
         // 各灯泡可能共用 GLB 材质，独立开关/色温不能串到其他灯具。
         const own = (material) => {
-          if (!ownedMaterials.has(material)) ownedMaterials.set(material, material.clone());
+          if (!ownedMaterials.has(material))
+            ownedMaterials.set(material, material.clone());
           return ownedMaterials.get(material);
         };
-        obj.material = Array.isArray(obj.material) ? obj.material.map(own) : own(obj.material);
+        obj.material = Array.isArray(obj.material)
+          ? obj.material.map(own)
+          : own(obj.material);
         surfaces.push(obj);
         obj.castShadow = false;
         for (const m of [obj.material].flat())
@@ -244,7 +261,10 @@ export function updateFixtureLights(model, night, strength = 1) {
   for (const fixture of model?.userData.designLights || []) {
     const enabled = night && fixture.enabled && fixture.lumens > 0;
     fixture.light.intensity = enabled
-      ? (fixture.lumens / (4 * Math.PI)) * previewIntensity * strength * (fixture.previewScale ?? 1)
+      ? (fixture.lumens / (4 * Math.PI)) *
+        previewIntensity *
+        strength *
+        (fixture.previewScale ?? 1)
       : 0;
     fixture.light.visible = enabled;
     for (const material of fixture.materials)

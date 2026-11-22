@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 from backend.app.codex import CodexClient
 from backend.app.config import Settings
+from backend.app.local_structure_repair import needs_fresh_read
 from backend.app.main import create_app
 from backend.app.source_evidence import (
     DetailRegion,
@@ -47,6 +48,13 @@ def evidence():
         "dimensions": [{"a": [20, 10], "b": [180, 10], "meters": 8, "evidence": "上方尺寸跨度八米"}],
         "regions": [], "warnings": [],
     })
+
+
+def test_broad_disagreement_skips_local_repair_only_when_both_signals_are_present():
+    findings = [{"code": "opening_mismatch", "blocking": True}] * 6
+    assert needs_fresh_read({"outline_overlap": .81, "findings": findings})
+    assert not needs_fresh_read({"outline_overlap": .91, "findings": findings})
+    assert not needs_fresh_read({"outline_overlap": .81, "findings": findings[:4]})
 
 
 def test_registration_uses_one_scale_and_missing_dimensions_require_confirmation():
@@ -256,6 +264,42 @@ def test_independent_disagreement_pauses_default_preview_instead_of_building(tmp
         assert "卧室" in job["result"]["ai_review"]["summary"]
         assert len(ai.calls) == 3
         assert not (tmp_path / "jobs" / job_id / "model.glb").exists()
+
+
+@pytest.mark.parametrize("unrelated", [False, True])
+def test_precise_local_repair_applies_audited_window_and_preserves_other_geometry(tmp_path, unrelated):
+    class LocalReader(PreciseReader):
+        reads = 0
+
+        async def generate(self, **kwargs):
+            data = json.loads(await super().generate(**kwargs))
+            title = kwargs["schema"]["title"]
+            if title == "SourceEvidence" and "不参考之前的识别结果" in kwargs["prompt"]:
+                data["openings_px"].append({"kind": "window", "a": [66, 9], "b": [78, 9], "certainty": "clear"})
+            if title == "PixelLayoutExtraction":
+                self.reads += 1
+                if self.reads == 1:
+                    data["openings"] = [] # The first read must be retried.
+            if title == "LayoutReviewPatch":
+                assert [path.name for path in kwargs["reference_images"]] == ["structure-detail-1.png"]
+                assert kwargs["model"] == "test-chosen"
+                window = {"wall_id": "w0", "kind": "window", "offset": 4.5, "width": 1, "height": 1.4, "bottom": .9}
+                data["openings"] = [{"wall_id": "w0", "values": [*layout_data()["openings"], window], "evidence": "局部原图有连续的窗线"}]
+                if unrelated:
+                    data["openings"].append({"wall_id": "w2", "values": [{**window, "wall_id": "w2"}], "evidence": "疑点外的开口"})
+            return json.dumps(data)
+
+    ai = LocalReader()
+    with TestClient(app_for(tmp_path, ai)) as client:
+        job_id = upload(client, recognition_mode="precise", review_mode="manual", model="test-chosen")
+        job = wait_for(client, job_id, lambda item: item["status"] in {"awaiting_review", "failed"})
+        assert job["status"] == "awaiting_review", job
+        assert ai.reads == 2
+        assert sum(call["schema"]["title"] == "LayoutReviewPatch" for call in ai.calls) == 1
+        findings = client.get(job["result"]["source_alignment_url"]).json()
+        assert findings["local_repair"]["status"] == ("needs_review" if unrelated else "applied")
+        layout = client.get(job["result"]["layout_url"]).json()
+        assert [opening["kind"] for opening in layout["openings"]] == (["door"] if unrelated else ["door", "window"])
 
 
 @pytest.mark.parametrize("repairs_door", [True, False])
@@ -528,3 +572,40 @@ async def test_local_codex_keeps_original_and_crop_order_in_image_inputs(tmp_pat
     result = await client.generate(workspace=tmp_path, image=paths[0], reference_images=paths[1:], prompt="只读取原图", instructions="结构数据", schema={}, model="chosen")
     assert json.loads(result) == {"ok": True}
     assert [item["path"] for item in captured if item["type"] == "localImage"] == [str(path) for path in paths]
+
+
+def test_local_geometry_hints_reach_the_detailed_reader_without_biasing_the_audit(tmp_path, monkeypatch):
+    import numpy as np
+
+    from backend.app import workflow
+
+    monkeypatch.setattr(
+        workflow,
+        "run_floorplan_evidence",
+        lambda *_: (np.zeros((90, 120), dtype=np.uint8), {"provider": "local-test"}),
+    )
+    monkeypatch.setattr(
+        workflow,
+        "outline_pixel_context",
+        lambda *_: {
+            "horizontal": [{"position_px": 20, "local_bounds_px": [4, 90]}],
+            "vertical": [{"position_px": 20, "local_bounds_px": [5, 80]}],
+        },
+    )
+
+    ai = PreciseReader()
+    with TestClient(app_for(tmp_path, ai)) as client:
+        job_id = upload(client, recognition_mode="precise", review_mode="manual")
+        job = wait_for(client, job_id, lambda item: item["status"] in {"awaiting_review", "failed"})
+        assert job["status"] == "awaiting_review", job
+        alignment = client.get(job["result"]["source_alignment_url"]).json()
+        assert alignment["local_segmentation"]["aperture_candidates"] == []
+        assert alignment["independent_review"]
+        assert alignment["audit_views"] == alignment["views"]
+        detailed = next(call for call in ai.calls if call["schema"]["title"] == "PixelLayoutExtraction")
+        audit = next(call for call in ai.calls if "不参考之前的识别结果" in call["prompt"])
+        assert "local_aperture_candidates" in detailed["prompt"]
+        assert "local_aperture_candidates" not in audit["prompt"]
+        assert "local_outline_checks" not in audit["prompt"]
+        assert len(detailed["reference_images"]) <= 3
+        assert audit["reference_images"][0].name.startswith("independent-audit")

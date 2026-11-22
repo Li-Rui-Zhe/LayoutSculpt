@@ -20,7 +20,7 @@ try {
     id,
   );
   await page.goto("http://127.0.0.1:5173/");
-  await page.getByRole("button", { name: "手动调整布局", exact: true }).click();
+  await page.getByRole("button", { name: "编辑布局", exact: true }).click();
   const svg = page.getByRole("application", { name: "人工设计平面图" });
   await expect(svg).toBeVisible({ timeout: 30000 });
   const saved = () =>

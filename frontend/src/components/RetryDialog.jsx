@@ -3,7 +3,12 @@ import Modal from "./Modal.jsx";
 import ModelFields from "./ModelFields.jsx";
 import { useModels } from "../hooks/useModels.js";
 
-export default function RetryDialog({ job, projects, onClose }) {
+export default function RetryDialog({
+  job,
+  projects,
+  onClose,
+  reidentify = false,
+}) {
   const models = useModels({
     initialModel: job.options.model,
     initialEffort: job.options.reasoning_effort,
@@ -20,6 +25,7 @@ export default function RetryDialog({ job, projects, onClose }) {
       await projects.retry(job.id, {
         model: models.model,
         reasoning_effort: models.effort || null,
+        ...(reidentify ? { reidentify: true } : {}),
       });
       onClose();
     } catch (e) {
@@ -31,12 +37,14 @@ export default function RetryDialog({ job, projects, onClose }) {
   };
   return (
     <Modal
-      title="更换模型重新生成"
+      title={reidentify ? "更换模型重新识别" : "更换模型重新生成"}
       onClose={() => !busy && onClose()}
       className="retry-dialog"
     >
       <p className="field-note">
-        沿用原图和设计要求，使用所选模型建立新版本。原任务与人工修改保留；只想接着完成时，请使用“继续生成”。
+        {reidentify
+          ? "使用所选模型重新读取同一张原图，识别结果保存为新版本。"
+          : "沿用原图和设计要求，使用所选模型建立新版本。原任务与人工修改保留；只想接着完成时，请使用“继续生成”。"}
       </p>
       <fieldset disabled={busy} className="retry-model-fields">
         <ModelFields models={models} idPrefix="retry" />
@@ -52,7 +60,11 @@ export default function RetryDialog({ job, projects, onClose }) {
         disabled={busy || !models.ready}
         onClick={submit}
       >
-        {busy ? "正在创建新版本…" : "使用所选模型生成新版本"}
+        {busy
+          ? "正在创建新版本…"
+          : reidentify
+            ? "使用所选模型重新识别"
+            : "使用所选模型生成新版本"}
       </button>
     </Modal>
   );

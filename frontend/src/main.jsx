@@ -11,6 +11,7 @@ import "./styles/creative-workspace.css";
 import "./settings/ai-source.css";
 import "./styles/generation.css";
 import "./styles/studio-theme.css";
+import "./styles/workspace-sidebars.css";
 import "./styles/scrollbars.css";
 
 createRoot(document.getElementById("root")).render(

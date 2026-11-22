@@ -136,7 +136,7 @@ function doorBridge(portal, rooms) {
     : [];
 }
 
-export function buildTour(model) {
+export function buildTour(model, { minimumClearance } = {}) {
   const rooms = [],
     obstacles = [],
     openings = new Map();
@@ -192,12 +192,16 @@ export function buildTour(model) {
       openings.get(key).bounds.union(bounds);
     }
   });
-  for (const room of rooms)
-    room.stations = standPoints(room.polygon, obstacles).map((p, i) => ({
+  for (const room of rooms) {
+    let points = standPoints(room.polygon, obstacles);
+    if (!points.length && minimumClearance != null)
+      points = standPoints(room.polygon, obstacles, minimumClearance);
+    room.stations = points.map((p, i) => ({
       ...p,
       id: `${room.id}:${i}`,
       height: room.floor + 1.55,
     }));
+  }
   const available = rooms.filter((r) => r.stations.length);
   const portals = connectPortals(
     available,

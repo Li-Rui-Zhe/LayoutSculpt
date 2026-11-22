@@ -1,4 +1,4 @@
-import { launchReviewBrowser } from "./browser.mjs";
+import { launchReviewBrowser, openInspector } from "./browser.mjs";
 import { expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 
@@ -28,7 +28,7 @@ try {
   await expect(recover).toBeVisible();
   await page.screenshot({ path: `${output}/failed-desktop.png` });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "任务详情", exact: true }).click();
+  await openInspector(page, "任务");
   await expect(recover).toBeInViewport();
   await page.screenshot({ path: `${output}/failed-mobile.png` });
   let job;

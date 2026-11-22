@@ -31,7 +31,7 @@ export function roomClearance(p, polygon) {
     ),
   );
 }
-export function standPoints(polygon, obstacles = []) {
+export function standPoints(polygon, obstacles = [], minimumClearance = 0.28) {
   if (polygon.length < 3) return [];
   const xs = polygon.map((p) => p.x),
     ys = polygon.map((p) => p.y);
@@ -40,7 +40,10 @@ export function standPoints(polygon, obstacles = []) {
     minY = Math.min(...ys),
     maxY = Math.max(...ys);
   // 限制候选数量，大户型不会在进入时卡住主线程。
-  const step = Math.max(0.22, Math.max(maxX - minX, maxY - minY) / 48);
+  const step = Math.max(
+    Math.min(0.22, minimumClearance * 1.5),
+    Math.max(maxX - minX, maxY - minY) / 48,
+  );
   const candidates = [];
   for (let x = minX + step / 2; x < maxX; x += step)
     for (let y = minY + step / 2; y < maxY; y += step) {
@@ -52,7 +55,7 @@ export function standPoints(polygon, obstacles = []) {
           dy = Math.max(box.minY - y, 0, y - box.maxY);
         clearance = Math.min(clearance, Math.hypot(dx, dy));
       }
-      if (clearance >= 0.28) candidates.push({ ...p, clearance });
+      if (clearance >= minimumClearance) candidates.push({ ...p, clearance });
     }
   candidates.sort((a, b) => b.clearance - a.clearance);
   const shortSide = Math.min(maxX - minX, maxY - minY);

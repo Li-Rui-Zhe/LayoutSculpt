@@ -13,6 +13,7 @@ import {
 import { api } from "../api.js";
 import { downloadFile } from "../downloadFile.js";
 import InteriorImageGallery from "./InteriorImageGallery.jsx";
+import WorkspaceSidebar from "./WorkspaceSidebar.jsx";
 import { elapsedLabel, pollInteriorHistory } from "./interiorImageState.js";
 import {
   exteriorDescriptionLimit,
@@ -95,7 +96,15 @@ export default function InteriorImageWorkspace({
           signal: controller.signal,
           cache: "no-store",
         }),
-      onData: (value) => setHistory({ ...value, loading: false, error: "" }),
+      onData: (value) =>
+        setHistory({
+          ...value,
+          items: value.items.filter(
+            (item) => item.context?.framing !== "panorama",
+          ),
+          loading: false,
+          error: "",
+        }),
       onError: (error, retrying) =>
         setHistory((previous) => ({
           ...previous,
@@ -250,38 +259,11 @@ export default function InteriorImageWorkspace({
             <ImagePlus size={23} />
           </span>
           <div>
-            <span className="interior-image-eyebrow">从空间，到生活的样子</span>
             <h1 id="effects-title" ref={heading} tabIndex={-1}>
               效果图工作室
             </h1>
-            <p>选好镜头，让光线与材质再近一步。</p>
           </div>
         </div>
-        <nav className="interior-image-nav" aria-label="效果图工作区视图">
-          <button
-            aria-current={panel === "compose" ? "page" : undefined}
-            onClick={() => setPanel("compose")}
-          >
-            <Sparkles size={16} />
-            创作
-          </button>
-          <button
-            aria-current={panel === "gallery" ? "page" : undefined}
-            onClick={() => {
-              setPanel("gallery");
-              setRevision((v) => v + 1);
-            }}
-          >
-            <Images size={16} />
-            我的效果图{" "}
-            <span>
-              {
-                history.items.filter((v) => v.status === "ready" && !v.archived)
-                  .length
-              }
-            </span>
-          </button>
-        </nav>
       </header>
       {(history.error || failure) && (
         <div className="interior-notice" role="alert">
@@ -327,20 +309,20 @@ export default function InteriorImageWorkspace({
           </div>
         </div>
       )}
-      {panel === "gallery" ? (
-        <InteriorImageGallery
-          {...history}
-          onRetry={() => setRevision((v) => v + 1)}
-          onCompose={() => setPanel("compose")}
-          onReuse={reuse}
-          onArchive={archive}
-          onDownload={download}
-          onCancel={cancel}
-          action={action}
-          sending={sending}
-        />
-      ) : (
-        <div className="interior-image-content">
+      <div className="interior-image-content">
+        {panel === "gallery" ? (
+          <InteriorImageGallery
+            {...history}
+            onRetry={() => setRevision((v) => v + 1)}
+            onCompose={() => setPanel("compose")}
+            onReuse={reuse}
+            onArchive={archive}
+            onDownload={download}
+            onCancel={cancel}
+            action={action}
+            sending={sending}
+          />
+        ) : (
           <div className="interior-stage">
             <div className="interior-stage-heading">
               <div>
@@ -451,146 +433,172 @@ export default function InteriorImageWorkspace({
                 (draft.loaded ? "底图与描述仅保存在本机" : "正在恢复上次创作…")}
             </p>
           </div>
-          <form
-            className="interior-image-form"
-            onSubmit={generate}
-            aria-busy={sending}
-          >
-            <div>
-              <span className="interior-image-eyebrow">让这个角落，更像家</span>
-              <h2>想看到什么感觉？</h2>
-              <p>描述你想要的光线和材质。</p>
-            </div>
-            <div className="interior-exterior">
-              <label htmlFor="interior-exterior-select">窗外景色</label>
-              <select
-                id="interior-exterior-select"
-                value={exterior}
-                disabled={!reference || sending}
-                onChange={(event) =>
-                  draft.update({ exterior: event.target.value })
-                }
-              >
-                {Object.entries(interiorExteriors).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              {exterior === "custom" && (
-                <input
-                  type="text"
-                  aria-label="自定义窗外景色"
-                  value={exteriorDescription}
-                  placeholder="例如：远处是海湾和几艘帆船"
-                  maxLength={exteriorDescriptionLimit}
-                  onChange={(event) =>
-                    draft.update({ exteriorDescription: event.target.value })
-                  }
-                  disabled={!reference || sending}
-                  required
-                />
-              )}
-            </div>
-            <label htmlFor="interior-image-prompt">
-              你的想法{exterior !== "auto" ? "（可选）" : ""}
-            </label>
-            <textarea
-              id="interior-image-prompt"
-              value={prompt}
-              onChange={(event) => draft.update({ prompt: event.target.value })}
-              disabled={!reference || sending}
-              placeholder="比如：保留现在的布置，阳光落在木地板上，沙发是温暖的亚麻质感。"
-              maxLength={1200}
-              rows={6}
-              required={exterior === "auto"}
-            />
-            <small className="interior-image-length">
-              {prompt.length} / 1200
-            </small>
-            <div className="interior-prompt-options" aria-label="描述灵感">
-              {suggestions.map(([label, text]) => (
-                <button
-                  key={label}
-                  type="button"
-                  disabled={!reference || sending}
-                  onClick={() =>
-                    draft.update({
-                      prompt: prompt.trim()
-                        ? `${prompt.trim()}\n${text}`.slice(0, 1200)
-                        : text,
-                    })
-                  }
-                >
-                  {label} <span>＋</span>
-                </button>
-              ))}
-            </div>
-            {current?.error && (
-              <div className="interior-form-error" role="alert">
-                {current.error}
-                <small>底图和描述仍在，调整后可以再次生成。</small>
-              </div>
-            )}
+        )}
+        <WorkspaceSidebar label="效果图侧栏" className="effects-sidebar">
+          <nav className="interior-image-nav" aria-label="效果图工作区视图">
             <button
-              type="submit"
-              className="primary-button interior-generate"
-              disabled={!reference || !ready || busy || !!action || !hasBrief}
+              aria-current={panel === "compose" ? "page" : undefined}
+              onClick={() => setPanel("compose")}
             >
-              <Sparkles size={17} />
-              {sending
-                ? "正在提交…"
-                : running
-                  ? "正在生成，请稍候"
-                  : current?.error
-                    ? "用当前描述重新生成"
-                    : imageUrl
-                      ? "再生成一张"
-                      : "生成效果图"}
+              <Sparkles size={16} />
+              创作
             </button>
-            {!reference && (
-              <p className="field-note">先在左侧选择一个三维视角。</p>
-            )}
-            <div className="interior-connection">
-              <span
-                className={`interior-connection-dot${ready ? " available" : ""}`}
-              />
-              <strong>
-                {offline
-                  ? "工作台暂未连接"
-                  : capability?.available
-                    ? "使用本机 Codex 生图"
-                    : capability
-                      ? "需要连接生图环境"
-                      : "正在检查生图环境"}
-              </strong>
-              <p>
-                {offline
-                  ? "连接恢复后重新同步，草稿会保留。"
-                  : capability?.message}
-              </p>
-              {!ready && (
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={onConnections}
+            <button
+              aria-current={panel === "gallery" ? "page" : undefined}
+              onClick={() => {
+                setPanel("gallery");
+                setRevision((v) => v + 1);
+              }}
+            >
+              <Images size={16} />
+              我的效果图{" "}
+              <span>
+                {
+                  history.items.filter(
+                    (v) => v.status === "ready" && !v.archived,
+                  ).length
+                }
+              </span>
+            </button>
+          </nav>
+          {panel === "compose" && (
+            <form
+              className="interior-image-form"
+              onSubmit={generate}
+              aria-busy={sending}
+            >
+              <h2>出图设置</h2>
+              <div className="interior-exterior">
+                <label htmlFor="interior-exterior-select">窗外景色</label>
+                <select
+                  id="interior-exterior-select"
+                  value={exterior}
+                  disabled={!reference || sending}
+                  onChange={(event) =>
+                    draft.update({ exterior: event.target.value })
+                  }
                 >
-                  <PlugZap size={14} />
-                  检查 AI 接入
-                </button>
+                  {Object.entries(interiorExteriors).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {exterior === "custom" && (
+                  <input
+                    type="text"
+                    aria-label="自定义窗外景色"
+                    value={exteriorDescription}
+                    placeholder="例如：远处是海湾和几艘帆船"
+                    maxLength={exteriorDescriptionLimit}
+                    onChange={(event) =>
+                      draft.update({ exteriorDescription: event.target.value })
+                    }
+                    disabled={!reference || sending}
+                    required
+                  />
+                )}
+              </div>
+              <label htmlFor="interior-image-prompt">
+                你的想法{exterior !== "auto" ? "（可选）" : ""}
+              </label>
+              <textarea
+                id="interior-image-prompt"
+                value={prompt}
+                onChange={(event) =>
+                  draft.update({ prompt: event.target.value })
+                }
+                disabled={!reference || sending}
+                placeholder="比如：保留现在的布置，阳光落在木地板上，沙发是温暖的亚麻质感。"
+                maxLength={1200}
+                rows={6}
+                required={exterior === "auto"}
+              />
+              <small className="interior-image-length">
+                {prompt.length} / 1200
+              </small>
+              <div className="interior-prompt-options" aria-label="描述灵感">
+                {suggestions.map(([label, text]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={!reference || sending}
+                    onClick={() =>
+                      draft.update({
+                        prompt: prompt.trim()
+                          ? `${prompt.trim()}\n${text}`.slice(0, 1200)
+                          : text,
+                      })
+                    }
+                  >
+                    {label} <span>＋</span>
+                  </button>
+                ))}
+              </div>
+              {current?.error && (
+                <div className="interior-form-error" role="alert">
+                  {current.error}
+                  <small>底图和描述仍在，调整后可以再次生成。</small>
+                </div>
               )}
-            </div>
-            <details className="interior-privacy">
-              <summary>生成与隐私说明</summary>
-              <p>
-                确认生成后，仅将这张底图和创作设置发送给 OpenAI
-                ImageGen。不会改变户型原图或三维模型，也不会切换其他功能的默认
-                AI 来源。需要本机 Codex 已登录并拥有生图权限。
-              </p>
-            </details>
-          </form>
-        </div>
-      )}
+              <button
+                type="submit"
+                className="primary-button interior-generate"
+                disabled={!reference || !ready || busy || !!action || !hasBrief}
+              >
+                <Sparkles size={17} />
+                {sending
+                  ? "正在提交…"
+                  : running
+                    ? "正在生成，请稍候"
+                    : current?.error
+                      ? "用当前描述重新生成"
+                      : imageUrl
+                        ? "再生成一张"
+                        : "生成效果图"}
+              </button>
+              {!reference && <p className="field-note">请先选择三维视角。</p>}
+              <div className="interior-connection">
+                <span
+                  className={`interior-connection-dot${ready ? " available" : ""}`}
+                />
+                <strong>
+                  {offline
+                    ? "工作台暂未连接"
+                    : capability?.available
+                      ? "使用本机 Codex 生图"
+                      : capability
+                        ? "需要连接生图环境"
+                        : "正在检查生图环境"}
+                </strong>
+                <p>
+                  {offline
+                    ? "连接恢复后重新同步，草稿会保留。"
+                    : capability?.message}
+                </p>
+                {!ready && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={onConnections}
+                  >
+                    <PlugZap size={14} />
+                    检查 AI 接入
+                  </button>
+                )}
+              </div>
+              <details className="interior-privacy">
+                <summary>生成与隐私说明</summary>
+                <p>
+                  确认生成后，仅将这张底图和创作设置发送给 OpenAI
+                  ImageGen。不会改变户型原图或三维模型，也不会切换其他功能的默认
+                  AI 来源。需要本机 Codex 已登录并拥有生图权限。
+                </p>
+              </details>
+            </form>
+          )}
+        </WorkspaceSidebar>
+      </div>
     </section>
   );
 }

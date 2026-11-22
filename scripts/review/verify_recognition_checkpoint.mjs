@@ -18,7 +18,7 @@ try {
   });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(base);
-  await page.getByRole("button", { name: "新建生成任务", exact: true }).click();
+  await page.getByRole("button", { name: "新建方案", exact: true }).click();
   await page.getByRole("radio", { name: /快速识别/ }).check();
   const choice = page.getByRole("checkbox", {
     name: "先看平面图，确认后再生成 3D",
@@ -50,7 +50,7 @@ try {
     (r) => r.url().endsWith("/api/jobs") && r.request().method() === "POST",
   );
   await page
-    .getByRole("button", { name: "创建并开始生成", exact: true })
+    .getByRole("button", { name: "生成 3D 模型", exact: true })
     .click();
   const created = await submitted;
   expect(created.status()).toBe(201);
