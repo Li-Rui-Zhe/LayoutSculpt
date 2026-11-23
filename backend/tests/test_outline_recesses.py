@@ -102,6 +102,17 @@ def test_recess_checks_the_three_exterior_segments_in_the_deliverable(tmp_path):
     assert not layout_recess_findings(layout, {})
 
 
+def test_very_light_strokes_can_confirm_a_recess_only_with_local_contrast(tmp_path):
+    walls = Image.new("L", (240, 240))
+    ImageDraw.Draw(walls).line(OUTLINE + OUTLINE[:1], fill=1, width=5, joint="curve")
+    mask = np.asarray(walls)
+    source = tmp_path / "source.png"
+    Image.fromarray(np.where(mask, 206, 247).astype(np.uint8)).save(source)
+    assert len(detect_outline_recesses(source, mask)) == 1
+    Image.fromarray(np.where(mask, 228, 247).astype(np.uint8)).save(source)
+    assert detect_outline_recesses(source, mask) == []
+
+
 def test_only_small_room_edge_spills_are_trimmed(tmp_path):
     drawing = Image.new("L", (240, 240), 255)
     ImageDraw.Draw(drawing).line(OUTLINE + OUTLINE[:1], fill=0, width=5, joint="curve")

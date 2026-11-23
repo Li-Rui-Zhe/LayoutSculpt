@@ -83,9 +83,19 @@ def detect_outline_recesses(source, mask):
             image.convert("L").resize((width, height), Image.Resampling.BOX)
         )
     low, high = np.percentile(raw, [5, 90])
-    if high - low < 42:
-        return []
-    ink = raw < min(185, low + (high - low) * 0.56)
+    faded = low >= 155 and high >= 185
+    if faded:
+        # The wall stroke can be paler than 185 on a faded print. Use the
+        # lower tail so sparse walls still separate from the paper.
+        low = np.percentile(raw, 2)
+        if high - low < 30:
+            return []
+        threshold = low + (high - low) * 0.56
+    else:
+        if high - low < 42:
+            return []
+        threshold = min(185, low + (high - low) * 0.56)
+    ink = raw < threshold
     candidates = []
     for side in ("top", "bottom", "left", "right"):
         vertical = side in {"left", "right"}
@@ -111,6 +121,7 @@ def detect_outline_recesses(source, mask):
                 {
                     "side": side,
                     "path_px": points,
+                    **({"low_contrast": True} if faded else {}),
                     "box": [
                         max(0, min(xs) - pad),
                         max(0, min(ys) - pad),
@@ -193,7 +204,11 @@ def layout_recess_findings(layout, alignment):
 
 def trim_room_edge_spills(output, recesses, meters_per_pixel):
     """Trim slight room-edge overruns when the measured outline is preserved."""
-    if output.input_check.status == "rejected" or not recesses or len(output.outline) < 3:
+    if (
+        output.input_check.status == "rejected"
+        or not recesses
+        or len(output.outline) < 3
+    ):
         return output
     outline = Polygon(output.outline)
     if (

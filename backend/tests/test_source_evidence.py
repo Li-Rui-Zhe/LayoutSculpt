@@ -105,6 +105,27 @@ def test_image_bounds_and_local_crop_mapping_are_checked_without_redrawing(tmp_p
         validate_evidence(source, (200, 150))
 
 
+def test_faint_detail_crop_enhances_tones_without_moving_evidence(tmp_path):
+    source = evidence()
+    region = [30, 20, 90, 80]
+    source.regions = [DetailRegion(box=region, reason="浅色墙线需要核对")]
+    image = Image.new("L", (200, 150), 248)
+    ImageDraw.Draw(image).line((35, 48, 82, 48), fill=203, width=6)
+    path = tmp_path / "source.png"
+    image.save(path)
+    raw, raw_views = detail_views(path, tmp_path, source, prefix="independent-audit")
+    crops, views = detail_views(path, tmp_path, source, contrast_regions=[region])
+    assert views[0]["box"] == raw_views[0]["box"]
+    assert views[0]["reason"].endswith("坐标不变）")
+    left, top, *_ = views[0]["box"]
+    with Image.open(raw[0]) as original, Image.open(crops[0]) as enhanced:
+        assert original.size == enhanced.size
+        assert original.getpixel((50 - left, 48 - top)) == 203
+        assert enhanced.getpixel((50 - left, 48 - top)) == 0
+    with Image.open(path) as saved:
+        assert saved.getpixel((50, 48)) == 203
+
+
 def test_missing_partition_is_located_without_confusing_open_spans_or_furniture(tmp_path):
     source = evidence()
     alignment = alignment_from_evidence(source, (200, 150))

@@ -24,7 +24,11 @@ from .architecture import structure_issues, validate_generated_structure
 from .asset_selection import select_candidates
 from .codex import CodexChatModel, CodexClient, CodexError
 from .consistency import matches_confirmation, source_hash, structure_hash
-from .floorplan_evidence import compare_floorplan_mask, run_floorplan_evidence
+from .floorplan_evidence import (
+    compare_floorplan_mask,
+    run_floorplan_evidence,
+    select_wall_repair_targets,
+)
 from .furnishing_quality import functional_gaps
 from .input_quality import SourceImageRejected
 from .local_structure_repair import (
@@ -488,6 +492,7 @@ def create_graph(
         retry_evidence = evidence
         local_context = {}
         recesses = []
+        contrast_regions = []
         if isinstance(local, BaseException):
             local = None
         if local is not None:
@@ -500,11 +505,32 @@ def create_graph(
                 **local_metadata, "opening_review": decision, "outline_recesses": recesses,
             }
             if recesses:
-                regions = prioritize_recess_crops(regions, recess_findings(evidence.outline_px, recesses))
+                outline_conflicts = recess_findings(evidence.outline_px, recesses)
+                regions = prioritize_recess_crops(regions, outline_conflicts)
                 local_context["local_exterior_recesses"] = {
                     "confirmed_wall_paths": recesses,
                     "instruction": "分割与原图墙线共同定位到三面凹口。path_px 是整图像素中的有序外墙路径 A→B→C→D，A、D 向两侧外墙连接，B、C 是凹口内端。A、D 之间朝图外的空隙是室外，保留两侧高低差，不能画连接 A、D 的直墙。把三个墙段同时落实到外轮廓、外墙和相邻房间边界；核对裁图后微调墙中心。",
                 }
+                contrast_regions = [
+                    finding["box"] for finding in outline_conflicts
+                    if any(r.get("low_contrast") and r["box"] == finding["box"] for r in recesses)
+                ]
+                if contrast_regions:
+                    disputed_areas = [box(*region) for region in contrast_regions]
+                    structural_prior = {
+                        **evidence_data,
+                        "outline_px": [],
+                        "walls_px": [
+                            wall.model_dump() for wall in evidence.walls_px
+                            if not any(area.covers(LineString([wall.a, wall.b]))
+                                       for area in disputed_areas)
+                        ],
+                    }
+                    local_context["local_exterior_recesses"]["faint_plan_rule"] = (
+                        "初读的外轮廓在淡色凹口处偏移，已移除该轮廓。以同坐标灰阶增强裁图"
+                        "和 path_px 给出的墙中心点为准，沿原图接回外轮廓。四点横纵坐标不可"
+                        "被相邻家具、窗台或外轮廓延长线替代。"
+                    )
             primary_evidence = evidence.model_copy(update={"regions": regions})
             retry_evidence = evidence.model_copy(update={
                 "openings_px": [opening for index, opening in enumerate(evidence.openings_px)
@@ -533,7 +559,9 @@ def create_graph(
                     "local_opening_hints": cloud_opening_context(decision),
                     "local_opening_rule": "局部候选只用于定位复核。分割可能混淆墙、窗和门。以局部原图中的洞口端点、双线、门扇和墙端为准；外轮廓和其他房间照常读取。",
                 })
-        images, views = await asyncio.to_thread(detail_views, source, workspace, primary_evidence)
+        images, views = await asyncio.to_thread(
+            detail_views, source, workspace, primary_evidence, contrast_regions=contrast_regions
+        )
         audit_images, audit_views = images, views
         if local_context and state["options"].get("collaboration"):
             audit_images, audit_views = await asyncio.to_thread(
@@ -631,8 +659,18 @@ def create_graph(
                     repaired = await repair_structure_regions(state, Layout.model_validate(layout), targeted, before_checks, evidence, audit, alignment, source)
                     alignment["local_repair"] = {"status": "applied" if repaired else "needs_review", "targets": targeted}
                 elif disputed:
-                    candidate = Layout.model_validate(layout)
-                    repaired = await repair_wall_spans(state, candidate, disputed[:3], evidence, audit, alignment, source)
+                    if local is not None:
+                        disputed, manual = await asyncio.to_thread(
+                            select_wall_repair_targets, mask, layout, alignment, disputed
+                        )
+                        if manual:
+                            alignment["wall_repair_review"] = {
+                                "deferred": manual,
+                                "selected_count": min(3, len(disputed)),
+                            }
+                    if disputed:
+                        candidate = Layout.model_validate(layout)
+                        repaired = await repair_wall_spans(state, candidate, disputed[:3], evidence, audit, alignment, source)
                 if repaired:
                     layout, detail_trace = repaired
                     detail_agents.append(detail_trace)

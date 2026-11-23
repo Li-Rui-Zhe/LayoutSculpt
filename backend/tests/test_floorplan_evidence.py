@@ -5,6 +5,7 @@ from PIL import Image
 from backend.app.floorplan_evidence import (
     compare_floorplan_mask,
     run_floorplan_evidence,
+    select_wall_repair_targets,
 )
 from backend.app.floorplan_inference import accelerated_providers
 
@@ -54,6 +55,51 @@ def test_opening_requires_positive_disagreement_and_cannot_block():
     assert serializer.loads_typed(serializer.dumps_typed(finding)) == finding
     mask[18:23, 20:41] = 2
     assert compare_floorplan_mask(mask, layout, alignment) == []
+
+
+def test_wall_repair_keeps_real_gaps_and_defers_apertures_and_nearby_strokes():
+    mask = np.zeros((180, 200), dtype=np.uint8)
+    frame = {
+        "origin_px": [0, 0],
+        "meters_per_pixel": 0.025,
+        "image_width": 200,
+        "image_height": 180,
+    }
+    layout = {
+        "walls": [
+            {
+                "start": {"x": 0.5, "y": y * 0.025},
+                "end": {"x": 4.5, "y": y * 0.025},
+                "thickness": 0.15,
+            }
+            for y in (20, 40, 70)
+        ]
+    }
+    for y in (20, 40, 70, 100):
+        mask[y - 2 : y + 3, 20:181] = 1
+    mask[148:153, 20:181] = 3
+    findings = [
+        {"span_px": [[25, y], [175, y]], "blocking": True} for y in (44, 100, 125, 150)
+    ]
+
+    targets, manual = select_wall_repair_targets(mask, layout, frame, findings)
+    assert targets == [findings[1]]
+    assert [f["reason"] for f in manual] == [
+        "near_existing_wall",
+        "unconfirmed_wall",
+        "opening_supported",
+    ]
+    assert all(f["blocking"] for f in manual)
+
+    mask[:75] = 0
+    targets, _ = select_wall_repair_targets(mask, layout, frame, findings)
+    assert targets == findings[1:3]
+
+    layout["walls"][1]["thickness"] = 0.25
+    mask[29:52, 78:83] = 1
+    perpendicular = {"span_px": [[80, 29], [80, 51]], "blocking": True}
+    targets, _ = select_wall_repair_targets(mask, layout, frame, [perpendicular])
+    assert targets == [perpendicular]
 
 
 def test_crop_budget_keeps_cloud_context_and_flags_strong_disagreements():

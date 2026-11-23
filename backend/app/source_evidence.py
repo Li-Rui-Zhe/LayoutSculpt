@@ -10,7 +10,7 @@ from statistics import median
 from typing import Annotated, Literal
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from pydantic import Field, field_validator
 from shapely.geometry import LineString, Point, Polygon
 
@@ -210,8 +210,8 @@ def pixel_wire(output, alignment):
     return data
 
 
-def detail_views(source, workspace, evidence, *, prefix="recognition-detail"):
-    """At most three original-resolution crops; the source is never redrawn."""
+def detail_views(source, workspace, evidence, *, prefix="recognition-detail", contrast_regions=()):
+    """At most three same-coordinate crops from the source."""
     views = []
     paths = []
     with Image.open(source) as image:
@@ -225,9 +225,16 @@ def detail_views(source, workspace, evidence, *, prefix="recognition-detail"):
             if any(v["box"] == list(box) for v in views):
                 continue
             path = workspace / f"{prefix}-{len(views) + 1}.png"
-            image.crop(box).save(path)
+            crop = image.crop(box)
+            reason = region.reason
+            # Make faint wall strokes visible without changing the crop's pixels
+            # coordinates. The independent reader still uses the untouched source.
+            if region.box in contrast_regions:
+                crop = ImageOps.autocontrast(crop.convert("L"), cutoff=1)
+                reason += "（灰阶对比已增强，坐标不变）"
+            crop.save(path)
             paths.append(path)
-            views.append({"image_index": len(views) + 2, "box": list(box), "reason": region.reason,
+            views.append({"image_index": len(views) + 2, "box": list(box), "reason": reason,
                           "coordinate_rule": "局部图坐标加 [left,top] 回到整图；所有输出仍使用整图像素坐标"})
     return paths, views
 

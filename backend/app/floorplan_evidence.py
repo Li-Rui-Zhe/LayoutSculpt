@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 from PIL import Image
+from shapely.geometry import LineString
 
 from .architecture import wall_line
 from .opening_review import NAMES, classify_span
@@ -119,3 +120,62 @@ def compare_floorplan_mask(mask, layout, alignment):
             }
         )
     return findings[:12]
+
+
+def select_wall_repair_targets(mask, layout, alignment, findings):
+    """Route actionable wall gaps to repair and keep uncertain signals for review."""
+    if not findings:
+        return [], []
+    origin = np.array(alignment["origin_px"])
+    scale = alignment["meters_per_pixel"]
+    size = (alignment["image_width"], alignment["image_height"])
+    known = []
+    for wall in layout["walls"]:
+        line = wall_line(wall)
+        if (
+            wall.get("boundary_type") in {"glass_railing", "glazing"}
+            or line.length < 0.45
+        ):
+            continue
+        points = np.asarray(line.coords) / scale + origin
+        direction = (points[1] - points[0]) * scale / line.length
+        # A cloud read may trace the edge of an already modeled wall. Keep
+        # this tolerance near the wall thickness and capped in world units.
+        radius = min(0.24 / scale, max(4, wall["thickness"] / scale + 2))
+        kind = classify_span(mask, *points, size)
+        known.append(
+            (
+                LineString(points).buffer(radius, cap_style="flat"),
+                direction,
+                line.length,
+                kind,
+            )
+        )
+
+    confirmed = [length for _, _, length, kind in known if kind == "wall"]
+    verified = (
+        len(confirmed) >= 3
+        and sum(confirmed) >= sum(length for _, _, length, _ in known) * 0.5
+    )
+    targets, manual = [], []
+    for finding in findings:
+        kind = classify_span(mask, *finding["span_px"], size)
+        segment = LineString(finding["span_px"])
+        points = np.asarray(segment.coords)
+        direction = (points[-1] - points[0]) / segment.length
+        nearby = any(
+            abs(direction @ existing_direction) >= 0.98
+            and corridor.intersection(segment).length >= segment.length * 0.85
+            for corridor, existing_direction, _, _ in known
+        )
+        if kind in {"door", "window"}:
+            reason = "opening_supported"
+        elif nearby:
+            reason = "near_existing_wall"
+        elif kind is None and verified:
+            reason = "unconfirmed_wall"
+        else:
+            targets.append(finding)
+            continue
+        manual.append({**finding, "reason": reason})
+    return targets, manual
