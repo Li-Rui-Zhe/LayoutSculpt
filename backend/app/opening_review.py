@@ -6,32 +6,10 @@ from math import dist
 import numpy as np
 from shapely.geometry import LineString, Polygon, box
 
+from .floorplan_inference import classify_span
 from .source_evidence import DetailRegion
 
-CLASSES = {"wall": 1, "window": 2, "door": 3}
 NAMES = {"wall": "墙体", "window": "窗", "door": "门", "passage": "通道"}
-
-
-def classify_span(mask, a, b, image_size):
-    """Return the dominant supported class along an aperture's span, or abstain."""
-    height, width = mask.shape
-    ratio = np.array([width, height]) / image_size
-    start, end = np.array([a, b]) * ratio
-    if np.linalg.norm(end - start) < 8:
-        return None
-    points = np.rint(np.linspace(start, end, 21)[3:-3]).astype(int)
-    samples = []
-    for x, y in points:
-        if 0 <= x < width and 0 <= y < height:
-            band = mask[max(0, y - 2) : y + 3, max(0, x - 2) : x + 3]
-            samples.append(np.bincount(band.ravel(), minlength=4)[1:] >= 3)
-    if len(samples) < 12:
-        return None
-    ranked = sorted(
-        zip(CLASSES, np.mean(samples, axis=0), strict=True), key=lambda item: -item[1]
-    )
-    (kind, coverage), (_, second) = ranked[:2]
-    return kind if coverage >= 0.8 and second <= 0.2 else None
 
 
 def opening_box(a, b, image_size, padding=None):

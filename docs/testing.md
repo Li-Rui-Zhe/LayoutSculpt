@@ -104,8 +104,11 @@ node scripts/review/verify_delivery_notice.mjs <成功任务ID>
 
 ```sh
 python scripts/benchmark_quality.py --help
+python scripts/benchmark_quality.py --model gpt-6.2-astra --mode precise --cases clear,concave --review-mode preview
 python scripts/benchmark_delivery.py --run data/quality-benchmarks/<本轮目录>
 ```
+
+精细识别验收会使用工作台已安装的本地分割模型。默认停在结构核对，传入 `--review-mode preview` 可以验证自动出图。每个任务的 `source-alignment.json` 会在本地推理成功时记录 `local_segmentation.provider`，交付范围见 `manifest.json` 的 `delivery_status`。
 
 浏览器打开方案预览时可临时添加 `diagnostics=1`，在画布 DOM 的 `data-frame-metrics` 读取交互采样。仅本地内存记录，不上传或长期保存；不同设备、视口、GPU 负载下不可直接比较。实测结果及测试边界见 [本轮优化记录](optimization-20261102.md)。
 

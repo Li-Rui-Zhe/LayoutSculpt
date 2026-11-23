@@ -495,6 +495,7 @@ def create_graph(
         contrast_regions = []
         if isinstance(local, BaseException):
             local = None
+        mask = None
         if local is not None:
             mask, local_metadata = local
             (regions, decision, disputed_types), recesses = await asyncio.gather(
@@ -634,7 +635,7 @@ def create_graph(
                         audit_result, local_findings
                     )
                     if not broad_disagreement and not mixed_disagreement:
-                        pixel_checks = await asyncio.to_thread(image_wall_findings, source, layout, alignment)
+                        pixel_checks = await asyncio.to_thread(image_wall_findings, source, layout, alignment, mask=mask)
                         outlines = outline_regions(layout, audit, alignment) if audit_result["outline_overlap"] < .9 else []
                         recess_checks = layout_recess_findings(layout, alignment)
                         before_checks = [comparison["findings"], audit_walls, pixel_checks, recess_checks]
@@ -656,7 +657,7 @@ def create_graph(
                             ])
                             for target in targeted
                         ]
-                    repaired = await repair_structure_regions(state, Layout.model_validate(layout), targeted, before_checks, evidence, audit, alignment, source)
+                    repaired = await repair_structure_regions(state, Layout.model_validate(layout), targeted, before_checks, evidence, audit, alignment, source, mask)
                     alignment["local_repair"] = {"status": "applied" if repaired else "needs_review", "targets": targeted}
                 elif disputed:
                     if local is not None:
@@ -676,7 +677,7 @@ def create_graph(
                     detail_agents.append(detail_trace)
                     comparison = await asyncio.to_thread(compare_source, layout, evidence, alignment, source=source)
             alignment = update_comparison(alignment, comparison)
-            alignment["image_findings"] = await asyncio.to_thread(image_wall_findings, source, layout, alignment)
+            alignment["image_findings"] = await asyncio.to_thread(image_wall_findings, source, layout, alignment, mask=mask)
             alignment["image_findings"].extend(layout_recess_findings(layout, alignment))
             alignment["findings"].extend(alignment["image_findings"])
             (workspace / "recognition.json").write_text(json.dumps(layout, ensure_ascii=False), encoding="utf-8")
@@ -696,7 +697,7 @@ def create_graph(
         return result
 
     async def repair_structure_regions(
-        state, candidate, targets, before_checks, evidence, audit, alignment, source
+        state, candidate, targets, before_checks, evidence, audit, alignment, source, mask
     ):
         pad = max(18, 0.6 / alignment["meters_per_pixel"])
         regions = [
@@ -737,7 +738,7 @@ def create_graph(
             after_checks = [
                 compare_source(layout, evidence, alignment, source=source)["findings"],
                 compare_source(layout, audit, alignment, source=source)["findings"],
-                image_wall_findings(source, layout, alignment),
+                image_wall_findings(source, layout, alignment, mask=mask),
                 layout_recess_findings(layout, alignment),
             ]
             improved = False

@@ -13,7 +13,8 @@ from PIL import Image
 from shapely.geometry import LineString
 
 from .architecture import wall_line
-from .opening_review import NAMES, classify_span
+from .floorplan_inference import classify_span
+from .opening_review import NAMES
 
 MASK_FILE = "local-floorplan-mask.png"
 WORKER = Path(__file__).with_name("floorplan_inference.py")

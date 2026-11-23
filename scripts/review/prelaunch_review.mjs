@@ -9,6 +9,32 @@ const browser = await launchReviewBrowser();
 const errors = [];
 const checks = [];
 try {
+  const roam = await browser.newPage();
+  roam.on("pageerror", (error) => errors.push(error.message));
+  const modelRequests = [];
+  roam.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith(".glb"))
+      modelRequests.push(request.url());
+  });
+  await roam.goto(`${base}/#new-model`);
+  await expect(roam.getByText("高级设置", { exact: true })).toBeVisible();
+  await expect(roam.locator("#viewport canvas")).toHaveCount(0);
+  expect(modelRequests).toHaveLength(0);
+  await roam.goto(`${base}/#roam`);
+  const rooms = roam
+    .getByRole("group", { name: "切换房间" })
+    .getByRole("button");
+  const resetView = roam.getByRole("button", { name: "回到初始视角" });
+  await expect(resetView).toBeVisible({ timeout: 60000 });
+  for (const room of [rooms.nth(1), rooms.first()]) {
+    await room.click();
+    await expect(room).toHaveAttribute("aria-pressed", "true");
+    await expect(resetView).toBeVisible({ timeout: 60000 });
+  }
+  expect(modelRequests).toHaveLength(1);
+  await roam.close();
+  checks.push("直达新建页不加载 GLB，进入漫游和切换房间共请求一次示例模型");
+
   const page = await browser.newPage({
     viewport: { width: 1600, height: 1050 },
   });

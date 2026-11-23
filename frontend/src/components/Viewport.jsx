@@ -3,6 +3,7 @@ import {
   useLayoutEffect,
   useImperativeHandle,
   useRef,
+  useState,
 } from "react";
 import { useCustomTextures } from "../materials/customTextures.js";
 import { StudioScene } from "../viewer/StudioScene.js";
@@ -10,6 +11,20 @@ import { useViewportRuntime } from "../viewer/ViewportRuntime.jsx";
 import ContextRecovery from "../viewer/ContextRecovery.jsx";
 
 export default forwardRef(function Viewport(
+  { active = true, url, ...props },
+  ref,
+) {
+  const [lastVisibleUrl, setLastVisibleUrl] = useState(null);
+  useLayoutEffect(() => {
+    if (active) setLastVisibleUrl(url);
+  }, [active, url]);
+  const displayedUrl = active ? url : lastVisibleUrl;
+  return displayedUrl ? (
+    <MountedViewport {...props} active={active} url={displayedUrl} ref={ref} />
+  ) : null;
+});
+
+const MountedViewport = forwardRef(function MountedViewport(
   {
     url,
     state,

@@ -15,6 +15,7 @@ from pydantic import Field, field_validator
 from shapely.geometry import LineString, Point, Polygon
 
 from .architecture import wall_line
+from .floorplan_inference import classify_points
 from .input_quality import InputCheck, SourceImageRejected
 from .recognition_contract import RecognitionOpening, RecognitionRoom
 from .schemas import StrictModel
@@ -354,7 +355,45 @@ def compare_source(layout, evidence, alignment, *, source=None):
     return {"outline_overlap": round(overlap, 4), "findings": findings}
 
 
-def image_wall_findings(source, layout, alignment):
+def _pale_wall_support(gray, centers, direction, radius, mask):
+    """Check the stroke inside the candidate wall against the paper on both sides."""
+    normal = np.array([-direction[1], direction[0]])
+    flank = 2 * radius + 2
+    offsets = np.r_[[-flank - 1, -flank], np.arange(-radius, radius + 1), [flank, flank + 1]]
+    coords = np.rint(centers[:, None, :] + offsets[None, :, None] * normal).astype(int)
+    height, width = gray.shape
+    inside = ((coords[:, :, 0] >= 0) & (coords[:, :, 0] < width)
+              & (coords[:, :, 1] >= 0) & (coords[:, :, 1] < height)).all(axis=1)
+    if inside.mean() < .8:
+        return False
+    x, y = coords[inside].transpose(2, 0, 1)
+    levels = gray[y, x].astype(float)
+    paper = np.minimum(levels[:, :2].mean(axis=1), levels[:, -2:].mean(axis=1))
+    contrast = paper[:, None] - levels[:, 2:-2]
+    stroke_coords = coords[inside, 2:-2]
+
+    def continuous_band(min_contrast, min_width):
+        # Only count an unbroken band reaching the centerline (±1 px).
+        # On diagonals two offsets can round to the same source pixel.
+        dark = contrast >= min_contrast
+        supported = np.zeros(len(dark), dtype=bool)
+        first_start = max(0, radius - min_width)
+        last_start = min(radius + 1, dark.shape[1] - min_width)
+        for start in range(first_start, last_start + 1):
+            end = start + min_width - 1
+            distinct = (stroke_coords[:, start] != stroke_coords[:, end]).any(axis=1)
+            supported |= dark[:, start:end + 1].all(axis=1) & distinct
+        return supported.sum() >= .8 * len(centers)
+
+    if not continuous_band(12, 2):
+        return False
+    kind = classify_points(mask, centers[inside], (width, height)) if mask is not None else None
+    if kind in {"window", "door"}:
+        return False
+    return kind == "wall" or continuous_band(25, max(3, radius))
+
+
+def image_wall_findings(source, layout, alignment, *, mask=None):
     """Conservative ink-support hints, not wall segmentation or ground truth.
 
     Exclude openings and skip low-contrast plans. Empty white space behind a
@@ -377,6 +416,7 @@ def image_wall_findings(source, layout, alignment):
             continue
         radius = max(2, min(7, math.ceil(wall["thickness"] / scale / 2)))
         samples = []
+        centers = []
         openings = [o for o in layout["openings"] if o["wall_id"] == wall["id"]]
         for fraction in np.linspace(0.05, 0.95, min(300, max(16, int(length / 2)))):
             offset = fraction * length * scale
@@ -384,8 +424,11 @@ def image_wall_findings(source, layout, alignment):
                 continue
             x, y = np.rint(a + (b - a) * fraction).astype(int)
             if 0 <= x < gray.shape[1] and 0 <= y < gray.shape[0]:
+                centers.append((x, y))
                 samples.append(bool(dark[max(0, y-radius):y+radius+1, max(0, x-radius):x+radius+1].any()))
         if len(samples) >= 12 and sum(samples) / len(samples) < 0.2:
+            if _pale_wall_support(gray, np.array(centers), (b - a) / length, radius, mask):
+                continue
             support = sum(samples) / len(samples)
             findings.append({"code": "weak_image_wall", "wall_id": wall["id"], "support": round(support, 3),
                 "message": f"墙体 {wall['id']} 在原图对应位置的墙线证据较弱，请检查是否错位或多画。",

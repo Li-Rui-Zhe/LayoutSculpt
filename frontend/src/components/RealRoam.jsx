@@ -22,9 +22,7 @@ import {
   interiorExteriors,
 } from "../hooks/interiorDraft.js";
 import {
-  captureWhitePanorama,
-  listPanoramaRooms,
-  openPanoramaCapture,
+  loadPanoramaProject,
   panoramaDoors,
 } from "../viewer/panoramaCapture.js";
 import PanoramaView from "../viewer/PanoramaView.jsx";
@@ -35,7 +33,11 @@ import StructureReview from "./StructureReview.jsx";
 import { pollInteriorHistory } from "./interiorImageState.js";
 import "./real-roam.css";
 
-const sample = { id: "sample", title: showcase.title, url: showcase.model_url };
+const sample = {
+  id: "sample",
+  title: showcase.title,
+  url: `${showcase.model_url}?v=${showcase.revision || showcase.id}`,
+};
 const panoramaBatchLimit = 16;
 const modelSteps = ["识别户型", "布置白模", "生成模型"];
 const defaultPrompt =
@@ -89,6 +91,7 @@ export default function RealRoam({
   const [error, setError] = useState("");
   const [historyError, setHistoryError] = useState(false);
   const [revision, refresh] = useState(0);
+  const panoramaProject = useRef(null);
   const live = useRef(false);
   const request = useRef(null);
   const lastAutoCapture = useRef(null);
@@ -171,11 +174,21 @@ export default function RealRoam({
     };
   }, []);
   useEffect(() => {
+    setRooms([]);
+    setRoomId("");
+    setPreviews(new Map());
+    setRoomError("");
+    lastAutoCapture.current = null;
     if (!project.url) return;
     let current = true;
-    listPanoramaRooms(project.url)
-      .then((available) => {
-        if (!current) return;
+    loadPanoramaProject(project.url)
+      .then((loaded) => {
+        if (!current) {
+          loaded.dispose();
+          return;
+        }
+        panoramaProject.current = loaded;
+        const available = loaded.rooms;
         setRooms(available);
         const savedRoomId = readContext("roamRoom");
         const savedRoom = available.find(({ id }) => id === savedRoomId);
@@ -187,6 +200,9 @@ export default function RealRoam({
       });
     return () => {
       current = false;
+      request.current?.abort();
+      panoramaProject.current?.dispose();
+      panoramaProject.current = null;
     };
   }, [project.url]);
   useEffect(() => {
@@ -237,6 +253,11 @@ export default function RealRoam({
     setError("");
     setBusy(action);
     try {
+      if (action === "capture" || action === "batch") {
+        // Let the progress indicator render before the synchronous WebGL capture.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (controller.signal.aborted) return;
+      }
       await operation(controller.signal);
     } catch (err) {
       if (live.current && !controller.signal.aborted) {
@@ -251,8 +272,7 @@ export default function RealRoam({
 
   function prepare(target) {
     return perform("capture", async (signal) => {
-      const next = await captureWhitePanorama(
-        project.url,
+      const next = panoramaProject.current.capture(
         target.id,
         defaultHeading(target.id),
       );
@@ -266,6 +286,7 @@ export default function RealRoam({
     if (
       !historyLoaded ||
       !room ||
+      !panoramaProject.current ||
       white ||
       historical ||
       busy ||
@@ -348,8 +369,7 @@ export default function RealRoam({
       return;
     return perform(source ? "submit" : "capture", async (signal) => {
       const view =
-        source ||
-        (await captureWhitePanorama(project.url, room.id, preferredHeading));
+        source || panoramaProject.current.capture(room.id, preferredHeading);
       if (signal.aborted) return;
       setBusy("submit");
       const form = new FormData();
@@ -371,36 +391,32 @@ export default function RealRoam({
     if (busy || !remaining.length || !hasBrief || !historyLoaded) return;
     setPrepared(0);
     return perform("batch", async (signal) => {
-      const capture = await openPanoramaCapture(project.url);
-      try {
-        for (
-          let offset = 0;
-          offset < remaining.length;
-          offset += panoramaBatchLimit
-        ) {
-          const form = new FormData();
-          form.set("prompt", prompt.trim());
-          for (const { room: target } of remaining.slice(
-            offset,
-            offset + panoramaBatchLimit,
-          )) {
-            if (signal.aborted) return;
-            const view =
-              previews.get(target.id) ||
-              capture.capture(target.id, defaultHeading(target.id));
-            await addReference(form, view, signal);
-            setPrepared((number) => number + 1);
-            await new Promise((resolve) => setTimeout(resolve, 0));
-          }
-          const { items } = await api("/interior-images/batch", {
-            method: "POST",
-            body: form,
-            signal,
-          });
-          if (!signal.aborted) trackSubmission(items);
+      const capture = panoramaProject.current;
+      for (
+        let offset = 0;
+        offset < remaining.length;
+        offset += panoramaBatchLimit
+      ) {
+        const form = new FormData();
+        form.set("prompt", prompt.trim());
+        for (const { room: target } of remaining.slice(
+          offset,
+          offset + panoramaBatchLimit,
+        )) {
+          if (signal.aborted) return;
+          const view =
+            previews.get(target.id) ||
+            capture.capture(target.id, defaultHeading(target.id));
+          await addReference(form, view, signal);
+          setPrepared((number) => number + 1);
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
-      } finally {
-        capture.dispose();
+        const { items } = await api("/interior-images/batch", {
+          method: "POST",
+          body: form,
+          signal,
+        });
+        if (!signal.aborted) trackSubmission(items);
       }
     });
   }

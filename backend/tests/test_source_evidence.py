@@ -5,6 +5,7 @@ import json
 from dataclasses import replace
 from io import BytesIO
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
@@ -500,6 +501,49 @@ def test_source_ink_hints_find_blank_wall_positions_but_skip_openings_and_glass(
     assert not image_wall_findings(source, layout, frame)
 
 
+@pytest.mark.parametrize(("stroke", "label", "accepted"), [
+    ("wide", 0, True), ("narrow", 0, False), ("narrow", 1, True),
+    ("wide", 2, False), ("wide", 3, False),
+    ("blank", 1, False), ("single", 1, False), ("parallel", 1, False),
+    ("offset", 1, False), ("floor_fill", 1, False), ("partial", 1, False),
+    ("opening_only", 1, False), ("both_jambs", 1, True),
+])
+def test_faint_wall_needs_a_centered_stroke_outside_openings(tmp_path, stroke, label, accepted):
+    image = Image.new("L", (220, 160), 255)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((6, 6, 213, 153), outline=0, width=3)
+    wall = {"id": "w", "start": {"x": .4, "y": .8}, "end": {"x": 1.8, "y": .8}, "thickness": .12}
+    frame = {"origin_px": [0, 0], "meters_per_pixel": .01}
+    layout = {"walls": [wall], "openings": []}
+    width = {"wide": 9, "narrow": 3, "single": 1}.get(stroke)
+    if width:
+        draw.line((40, 80, 180, 80), fill=205, width=width)
+    elif stroke == "parallel":
+        for y in (76, 80, 84):
+            draw.line((40, y, 180, y), fill=205)
+    elif stroke == "offset":
+        draw.line((40, 85, 180, 85), fill=205, width=5)
+    elif stroke == "floor_fill":
+        draw.rectangle((40, 80, 180, 125), fill=205)
+    elif stroke == "partial":
+        draw.line((40, 80, 134, 80), fill=205, width=8)
+    elif stroke in {"both_jambs", "opening_only"}:
+        layout["openings"].append({"wall_id": "w", "offset": .4, "width": .6})
+        spans = [(40, 80), (140, 180)] if stroke == "both_jambs" else [(80, 140)]
+        for start, end in spans:
+            draw.line((start, 80, end, 80), fill=205, width=3)
+    source = tmp_path / "plan.png"
+    image.save(source)
+    # Model and source use different horizontal and vertical scales.
+    mask = np.zeros((48, 110), dtype=np.uint8) if label else None
+    if label:
+        mask[23:26, 18:93] = label
+        if stroke == "both_jambs":
+            mask[23:26, 41:69] = 3
+    findings = image_wall_findings(source, layout, frame, mask=mask)
+    assert [f["wall_id"] for f in findings if f["blocking"]] == ([] if accepted else ["w"])
+
+
 def test_deepseek_transmits_whole_image_before_original_resolution_crops(tmp_path):
     from backend.tests.test_ai_connections import VISION, connection_app, enable
     app, _, calls = connection_app(tmp_path)
@@ -596,8 +640,6 @@ async def test_local_codex_keeps_original_and_crop_order_in_image_inputs(tmp_pat
 
 
 def test_local_geometry_hints_reach_the_detailed_reader_without_biasing_the_audit(tmp_path, monkeypatch):
-    import numpy as np
-
     from backend.app import workflow
 
     monkeypatch.setattr(

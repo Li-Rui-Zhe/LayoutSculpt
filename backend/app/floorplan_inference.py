@@ -12,6 +12,33 @@ PALETTE = [(0, 0, 0), (21, 144, 104), (27, 118, 209), (177, 62, 182)]
 CPU = "CPUExecutionProvider"
 
 
+def classify_span(mask, a, b, image_size):
+    """Return the dominant supported class along an aperture's span, or abstain."""
+    height, width = mask.shape
+    ratio = np.array([width, height]) / image_size
+    if np.linalg.norm((np.asarray(b) - a) * ratio) < 8:
+        return None
+    return classify_points(mask, np.linspace(a, b, 21)[3:-3], image_size)
+
+
+def classify_points(mask, centers, image_size):
+    """Classify retained source-image samples, including disjoint solid spans around openings."""
+    height, width = mask.shape
+    points = np.rint(centers * (np.array([width, height]) / image_size)).astype(int)
+    samples = []
+    for x, y in points:
+        if 0 <= x < width and 0 <= y < height:
+            band = mask[max(0, y - 2) : y + 3, max(0, x - 2) : x + 3]
+            samples.append(np.bincount(band.ravel(), minlength=4)[1:] >= 3)
+    if len(samples) < 12:
+        return None
+    ranked = sorted(
+        zip(CLASSES[1:], np.mean(samples, axis=0), strict=True), key=lambda item: -item[1]
+    )
+    (kind, coverage), (_, second) = ranked[:2]
+    return kind if coverage >= 0.8 and second <= 0.2 else None
+
+
 def accelerated_providers(available, system):
     candidates = {
         "Darwin": ["CoreMLExecutionProvider"],

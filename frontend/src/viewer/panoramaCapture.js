@@ -167,13 +167,14 @@ function modelResources(model) {
   };
 }
 
-export async function listPanoramaRooms(modelUrl) {
+export async function loadPanoramaProject(modelUrl) {
   const { scene: model } = await new GLTFLoader().loadAsync(modelUrl);
-  const dispose = modelResources(model);
+  const disposeModel = modelResources(model);
+  let session;
   try {
     const { available, portals } = buildTour(model, tourOptions);
     const preferred = recommendedRooms(available)[0];
-    return available
+    const rooms = available
       .map((room) => {
         const eye = eyePoint(room);
         const doors = portals
@@ -203,14 +204,30 @@ export async function listPanoramaRooms(modelUrl) {
         (a, b) =>
           Number(b.id === preferred?.id) - Number(a.id === preferred?.id),
       );
-  } finally {
-    dispose();
+    return {
+      rooms,
+      capture(id, heading) {
+        if (session?.lost()) {
+          session.dispose();
+          session = null;
+        }
+        session ??= openPanoramaCapture(model.clone(true), available);
+        return session.capture(id, heading);
+      },
+      dispose() {
+        session?.dispose();
+        disposeModel();
+      },
+    };
+  } catch (error) {
+    disposeModel();
+    throw error;
   }
 }
 
-export async function openPanoramaCapture(modelUrl) {
+function openPanoramaCapture(model, rooms) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  let disposeModel, ceiling, target, quad, screen;
+  let ceiling, target, quad, screen;
   const clay = new THREE.MeshStandardMaterial({
     color: "#e9e8e4",
     roughness: 1,
@@ -232,7 +249,6 @@ export async function openPanoramaCapture(modelUrl) {
     roughness: 1,
   });
   function dispose() {
-    disposeModel?.();
     for (const material of [clay, glass, floor, walls]) material.dispose();
     ceiling?.dispose();
     target?.dispose();
@@ -242,12 +258,9 @@ export async function openPanoramaCapture(modelUrl) {
     renderer.forceContextLoss();
   }
   try {
-    const { scene: model } = await new GLTFLoader().loadAsync(modelUrl);
-    disposeModel = modelResources(model);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#c8d2dc");
     scene.add(model);
-    const rooms = buildTour(model, tourOptions).available;
     ceiling = new TourCeiling(scene, model);
     ceiling.material.color.set("#eeeeea");
     hidePlaceholderVisuals(model);
@@ -334,19 +347,11 @@ export async function openPanoramaCapture(modelUrl) {
     }
     return {
       capture,
+      lost: () => renderer.getContext().isContextLost(),
       dispose,
     };
   } catch (error) {
     dispose();
     throw error;
-  }
-}
-
-export async function captureWhitePanorama(modelUrl, roomId, preferredHeading) {
-  const session = await openPanoramaCapture(modelUrl);
-  try {
-    return session.capture(roomId, preferredHeading);
-  } finally {
-    session.dispose();
   }
 }

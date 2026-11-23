@@ -19,6 +19,7 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(base);
   await page.getByRole("button", { name: "新建方案", exact: true }).click();
+  await page.getByText("高级设置", { exact: true }).click();
   await page.getByRole("radio", { name: /快速识别/ }).check();
   const choice = page.getByRole("checkbox", {
     name: "先看平面图，确认后再生成 3D",
@@ -26,9 +27,6 @@ try {
   });
   await expect(choice).toBeVisible();
   await expect(choice).not.toBeChecked();
-  expect(await choice.evaluate((element) => !!element.closest("details"))).toBe(
-    false,
-  );
   await choice.scrollIntoViewIfNeeded();
   await page.screenshot({ path: output + "/choice-desktop.png" });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -43,7 +41,7 @@ try {
     ),
   ).toBe(true);
   await page.screenshot({ path: output + "/choice-mobile.png" });
-  checks.push("平面图开关在高级设置外始终可见，手机可操作且无横向溢出");
+  checks.push("展开高级设置后显示平面图开关，手机可操作且无横向溢出");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("button", { name: /使用示例户型/ }).click();
   const submitted = page.waitForResponse(

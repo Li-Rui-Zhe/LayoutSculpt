@@ -162,4 +162,6 @@ data/floorplan-runtime/bin/python -m pip install -r backend/requirements-floorpl
 
 Windows 默认可用 CPU。兼容 DirectX 12 的显卡可在识别环境中用 `onnxruntime-directml` 替换 `onnxruntime`，两者选装一个。macOS 的 ONNX Runtime 会在可用时优先使用 Core ML。找不到适用的加速后端时使用 CPU，也可在 `.env` 里设置 `STUDIO_FLOORPLAN_DEVICE=cpu`。使用自定义数据目录时，默认的模型和运行环境目录也跟随数据目录。可分别用 `STUDIO_FLOORPLAN_MODEL` 和 `STUDIO_FLOORPLAN_PYTHON` 指定绝对路径。
 
-如果已获得可用于你的用途的 OpenBIM FloorPlan AI M2-DA 权重，可在单独的导出环境安装 `torch`、`torchvision`、`onnx` 与 `segmentation-models-pytorch`，然后运行 `python scripts/export_floorplan_model.py 权重.pt data/floorplan-model/structure.onnx`。项目仓库不附带第三方权重。发布前需按具体权重和训练数据的许可核对使用范围。
+如果使用 OpenBIM FloorPlan AI M2-DA，可以从官方 v1.0.0 发布页下载 `M2_DA_FT_v2_best.pt`。该文件的 SHA-256 为 `cd7f41460ca1d3cc99bca9c61db8ac83d0381ddec385d55257e3ccb99967ffd7`。请按权重和训练数据的许可核对使用范围。[官方权重](https://github.com/Chunling1/OpenBIM-FloorPlan-AI/releases/tag/v1.0.0)
+
+在单独的导出环境安装 `torch`、`torchvision`、`onnx` 与 `segmentation-models-pytorch`，然后运行 `python scripts/export_floorplan_model.py M2_DA_FT_v2_best.pt data/floorplan-model/structure.onnx`。之后上传户型并使用精细识别即可自动启用。核对浅色隔墙时，程序会跳过门窗位置，对照原图中连续线迹的宽度、两侧底色和模型分割结果。墙线过细、错位或缺失时仍会保留疑点。

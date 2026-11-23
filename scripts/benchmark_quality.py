@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import json
 import math
+import os
 import shutil
 import sqlite3
 import sys
@@ -27,6 +28,7 @@ from backend.app.architecture import opening_footprint, wall_footprint
 from backend.app.ai_cache import read_metrics
 from backend.app.codex import CodexClient
 from backend.app.config import Settings
+from backend.app.floorplan_evidence import configuration
 from backend.app.schemas import JobOptions
 from backend.app.skills import SkillRegistry
 from backend.app.store import Store
@@ -147,14 +149,21 @@ async def main(args):
     cases = args.cases.split(",") if args.cases else list(expected)
     if len(cases) != len(set(cases)) or set(cases) - expected.keys():
         raise ValueError("案例选择重复或不在清单内")
+    # Isolate job artifacts while using the same installed segmenter as the workbench.
+    model, python = configuration(base.data_dir)
+    if model.is_file():
+        os.environ.setdefault("STUDIO_FLOORPLAN_MODEL", str(model.resolve()))
+        os.environ.setdefault("STUDIO_FLOORPLAN_PYTHON", python)
     settings = replace(base, data_dir=directory)
     # Resolve CLI and login against the real configured runtime, isolate only job data.
     client = CodexClient(base)
     store = Store(settings.db_path)
     await store.initialize()
     report = {"fixture_only": not bool(args.manifest), "human_confirmed": False, "model": args.model,
-              "mode": args.mode, "effort": args.effort, "runs": []}
+              "mode": args.mode, "effort": args.effort, "review_mode": args.review_mode, "runs": []}
     previous_report = json.loads((directory / "report.json").read_text(encoding="utf-8")) if (directory / "report.json").exists() else {}
+    if previous_report and previous_report.get("review_mode", "manual") != args.review_mode:
+        raise ValueError("恢复验收时核对模式必须与原记录一致")
     if previous_report and any(previous_report.get(key) != report[key] for key in ("model", "mode", "effort", "fixture_only")):
         raise ValueError("恢复验收时模型、识别方式和强度必须与原记录一致")
     print(json.dumps({"directory": str(directory)}, ensure_ascii=False), flush=True)
@@ -172,7 +181,7 @@ async def main(args):
                 workspace.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(directory / "sources" / f"{case}.png", workspace / "source.png")
                 options = JobOptions(model=args.model, reasoning_effort=args.effort,
-                                     recognition_mode=args.mode, review_mode="manual")
+                                     recognition_mode=args.mode, review_mode=args.review_mode)
                 if not existing:
                     await store.create(identifier, "隔离质量验收 " + case, options.model_dump())
                 started = time.perf_counter()
@@ -210,6 +219,8 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True)
     parser.add_argument("--effort", default="medium")
     parser.add_argument("--mode", choices=["fast", "precise"], default="precise")
+    parser.add_argument("--review-mode", choices=["manual", "preview"], default="manual",
+                        help="manual 停在结构核对；preview 在复核通过后自动生成 GLB")
     parser.add_argument("--cases", help="逗号分隔的案例 ID，默认全部")
     parser.add_argument("--manifest", help="带独立人工标注的本地案例清单；显式运行会把图片发送给所选 AI 服务")
     parser.add_argument("--resume")
