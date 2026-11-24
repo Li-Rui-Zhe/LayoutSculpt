@@ -42,7 +42,7 @@ pnpm test:prelaunch
 
 ## 专项浏览器检查
 
-精细识别专项运行 `node scripts/prelaunch.mjs --source-evidence`，覆盖独立读图分歧、统一坐标叠加、透明度与房间名称、移动端和刷新恢复、人工确认后的真实 GLB，以及旧服务的能力提示。坐标、图像证据和传输顺序专项见 `backend/tests/test_source_evidence.py` 与 `frontend/tests/source-alignment.test.js`。固定响应测试和单张真实图对照均不能代替多样本准确率评估。
+精细识别专项运行 `node scripts/prelaunch.mjs --source-evidence`，覆盖独立读图分歧、统一坐标叠加、透明度与房间名称、移动端和刷新恢复、人工确认和自动交付后的真实 GLB、成品原图叠加的切换，以及旧服务的能力提示。坐标、图像证据和传输顺序专项见 `backend/tests/test_source_evidence.py` 与 `frontend/tests/source-alignment.test.js`。固定响应测试和单张真实图对照均不能代替多样本准确率评估。
 
 保留在 `scripts/review/`，避免与日常启动脚本混放。完整验收使用 `pnpm test:prelaunch`；只复验渐进生成与同任务继续可运行 `node scripts/prelaunch.mjs --progressive`，同样使用隔离服务和空闲端口。
 

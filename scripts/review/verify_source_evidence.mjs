@@ -116,6 +116,7 @@ try {
   expect(final.result.source_alignment_url).toBeTruthy();
   checks.push("用户确认后才生成真实 GLB，最终成果保留原图定位记录");
   expect(confirmations).toBe(1);
+  await page.close();
 
   const automatic = await browser.newPage({
     viewport: { width: 1440, height: 1000 },
@@ -143,6 +144,21 @@ try {
   expect(delivered.result.ai_review.status).toBe("estimated");
   expect(delivered.result.consistency.source_reviewed).toBe(false);
   expect(delivered.result.consistency.geometry_verified).toBe(true);
+  const sourceTab = automatic.getByRole("button", {
+    name: "原始户型",
+    exact: true,
+  });
+  await sourceTab.click();
+  const sourcePage = automatic.locator(".source-page");
+  await expect(sourcePage.locator(".source-image img")).toBeVisible();
+  await expect(sourcePage.getByRole("slider")).toHaveCount(0);
+  await sourcePage.getByRole("button", { name: "原图叠加" }).click();
+  await expect(
+    sourcePage.getByRole("img", { name: "原图上的识别墙线和对照位置" }),
+  ).toBeVisible();
+  await sourcePage.getByRole("button", { name: "只看原图" }).click();
+  await expect(sourcePage.locator(".source-image img")).toBeVisible();
+  checks.push("自动交付后可随时切换原图与成品结构叠加");
   expect(automaticConfirmations).toBe(0);
   await automatic.close();
   checks.push("同一处门窗分歧，勾选后只确认一次，默认零次确认交付真实模型");

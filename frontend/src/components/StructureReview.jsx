@@ -6,7 +6,7 @@ import { api } from "../api.js";
 import SourceOverlay from "./SourceOverlay.jsx";
 import RetryDialog from "./RetryDialog.jsx";
 import DoorLeafLines from "./DoorLeafLines.jsx";
-import { toDraft, openingPoints } from "../editor/geometry.js";
+import { toDraft, openingNames, openingPoints } from "../editor/geometry.js";
 import {
   balconyNames,
   boundaryNames,
@@ -87,6 +87,7 @@ export function StructurePlan({ layout }) {
         const [a, b] = openingPoints(opening, wall);
         return (
           <g key={i}>
+            <title>{openingNames[opening.kind]}</title>
             <line
               x1={a.x}
               y1={a.y}
@@ -100,7 +101,16 @@ export function StructurePlan({ layout }) {
               y1={a.y}
               x2={b.x}
               y2={b.y}
-              stroke={opening.kind === "window" ? "#2382a0" : "#be863b"}
+              stroke={
+                opening.kind === "window"
+                  ? "#2382a0"
+                  : opening.kind === "passage"
+                    ? "#ad2854"
+                    : "#be863b"
+              }
+              strokeDasharray={
+                opening.kind === "passage" ? ".09 .06" : undefined
+              }
               strokeWidth=".045"
             />
             <DoorLeafLines
@@ -300,7 +310,8 @@ export default function StructureReview({
           {inRoam
             ? "对照原图检查墙体、门窗和房间。"
             : "这是生成过程中的唯一一次确认。可以先调整平面图，确认后将自动完成三维生成。"}
-          {comparisonView === "side" && "蓝色是窗，金色是门或通道。"}
+          {comparisonView === "side" &&
+            "蓝色是窗，金色实线是门，玫红色短虚线是无门通道。"}
         </p>
         {job.result?.ai_review?.status === "completed" &&
           job.result.ai_review.summary && (

@@ -46,6 +46,7 @@ import { StatusBadge } from "./TaskRail.jsx";
 import WorkspaceSidebar from "./WorkspaceSidebar.jsx";
 const ManualEditor = lazy(() => import("../editor/ManualEditor.jsx"));
 import StructureReview from "./StructureReview.jsx";
+import SourceOverlay from "./SourceOverlay.jsx";
 import RetryDialog from "./RetryDialog.jsx";
 import { generationError } from "../hooks/modelSelection.js";
 import { useUrlContext } from "../hooks/urlContext.js";
@@ -227,6 +228,7 @@ export default function TaskWorkspace({
   const [rooms, setRooms] = useState([]);
   const [roomView, setRoomView] = useUrlContext("room", "", active);
   const [roomIsolated, setRoomIsolated] = useState(false);
+  const [showOverlay, setShowOverlay] = useState(false);
   const [tour, setTour] = useState(null);
   const [savedCamera, setSavedCamera] = useState(() => {
     try {
@@ -433,6 +435,10 @@ export default function TaskWorkspace({
     imported?.url ||
     `${showcase.model_url}?v=${showcase.revision || showcase.id}`;
   const currentResult = job?.result;
+  const canViewOverlay =
+    job?.status === "succeeded" &&
+    currentResult?.source_alignment_url &&
+    currentResult?.layout_url;
   const initialModel = !hasModel && currentResult?.preview?.model_url;
   useEffect(() => {
     if (initialModel)
@@ -1042,10 +1048,35 @@ export default function TaskWorkspace({
                     保存原图
                   </a>
                 </div>
-                <div className="source-image">
-                  <img src={job.source_url} alt={`${title}的原始户型图`} />
-                </div>
-                <p>仅展示当前任务的输入原图，作为结构识别与复核依据。</p>
+                {canViewOverlay && (
+                  <div
+                    className="review-view-tabs"
+                    role="group"
+                    aria-label="原始户型显示方式"
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={!showOverlay}
+                      onClick={() => setShowOverlay(false)}
+                    >
+                      只看原图
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={showOverlay}
+                      onClick={() => setShowOverlay(true)}
+                    >
+                      原图叠加
+                    </button>
+                  </div>
+                )}
+                {canViewOverlay && showOverlay ? (
+                  <SourceOverlay key={job.id} job={job} />
+                ) : (
+                  <div className="source-image">
+                    <img src={job.source_url} alt={`${title}的原始户型图`} />
+                  </div>
+                )}
               </div>
             )}
             {tab === "activity" &&

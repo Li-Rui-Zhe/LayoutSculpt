@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="#preview">看演示</a> · <a href="#interior-images">室内效果图</a> · <a href="#furniture">家具素材</a> · <a href="#quickstart">开始使用</a> · <a href="docs/README.md">文档中心</a> · <a href="CONTRIBUTING.md">参与改进</a> · <a href="SECURITY.md">反馈问题</a>
+  <a href="#workflow">户型图转 3D</a> · <a href="#preview">样板间演示</a> · <a href="#interior-images">室内效果图</a> · <a href="#furniture">家具素材</a> · <a href="#quickstart">开始使用</a> · <a href="docs/README.md">文档中心</a> · <a href="CONTRIBUTING.md">参与改进</a> · <a href="SECURITY.md">反馈问题</a>
 </p>
 
 ---
@@ -133,11 +133,18 @@
 
 ## 把你的户型带进来
 
-| 01 · 上传 | 02 · 看初稿 | 03 · 校对与编辑 | 04 · 保存与复用 |
-| :--- | :--- | :--- | :--- |
-| PNG / JPEG / WebP，最大 20 MB | 默认先展示真实建筑三维初稿，再补齐家具 | 对照原图，调整结构、布局与材质 | 保存独立版本，导出模型与成果包 |
+上传 PNG、JPEG 或 WebP 户型图（最大 20 MB），默认由 AI 完成平面识别、复核和三维建模。你会先看到建筑初稿，随后可以在成品中查看家具、调整方案或导出 GLB。想亲自把关时，在新建页勾选「先看平面图，确认后再生成 3D」，只在建模前确认一次。
 
-新建页默认精细识别与 AI 复核。系统会对照原图检查门窗的位置、宽度和类型，并根据清晰的门轴和门扇确定单开门的开启方向。发现可能漏掉的墙段时，会结合原图线迹局部复看。仍有分歧时，AI 会对照原图定稿，并在结果中列出估算。默认直接生成三维。勾选「先看平面图，确认后再生成 3D」后，只在平面转三维前核对一次，确认后自动完成。未人工核对的初稿会明确标注；缺少原图尺寸时只能估算。
+<p align="center">
+  <a href="docs/images/recognition.gif">
+    <picture>
+      <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/recognition-poster.webp" />
+      <img src="docs/images/recognition.gif" alt="同一张三卧测试户型的原图、墙门窗分割、无门通道标记与三维成品回放" width="100%" />
+    </picture>
+  </a>
+</p>
+
+演示回放的是同一张合成测试图的实际生成结果。打开成品的「原始户型 → 原图叠加」可对照最终墙线和开口，玫红色短虚线表示无门通道。装有可选 CPU 小模型时，还能勾选「本地墙、门、窗分割」查看它提供的像素证据。小模型只标墙、门、窗，通道由精细识别结合原图判定。
 
 [精细识别与原图对照 →](docs/source-evidence-recognition.md)　[完整生成流程 →](docs/ai-pipeline-design.md)
 

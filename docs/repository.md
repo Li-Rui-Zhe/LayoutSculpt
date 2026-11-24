@@ -50,7 +50,7 @@
 
 ### README 展示素材
 
-README 使用轻量 SVG 横幅、五段实机 GIF 与对应 WebP 静态封面。顺序为「空间预览 → 材质搭配 → 家具素材 → 家具创作 → 模型接入」，统一宽度、章节编号和字幕。接入页保留更高画幅以展示模型和保存按钮。浏览器偏好减少动态效果时展示静态封面。
+README 使用轻量 SVG 横幅、六段实机 GIF 与对应 WebP 静态封面。顺序为「空间预览 → 材质搭配 → 家具素材 → 家具创作 → 模型接入 → 户型图转 3D」，统一宽度、章节编号和字幕。接入页保留更高画幅以展示模型和保存按钮。浏览器偏好减少动态效果时展示静态封面。
 
 空间采用当前「林间光庭」，家具素材组从仓库读取日床、转角桌和烟机的 GLB，家具创作组采用内置玄关柜模板。AI 接入页使用示例模型、`DEMO` 密钥标识和浏览器内存中的演示设置，展示保存与未保存状态。录制使用隔离的任务列表、素材列表与草稿。原始帧、中间文件和检查报告默认保存在 `data/readme-recording/`。
 
@@ -63,6 +63,13 @@ python scripts/build_readme_gifs.py
 ```
 
 Python 使用项目 `.venv`，Windows 可执行 `.venv\Scripts\python.exe scripts/build_readme_gifs.py`。录制默认连接 `http://127.0.0.1:8000`，可用 `STUDIO_BASE_URL` 指定已有项目服务。单独重录可在命令末尾加 `showcase`、`materials`、`furniture`、`diy` 或 `ai-connections`。录制和编码可通过同一个 `README_RECORDING_DIR` 指定目录。整组通过后，清单标记为 `complete`，编码器据此生成 GIF、静态封面和检查报告。字体优先使用 Windows 微软雅黑或 macOS 苹方。
+
+「户型图转 3D」回放同一张合成测试图的原图、本地分割、最终平面和实际导出的 GLB。重录这一段时，将 `STUDIO_DATA_DIR` 指向已完成的合成质量基准工作区副本，启动该副本的工作台，并将 `STUDIO_BASE_URL` 指向其地址。选择有本地分割和成品 GLB 的案例，运行以下命令。第一条命令的两个参数分别是该轮报告路径和报告中的案例名。
+
+```sh
+node scripts/review/record_recognition.mjs <报告路径> <案例名>
+python scripts/build_readme_gifs.py recognition
+```
 
 详细用法移至 [设计工作流](design-workflows.md)，相关功能截图放在 `docs/images/` 并由文档引用。日常反馈与可选的私密报告入口见根目录 [SECURITY.md](../SECURITY.md)。
 
