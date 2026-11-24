@@ -2,11 +2,12 @@ import copy
 import hashlib
 import json
 
+import numpy as np
 import pytest
 import trimesh
 
 from backend.app.config import Settings
-from backend.app.consistency import structure_hash, verify_export, matches_confirmation
+from backend.app.consistency import matches_confirmation, structure_hash, verify_export
 from backend.app.glb_builder import Builder
 from backend.app.schemas import Layout
 from backend.tests.test_workflow import layout_data
@@ -34,6 +35,51 @@ def test_window_top_at_wall_height_survives_export_and_verification(tmp_path):
     proof = verify_export(data, tmp_path / 'model.glb')
     assert proof['geometry_verified']
     assert proof['outline_verified']
+
+
+def partition(wall_id, start, end):
+    return {
+        "id": wall_id, "start": {"x": start[0], "y": start[1]},
+        "end": {"x": end[0], "y": end[1]}, "thickness": 0.16,
+        "height": 2.7, "exterior": False,
+    }
+
+
+def test_slanted_window_junction_exports_solid_full_and_cutaway_walls(tmp_path):
+    data = document()
+    data["walls"].extend([
+        partition("spine", (2, 0), (2.08, 6)),
+        partition("divider", (2.03, 2.3), (7.99, 2.33)),
+    ])
+    data["openings"].append({
+        **data["openings"][0], "kind": "window", "wall_id": "divider",
+        "offset": 0.65, "width": 1.2, "bottom": 0.95, "height": 1.2,
+    })
+    Builder(data, Settings().furniture_catalog).build(tmp_path)
+    model = tmp_path / "model.glb"
+    assert verify_export(data, model)["geometry_verified"]
+    scene = trimesh.load(model, force="scene")
+    previews = [edge["metadata"]["cutaway_geometry"] for edge in scene.graph.transforms.edge_data.values()
+                if edge.get("metadata", {}).get("cutaway_full")]
+    assert previews
+    for preview in previews:
+        # Match the viewer's Float32BufferAttribute and GLB index buffer.
+        mesh = trimesh.Trimesh(vertices=np.asarray(preview["positions"], dtype=np.float32).reshape(-1, 3),
+                               faces=np.asarray(preview["indices"]).reshape(-1, 3))
+        assert mesh.is_volume
+
+
+@pytest.mark.parametrize("gap", [1e-12, 0.01], ids=["roundoff", "one-centimetre"])
+def test_parallel_wall_contact_preserves_the_confirmed_cross_sections(tmp_path, gap):
+    data = document()
+    y = 2 + 0.16 + gap
+    data["walls"].extend([
+        partition("long", (0, 2), (6, 2)),
+        partition("short", (0, y), (3, y)),
+    ])
+    Builder(data, Settings().furniture_catalog).build(tmp_path)
+    proof = verify_export(data, tmp_path / "model.glb")
+    assert max(section["difference_m2"] for section in proof["sections"]) < 1e-4
 
 
 @pytest.mark.parametrize("target", ["walls", "floor", "outline"])

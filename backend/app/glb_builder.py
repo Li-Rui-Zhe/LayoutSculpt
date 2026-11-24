@@ -9,26 +9,32 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from PIL import Image
+from shapely import set_precision
+from shapely.geometry import Point, Polygon
+from shapely.ops import unary_union
+
 from backend.app.surface_materials import (
-    floor_material,
-    wall_material,
-    apply_surface_optics,
     MATERIALS as SURFACE_MATERIALS,
 )
-from PIL import Image
-from shapely.geometry import Point, Polygon
+from backend.app.surface_materials import (
+    apply_surface_optics,
+    floor_material,
+    wall_material,
+)
 
-from .config import ROOT
-from .architecture import wall_sections, section_finish, wall_footprint, BOUNDARY_GLASS
+from .architecture import BOUNDARY_GLASS, section_finish, wall_footprint, wall_sections
 from .balcony import add_boundary_frames
+from .config import ROOT
+from .diy_geometry import design_meshes
+from .diy_schema import DiyDesign
+from .furniture_details import construct, construct_basic, kitchen_details
+from .library_models import snapshot_file
 from .opening_visuals import add_opening_variant
 from .wall_surfaces import add_wall_surfaces
-from .furniture_details import construct, construct_basic, kitchen_details
-from .diy_schema import DiyDesign
-from .diy_geometry import design_meshes
-from .library_models import snapshot_file
 
 CUT_HEIGHT = 1.2
+WALL_GRID_METERS = 1e-6
 
 PALETTES = {
     "natural": {
@@ -172,6 +178,18 @@ def _material(role, style, finish=None):
             textures / f"{NORMALS[role]}_normal.png"
         ).copy()
     return trimesh.visual.material.PBRMaterial(**kwargs)
+
+
+def _union_wall_mesh(parts):
+    mesh = trimesh.boolean.union(parts, engine="manifold")
+    # GLB stores float32 positions. Distinct boolean vertices can coincide at
+    # that precision, leaving zero-area faces attached to otherwise sound edges.
+    mesh.vertices = mesh.vertices.astype(np.float32)
+    mesh.merge_vertices(merge_tex=True, merge_norm=True)
+    a, b, c = mesh.faces.T
+    mesh.update_faces((a != b) & (b != c) & (c != a))
+    mesh.remove_unreferenced_vertices()
+    return mesh
 
 
 class Builder:
@@ -497,10 +515,14 @@ class Builder:
             "gray": (0.51, 0.56, 0.57),
         }
         groups = {}
-        from shapely.ops import unary_union
-        backdrop = unary_union([wall_footprint(w) for w in self.document["walls"] if w.get("cutaway_keep")])
+        backdrop = set_precision(unary_union([
+            wall_footprint(w) for w in self.document["walls"] if w.get("cutaway_keep")
+        ]), WALL_GRID_METERS)
         retained = {}
         for bottom, top, finish, shape in wall_sections(self.document, CUT_HEIGHT):
+            # Close sub-micrometre slits between nominally coincident wall edges
+            # before extrusion, while the reference sections retain full precision.
+            shape = set_precision(shape, WALL_GRID_METERS)
             if bottom >= CUT_HEIGHT and not backdrop.is_empty:
                 kept = shape.intersection(backdrop)
                 pieces = [kept] if kept.geom_type == "Polygon" else getattr(kept, "geoms", [])
@@ -580,9 +602,9 @@ class Builder:
             # hidden coplanar caps at window-sill/lintel heights as well as seams.
             lower = groups.get((finish, False), [])
             upper = groups.get((finish, True), [])
-            mesh = trimesh.boolean.union(lower + upper, engine="manifold")
+            mesh = _union_wall_mesh(lower + upper)
             preview_parts = lower + retained.get(finish, [])
-            preview = trimesh.boolean.union(preview_parts, engine="manifold") if preview_parts else None
+            preview = _union_wall_mesh(preview_parts) if preview_parts else None
             self.add(
                 "墙体_连续结构",
                 mesh,
@@ -602,7 +624,7 @@ class Builder:
                     else None,
                     "cut_height": CUT_HEIGHT,
                     "cutaway_geometry": {
-                        "positions": np.round(preview.vertices, 6).reshape(-1).tolist(),
+                        "positions": preview.vertices.reshape(-1).tolist(),
                         "indices": preview.faces.reshape(-1).tolist(),
                     }
                     if preview is not None
