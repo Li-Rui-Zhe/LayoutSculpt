@@ -6,8 +6,6 @@ export default function EditorSaveBar({
   draft,
   reviewing,
   job,
-  acknowledged,
-  setAcknowledged,
   busy,
   name,
   onNameChange,
@@ -26,7 +24,6 @@ export default function EditorSaveBar({
   const action = editorPrimaryAction({
     draft,
     reviewing,
-    acknowledged,
     busy,
     proposalPreview,
     issues,
@@ -71,17 +68,7 @@ export default function EditorSaveBar({
           </a>
         )}
       </div>
-      {reviewing ? (
-        <label className="review-ack">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-            disabled={busy}
-          />
-          我已核对修改后的墙体和门窗
-        </label>
-      ) : draft.dirty ? (
+      {!reviewing && draft.dirty && (
         <details className="editor-version">
           <summary>版本设置</summary>
           <label>
@@ -97,7 +84,7 @@ export default function EditorSaveBar({
             />
           </label>
         </details>
-      ) : null}
+      )}
       <button
         className="primary-button"
         disabled={action.disabled}

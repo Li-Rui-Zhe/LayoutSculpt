@@ -1,4 +1,4 @@
-"""Typed but geometrically invalid recognition pauses for a real user decision."""
+"""Automatic geometry recovery and the optional single confirmation before 3D."""
 
 import json
 
@@ -9,7 +9,7 @@ from backend.app.ai_contracts import pack_layout
 from backend.app.recognition_checkpoint import checkpoint_candidate
 from backend.app.schemas import Layout
 from backend.tests.test_progressive_generation import upload, wait_for
-from backend.tests.test_workflow import FakeCodex, app_for, layout_data, wait_job
+from backend.tests.test_workflow import FakeCodex, app_for, layout_data
 
 
 class InvalidGeometry(FakeCodex):
@@ -25,49 +25,47 @@ class InvalidGeometry(FakeCodex):
         return text
 
 
-@pytest.mark.parametrize("overshoot,can_continue", [(0.06, True), (1.0, False)])
-def test_two_failed_attempts_pause_and_only_user_can_continue(tmp_path, overshoot, can_continue):
-    ai = InvalidGeometry()
+@pytest.mark.parametrize("mode", ["preview", "manual"])
+@pytest.mark.parametrize("overshoot", [0.06, 1.0])
+def test_geometry_resolved_before_only_selected_confirmation(tmp_path, mode, overshoot):
+    class Recoverable(InvalidGeometry):
+        async def generate(self, **kwargs):
+            if "对照原图修正候选结构中的几何错误" in kwargs["prompt"]:
+                return await FakeCodex.generate(self, **kwargs)
+            return await super().generate(**kwargs)
+
+    ai = Recoverable()
     ai.overshoot = overshoot
     with TestClient(app_for(tmp_path, ai)) as client:
-        job_id = upload(client)
-        job = wait_for(client, job_id, lambda j: j["status"] in {"awaiting_review", "failed"})
-        assert job["status"] == "awaiting_review", job
-        review = job["result"]["recognition_review"]
-        assert len(review["attempts"]) == 2
-        assert all("w0" in a["issues"][0] for a in review["attempts"])
-        assert review["can_continue"] is can_continue
-        assert bool(review["adjustments"]) is can_continue
-        assert len(ai.calls) == 2  # No furniture or extra AI review before consent.
-        assert not (tmp_path / "jobs" / job_id / "model.glb").exists()
-        data = client.get(job["result"]["layout_url"]).json()
-        layout = {k: v for k, v in data.items() if k in Layout.model_fields}
-        url = f"/api/jobs/{job_id}/confirm-structure"
-        if not can_continue:
-            blocked = client.post(url, json={"layout": layout, "reviewed": True, "revision": job["result"]["revision"]})
-            assert blocked.status_code == 422
-            layout["walls"][0]["end"]["x"] = 8
-        assert client.post(url, json={"layout": layout, "reviewed": True, "revision": "0" * 64}).status_code == 409
-        accepted = client.post(url, json={"layout": layout, "reviewed": True, "revision": job["result"]["revision"]})
-        assert accepted.status_code == 200, accepted.text
-        final = wait_job(client, job_id)
-        assert final["status"] == "succeeded", final
-        assert len(ai.calls) == 3
-        assert final["result"]["consistency"]["source_reviewed"]
+        job_id = upload(client, review_mode=mode)
+        terminal = {"awaiting_review", "succeeded", "failed"}
+        job = wait_for(client, job_id, lambda j: j["status"] in terminal)
+        if mode == "manual":
+            assert job["status"] == "awaiting_review", job
+            assert job["progress"] == 45
+            assert not job["result"].get("recognition_review")
+            assert not (tmp_path / "jobs" / job_id / "model.glb").exists()
+            from backend.tests.test_structure_review import payload
+            assert client.post(f"/api/jobs/{job_id}/confirm-structure", json=payload(client, job)).status_code == 200
+            job = wait_for(client, job_id, lambda j: j["status"] in terminal)
+        assert job["status"] == "succeeded", job
+        assert job["result"]["consistency"]["source_reviewed"] == (mode == "manual")
+        layout = client.get(job["result"]["layout_url"]).json()
+        assert layout["walls"][0]["end"]["x"] == 8
+        if overshoot == 0.06:
+            assert any("6.0 厘米" in note for note in job["result"]["warnings"])
+        else:
+            assert any(a["role"] == "geometry_recovery" for a in job["result"]["agents"])
 
 
-def test_user_can_reidentify_from_checkpoint_as_a_new_version(tmp_path):
+def test_unrecoverable_geometry_cannot_be_built(tmp_path):
     ai = InvalidGeometry()
+    ai.overshoot = 1
     with TestClient(app_for(tmp_path, ai)) as client:
-        old_id = upload(client)
-        wait_for(client, old_id, lambda j: j["status"] == "awaiting_review")
-        ai.invalid = False
-        response = client.post(f"/api/jobs/{old_id}/retry", json={})
-        assert response.status_code == 201, response.text
-        new_id = response.json()["id"]
-        assert new_id != old_id
-        assert wait_job(client, new_id)["status"] == "succeeded"
-        assert client.get(f"/api/jobs/{old_id}").json()["status"] == "awaiting_review"
+        job_id = upload(client)
+        job = wait_for(client, job_id, lambda j: j["status"] in {"failed", "succeeded", "awaiting_review"})
+        assert job["status"] == "failed", job
+        assert not (tmp_path / "jobs" / job_id / "model.glb").exists()
 
 
 def test_legacy_failure_can_show_saved_candidate_without_any_ai_call(tmp_path):

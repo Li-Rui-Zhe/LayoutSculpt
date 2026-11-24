@@ -65,4 +65,7 @@ class RecognitionExtraction(LayoutExtraction):
 def validate_recognition(output):
     if output.input_check.status == "rejected":
         raise SourceImageRejected(output.input_check)
-    return unpack_layout(output.model_dump(exclude={"input_check"}))
+    layout = unpack_layout(output.model_dump(exclude={"input_check"}))
+    if not layout.rooms or not layout.walls:
+        raise ValueError("识别结果缺少可建模的房间或墙体")
+    return layout

@@ -308,15 +308,12 @@ try {
       reviewJob.id,
     );
   await expect.poll(async () => !!(await reviewSaved())).toBe(true);
-  const confirmReview = reviewPage.getByRole("button", {
-    name: "确认修改并继续生成",
-    exact: true,
-  });
+  const confirmReview = reviewPage.locator(".edit-save-bar .primary-button");
   const ack = reviewPage.getByRole("checkbox", {
     name: "我已核对修改后的墙体和门窗",
     exact: true,
   });
-  await ack.check();
+  await expect(ack).toHaveCount(0);
   await expect(confirmReview).toBeEnabled();
   await reviewPage.getByRole("button", { name: "门窗", exact: true }).click();
   const reviewChoice = reviewPage.getByRole("combobox", {
@@ -325,11 +322,9 @@ try {
   });
   await reviewChoice.selectOption("short");
   await reviewPage.getByRole("button", { name: "门", exact: true }).click();
-  await expect(ack).not.toBeChecked();
   await expect(
     reviewPage.getByRole("button", { name: "确认添加门", exact: true }),
   ).toBeEnabled();
-  await ack.check();
   await expect(confirmReview).toBeDisabled();
   expect((await reviewSaved()).layout.openings).toHaveLength(0);
   await reviewPage.screenshot({ path: `${output}/review-one-meter-wall.png` });
@@ -360,9 +355,6 @@ try {
     width: 0.8,
     offset: 2.6,
   });
-  await expect(ack).not.toBeChecked();
-  await expect(confirmReview).toBeDisabled();
-  await ack.check();
   await expect(confirmReview).toBeEnabled();
   await reviewPage.getByRole("button", { name: "窗户", exact: true }).click();
   await reviewPage.setViewportSize({ width: 390, height: 844 });
@@ -396,7 +388,7 @@ try {
     ).status,
   ).toBe("awaiting_review");
   checks.push(
-    "结构核对支持 1 米墙加 0.9 米门，图上定位保留尺寸，修改后重新人工确认，待添加时不能生成，手机无横向溢出",
+    "结构核对支持 1 米墙加 0.9 米门，图上定位保留尺寸，修改后点击一次即可确认，待添加时不能生成，手机无横向溢出",
   );
   await reviewContext.close();
   expect(errors).toEqual([]);

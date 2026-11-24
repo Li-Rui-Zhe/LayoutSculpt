@@ -878,7 +878,7 @@ export default function GenerationForm({
                 />
                 <span>
                   <b>增加一次 AI 结构复核</b>
-                  <small>默认开启，帮助检查识别遗漏；不会代替人工核对</small>
+                  <small>默认开启，AI 会对照原图查找遗漏。</small>
                 </span>
                 <ShieldCheck size={18} />
               </label>
@@ -929,14 +929,14 @@ export default function GenerationForm({
                       先看平面图，确认后再生成 3D
                     </b>
                     <small id="review-before-3d-help">
-                      AI
-                      识别后先停下来，你可以对照原图检查、调整墙体、门窗和房间，确认满意后再继续。
+                      AI 先完成识别和修正。平面转 3D
+                      前，你可以一次核对墙体、门窗和房间。
                     </small>
                   </span>
                 </label>
                 <p aria-live="polite">
                   {manualReview
-                    ? "已开启：先检查平面图，由你决定何时生成 3D。"
+                    ? "只在平面转 3D 前确认一次，之后自动完成。"
                     : "不勾选则自动生成 3D，无需中途确认。"}
                 </p>
               </div>
@@ -968,7 +968,7 @@ export default function GenerationForm({
             </div>
             {!whiteModel && (
               <p className="field-note">
-                默认自动完成识别与三维生成；遇到无法可靠判断的结构时，会保留结果并提示核对。
+                AI 会处理识别分歧，并在结果中标出仍有疑问的位置。
               </p>
             )}
           </section>

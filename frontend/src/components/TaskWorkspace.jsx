@@ -141,7 +141,14 @@ function Pipeline({ job }) {
                 String(index + 1).padStart(2, "0")
               )}
             </span>
-            <b>{reviewIncomplete ? "AI 复核未完成，需人工核对" : name}</b>
+            <b>
+              {reviewIncomplete
+                ? "AI 复核未完成"
+                : threshold === 40 &&
+                    job?.result?.ai_review?.status === "estimated"
+                  ? "AI 已定稿，部分结构为估算"
+                  : name}
+            </b>
           </li>
         );
       })}
@@ -350,7 +357,6 @@ export default function TaskWorkspace({
     onModelImported();
   }, [active, modelImport, onModelImported, setTab]);
   const [notice, setNotice] = useState("");
-  const [reviewNoticeDismissed, setReviewNoticeDismissed] = useState(false);
   const [improving, setImproving] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [improvement, setImprovement] = useState("restructure");
@@ -634,30 +640,6 @@ export default function TaskWorkspace({
               {actionError}
             </div>
           )}
-          {job?.status === "succeeded" &&
-            job.options?.review_mode === "preview" &&
-            !currentResult?.consistency?.source_reviewed &&
-            !reviewNoticeDismissed && (
-              <div className="delivery-notice" role="status">
-                <TriangleAlert size={17} />
-                <p>
-                  空间已生成，尚未人工核对。可对照原图，在人工设计中调整墙体、门窗和家具。
-                </p>
-                <button
-                  className="text-button"
-                  onClick={() => setTab("source")}
-                >
-                  对照原图
-                </button>
-                <button
-                  className="text-button"
-                  aria-label="关闭待核对提示"
-                  onClick={() => setReviewNoticeDismissed(true)}
-                >
-                  ×
-                </button>
-              </div>
-            )}
           {currentResult?.delivery_notice && (
             <div className="delivery-notice" role="status">
               <TriangleAlert size={17} />
@@ -1358,7 +1340,7 @@ export default function TaskWorkspace({
                         ? "原创设计示例 · 非图片识别结果"
                         : currentResult.consistency?.source_reviewed
                           ? "原图结构已人工核对"
-                          : "原图结构待人工核对"}
+                          : "原图结构未经人工核对"}
                     </p>
                     <p>
                       <span
@@ -1707,7 +1689,7 @@ export default function TaskWorkspace({
               {job.can_recover_structure && (
                 <>
                   <p className="field-note">
-                    识别结果已保留，可以直接核对，无需重新识别。
+                    可从已保存的平面结构继续，沿用本次审核设置。
                   </p>
                   <button
                     className="secondary-button full-width"
@@ -1715,7 +1697,9 @@ export default function TaskWorkspace({
                     onClick={() => action("retry", { reuse_structure: true })}
                   >
                     <PencilRuler size={14} />
-                    继续核对已识别结构
+                    {job.options.review_mode === "preview"
+                      ? "用已识别结构继续生成"
+                      : "继续核对已识别结构"}
                   </button>
                 </>
               )}

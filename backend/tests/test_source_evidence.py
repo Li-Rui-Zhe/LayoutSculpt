@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
-from backend.app.codex import CodexClient
+from backend.app.codex import CodexClient, CodexError
 from backend.app.config import Settings
 from backend.app.local_structure_repair import needs_fresh_read
 from backend.app.main import create_app
@@ -275,17 +275,48 @@ def test_precise_workflow_independent_read_and_user_confirmation(tmp_path):
         assert len(ai.calls) == 4
 
 
-def test_independent_disagreement_pauses_default_preview_instead_of_building(tmp_path):
+def test_independent_disagreement_delivers_estimate_without_confirmation(tmp_path):
     ai = PreciseReader()
     ai.wrong_audit = True
     with TestClient(app_for(tmp_path, ai)) as client:
         job_id = upload(client, recognition_mode="precise")
         job = wait_for(client, job_id, lambda j: j["status"] in {"awaiting_review", "failed", "succeeded"})
-        assert job["status"] == "awaiting_review", job
-        assert job["result"]["ai_review"]["status"] == "needs_review"
-        assert "卧室" in job["result"]["ai_review"]["summary"]
-        assert len(ai.calls) == 3
-        assert not (tmp_path / "jobs" / job_id / "model.glb").exists()
+        assert job["status"] == "succeeded", job
+        assert job["result"]["ai_review"]["status"] == "estimated"
+        assert any("卧室" in note for note in job["result"]["warnings"])
+        assert job["result"]["consistency"]["confirmation"] is None
+        assert len(ai.calls) == 5
+
+
+@pytest.mark.parametrize("recovers", [True, False])
+def test_default_upload_retries_only_interrupted_audit(tmp_path, recovers):
+    class LimitedAudit(PreciseReader):
+        audits = 0
+
+        async def generate(self, **kwargs):
+            if kwargs["schema"]["title"] == "SourceEvidence" and "不参考之前的识别结果" in kwargs["prompt"]:
+                self.audits += 1
+                if self.audits < 3 or not recovers:
+                    raise CodexError("HTTP 429 rate limit")
+            return await super().generate(**kwargs)
+
+    from backend.tests.test_workflow import image_bytes
+    ai = LimitedAudit()
+    with TestClient(app_for(tmp_path, ai)) as client:
+        created = client.post("/api/jobs", files={"file": ("plan.png", image_bytes(), "image/png")},
+                              data={"recognition_mode": "precise"})
+        assert created.status_code == 201, created.text
+        assert created.json()["options"]["review_mode"] == "preview"
+        job = wait_for(client, created.json()["id"],
+                       lambda j: j["status"] in {"awaiting_review", "succeeded", "failed"}, timeout=30)
+        assert job["status"] == "succeeded", job
+        assert not job["result"]["consistency"]["source_reviewed"]
+        assert job["result"]["ai_review"]["status"] == ("completed" if recovers else "incomplete")
+        assert ai.audits == (3 if recovers else 4)
+        assert sum(c["schema"]["title"] == "PixelLayoutExtraction" for c in ai.calls) == 1
+        assert sum(c["schema"]["title"] == "SourceEvidence" and "不参考之前的识别结果" not in c["prompt"] for c in ai.calls) == 1
+        assert not any(c["schema"]["title"] == "LayoutReviewPatch" for c in ai.calls)
+        assert client.get(job["result"]["model_url"]).status_code == 200
 
 
 @pytest.mark.parametrize("unrelated", [False, True])
@@ -302,7 +333,7 @@ def test_precise_local_repair_applies_audited_window_and_preserves_other_geometr
                 self.reads += 1
                 if self.reads == 1:
                     data["openings"] = [] # The first read must be retried.
-            if title == "LayoutReviewPatch":
+            if title == "LayoutReviewPatch" and "根据原图裁定剩余疑点" not in kwargs["prompt"]:
                 assert [path.name for path in kwargs["reference_images"]] == ["structure-detail-1.png"]
                 assert kwargs["model"] == "test-chosen"
                 window = {"wall_id": "w0", "kind": "window", "offset": 4.5, "width": 1, "height": 1.4, "bottom": .9}
@@ -317,7 +348,7 @@ def test_precise_local_repair_applies_audited_window_and_preserves_other_geometr
         job = wait_for(client, job_id, lambda item: item["status"] in {"awaiting_review", "failed"})
         assert job["status"] == "awaiting_review", job
         assert ai.reads == 2
-        assert sum(call["schema"]["title"] == "LayoutReviewPatch" for call in ai.calls) == 1
+        assert sum(call["schema"]["title"] == "LayoutReviewPatch" for call in ai.calls) == (2 if unrelated else 1)
         findings = client.get(job["result"]["source_alignment_url"]).json()
         assert findings["local_repair"]["status"] == ("needs_review" if unrelated else "applied")
         layout = client.get(job["result"]["layout_url"]).json()
@@ -352,10 +383,39 @@ def test_precise_read_repairs_a_missing_door_or_keeps_candidate_for_review(tmp_p
             assert [(o["kind"], o["offset"], o["width"]) for o in layout["openings"]] == [
                 ("door", pytest.approx(1), pytest.approx(.9))]
         else:
-            assert job["status"] == "awaiting_review", job
-            assert job["result"]["recognition_review"]["can_continue"]
+            assert job["status"] == "succeeded", job
+            assert job["result"]["ai_review"]["status"] == "estimated"
+            assert not job["result"]["consistency"]["source_reviewed"]
             alignment = client.get(job["result"]["source_alignment_url"]).json()
             assert any(f["code"] == "opening_mismatch" and f["box"] for f in alignment["findings"])
+
+
+@pytest.mark.parametrize("adds_unrelated", [False, True])
+def test_final_decision_repairs_missing_door_and_rejects_unrelated_change(tmp_path, adds_unrelated):
+    class FinalRepair(PreciseReader):
+        async def generate(self, **kwargs):
+            data = json.loads(await super().generate(**kwargs))
+            if kwargs["schema"]["title"] == "PixelLayoutExtraction":
+                data["openings"] = []
+            if kwargs["schema"]["title"] == "LayoutReviewPatch" and "根据原图裁定剩余疑点" in kwargs["prompt"]:
+                data["openings"] = [{"wall_id": "w0", "values": layout_data()["openings"],
+                                     "evidence": "原图该段墙有门扇弧线和门垛"}]
+                if adds_unrelated:
+                    data["openings"].append({"wall_id": "w2", "values": [
+                        {**layout_data()["openings"][0], "wall_id": "w2"}], "evidence": "相对墙面另一个开口"})
+            return json.dumps(data)
+
+    with TestClient(app_for(tmp_path, FinalRepair())) as client:
+        job_id = upload(client, recognition_mode="precise")
+        job = wait_for(client, job_id, lambda j: j["status"] in {"awaiting_review", "succeeded", "failed"})
+        assert job["status"] == "succeeded", job
+        report = job["result"]["ai_review"]
+        assert report["method"] == "automatic_resolution"
+        assert report["status"] == ("incomplete" if adds_unrelated else "completed")
+        layout = client.get(job["result"]["layout_url"]).json()
+        assert [o["wall_id"] for o in layout["openings"]] == ([] if adds_unrelated else ["w0"])
+        alignment = client.get(job["result"]["source_alignment_url"]).json()
+        assert any(f["blocking"] for f in alignment["findings"]) == adds_unrelated
 
 
 @pytest.mark.parametrize("reader,repair", [
@@ -371,7 +431,7 @@ def test_wall_repair_only_reads_disputed_region_and_retains_safe_candidate(tmp_p
                 audit = "不参考之前的识别结果" in kwargs["prompt"]
                 if reader == "both" or reader == ("audit" if audit else "primary") or (reader == "primary_only" and not audit):
                     data["walls_px"].append({"a": [12, 45], "b": [48, 45]})
-            if title == "LayoutReviewPatch":
+            if title == "LayoutReviewPatch" and "根据原图裁定剩余疑点" not in kwargs["prompt"]:
                 assert len(kwargs["reference_images"]) == 1
                 crop, = kwargs["reference_images"]
                 assert crop.name == "wall-detail-1.png"
@@ -406,11 +466,10 @@ def test_wall_repair_only_reads_disputed_region_and_retains_safe_candidate(tmp_p
         assert posted.status_code == 201, posted.text
         job_id = posted.json()["id"]
         job = wait_for(client, job_id, lambda j: j["status"] in {"succeeded", "failed", "awaiting_review"})
-        assert sum(c["schema"]["title"] == "LayoutReviewPatch" for c in ai.calls) == 1
         fixed = repair == "fix"
-        assert job["status"] == ("succeeded" if fixed else "awaiting_review"), job
-        artifact = "layout.json" if fixed else "structure.json"
-        layout = client.get(f"/api/jobs/{job_id}/artifacts/{artifact}").json()
+        assert job["status"] == "succeeded", job
+        assert sum(c["schema"]["title"] == "LayoutReviewPatch" for c in ai.calls) == (1 if fixed else 2)
+        layout = client.get(job["result"]["layout_url"]).json()
         assert ("partition" in {w["id"] for w in layout["walls"]}) == fixed
         assert all(w["id"] != "extra" for w in layout["walls"])
         findings = client.get(job["result"]["source_alignment_url"]).json()["findings"]
@@ -427,18 +486,52 @@ def test_rejected_source_does_not_invoke_detail_recognition(tmp_path):
         assert len(ai.calls) == 1
 
 
+@pytest.mark.parametrize("review_mode", ["preview", "manual"])
+def test_rejected_independent_source_cannot_be_delivered(tmp_path, review_mode):
+    class RejectedAudit(PreciseReader):
+        async def generate(self, **kwargs):
+            data = json.loads(await super().generate(**kwargs))
+            if kwargs["schema"]["title"] == "SourceEvidence" and "不参考之前的识别结果" in kwargs["prompt"]:
+                data["input_check"] = {"status": "rejected", "reason": "not_floorplan", "evidence": "图片中没有住宅结构"}
+            return json.dumps(data)
+
+    with TestClient(app_for(tmp_path, RejectedAudit())) as client:
+        job_id = upload(client, recognition_mode="precise", review_mode=review_mode)
+        job = wait_for(client, job_id, lambda j: j["status"] in {"awaiting_review", "failed", "succeeded"})
+        assert job["status"] == "failed", job
+        assert job["result"]["failure"]["code"] == "input_image_rejected"
+        assert client.get(f"/api/jobs/{job_id}/artifacts/model.glb").status_code == 409
+
+
+def test_unmappable_pixel_coordinates_are_recovered_from_source(tmp_path):
+    class Displaced(PreciseReader):
+        async def generate(self, **kwargs):
+            data = json.loads(await super().generate(**kwargs))
+            if kwargs["schema"]["title"] == "PixelLayoutExtraction" and "对照原图修正候选结构" not in kwargs["prompt"]:
+                data["walls"][0]["b"][0] = 300
+            return json.dumps(data)
+
+    with TestClient(app_for(tmp_path, Displaced())) as client:
+        job_id = upload(client, recognition_mode="precise", collaboration="false")
+        job = wait_for(client, job_id, lambda j: j["status"] in {"awaiting_review", "failed", "succeeded"})
+        assert job["status"] == "succeeded", job
+        roles = [agent["role"] for agent in job["result"]["agents"]]
+        assert "geometry_recovery" in roles and "source_audit" not in roles
+        assert job["result"]["consistency"]["confirmation"] is None
+
+
 def test_pixel_geometry_failure_preserves_registration_and_two_attempts(tmp_path):
     ai = PreciseReader()
     ai.invalid_pixels = True
     with TestClient(app_for(tmp_path, ai)) as client:
-        job_id = upload(client, recognition_mode="precise")
+        job_id = upload(client, recognition_mode="precise", review_mode="manual")
         job = wait_for(client, job_id, lambda j: j["status"] in {"awaiting_review", "failed"})
         assert job["status"] == "awaiting_review", job
-        checkpoint = job["result"]["recognition_review"]
-        assert len(checkpoint["attempts"]) == 2
-        assert checkpoint["can_continue"]
+        assert job["progress"] == 45
+        assert not job["result"].get("recognition_review")
+        assert any("厘米" in n for n in job["result"]["warnings"])
         assert client.get(job["result"]["source_alignment_url"]).status_code == 200
-        assert len(ai.calls) == 4  # 独立审图与像素读取并行，修正仍仅有两次。
+        assert len(ai.calls) == 5  # 两次细读、定位、独立审图、最终裁决。
 
 
 def test_repair_timeout_keeps_first_displayable_pixel_candidate(tmp_path):
@@ -457,11 +550,11 @@ def test_repair_timeout_keeps_first_displayable_pixel_candidate(tmp_path):
     app = create_app(replace(Settings(), data_dir=tmp_path, codex_timeout=0.5), client=ai, model_builder=fake_builder)
     with TestClient(app) as client:
         job_id = upload(client, recognition_mode="precise")
-        job = wait_for(client, job_id, lambda j: j["status"] in {"awaiting_review", "failed"})
-        assert job["status"] == "awaiting_review", job
-        attempts = job["result"]["recognition_review"]["attempts"]
-        assert len(attempts) == 2
-        assert "修正请求未能完成" in attempts[-1]["issues"][0]
+        job = wait_for(client, job_id, lambda j: j["status"] in {"awaiting_review", "failed", "succeeded"})
+        assert job["status"] == "succeeded", job
+        assert ai.pixel_calls == 2
+        assert any("厘米" in n for n in job["result"]["warnings"])
+        assert not job["result"]["consistency"]["source_reviewed"]
 
 
 def test_unclear_bedroom_labels_do_not_impose_a_false_exact_count():
@@ -570,7 +663,7 @@ def test_explicit_reidentify_does_not_reuse_valid_but_unaccepted_perception_cach
     ai = PreciseReader()
     ai.wrong_audit = True
     with TestClient(app_for(tmp_path, ai)) as client:
-        old_id = upload(client, recognition_mode="precise")
+        old_id = upload(client, recognition_mode="precise", review_mode="manual")
         wait_for(client, old_id, lambda j: j["status"] == "awaiting_review")
         before = len(ai.calls)
         response = client.post(f"/api/jobs/{old_id}/retry", json={"reidentify": True})
@@ -578,7 +671,7 @@ def test_explicit_reidentify_does_not_reuse_valid_but_unaccepted_perception_cach
         new_id = response.json()["id"]
         new = wait_for(client, new_id, lambda j: j["status"] == "awaiting_review")
         assert new["reidentify_of"] == old_id
-        assert len(ai.calls) == before + 3
+        assert len(ai.calls) == before + 4
         assert all(not stage["cache_hit"] for stage in new["result"]["pipeline_metrics"]["stages"])
         assert client.get(f"/api/jobs/{old_id}").json()["status"] == "awaiting_review"
 

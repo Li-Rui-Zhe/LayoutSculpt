@@ -15,7 +15,6 @@ export function editorSaveStatus(draft, proposalPreview = false) {
 export function editorPrimaryAction({
   draft,
   reviewing,
-  acknowledged,
   busy,
   proposalPreview,
   issues = [],
@@ -35,13 +34,11 @@ export function editorPrimaryAction({
           ? "请先确认或取消删除"
           : openingKind
             ? "请先完成或取消门窗添加"
-            : reviewing && !acknowledged
-              ? "请先核对墙体和门窗"
-              : (reviewing || draft.dirty) && issues.length
-                ? "请先处理布局问题"
-                : (reviewing || draft.dirty) && !name.trim()
-                  ? "请填写版本名称"
-                  : "";
+            : (reviewing || draft.dirty) && issues.length
+              ? "请先处理布局问题"
+              : !reviewing && draft.dirty && !name.trim()
+                ? "请填写版本名称"
+                : "";
   const preview = !reviewing && !draft.dirty;
   return {
     preview,

@@ -7,9 +7,6 @@ from .consistency import source_hash, structure_hash
 from .schemas import Layout
 
 
-REVIEW_TIMEOUT_WARNING = "AI 结构复核超时，未完成复核。已保留识别结构，请逐项对照原图核对墙体、房间及门窗后再继续。"
-
-
 def recoverable_recognition(settings, job):
     if job["status"] != "failed" or job["progress"] != 40:
         return None

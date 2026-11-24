@@ -39,7 +39,7 @@ from .library import LibraryService, install_library_routes
 from .local_review import install_local_review_routes
 from .interior_image import install_interior_image_route
 from .project_transfer import install_transfer_routes
-from .recovery import REVIEW_TIMEOUT_WARNING, recoverable_recognition
+from .recovery import recoverable_recognition
 from .recognition_checkpoint import checkpoint_candidate, has_saved_candidate, readable_issue, save_checkpoint, saved_candidate
 from .request_limits import RequestLimits
 from .schemas import (
@@ -431,7 +431,7 @@ def create_app(settings=None, *, client=None, model_builder=None):
         style_description: str = Form("", max_length=1000),
         notes: str = Form(""),
         collaboration: bool = Form(True),
-        review_mode: str = Form("manual"),
+        review_mode: str = Form("preview"),
         recognition_mode: str = Form("fast"),
         model: str = Form(""),
         reasoning_effort: str = Form(""),
@@ -642,11 +642,8 @@ def create_app(settings=None, *, client=None, model_builder=None):
             if layout is None:
                 raise HTTPException(409, "没有可恢复的有效识别结构，请重新识别户型图")
             timed_out = "超时" in (previous.get("error") or "")
-            warning = (
-                REVIEW_TIMEOUT_WARNING
-                if timed_out
-                else "AI 结构复核未完成。已恢复识别结构，请逐项对照原图核对后再继续。"
-            )
+            reason = "AI 结构复核超时" if timed_out else "AI 结构复核未完成"
+            warning = f"{reason}，已恢复通过几何校验的识别结构。"
             if len(layout.warnings) < 30 and warning not in layout.warnings:
                 layout.warnings.append(warning)
             new_id = uuid4().hex

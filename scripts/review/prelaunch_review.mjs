@@ -93,8 +93,9 @@ try {
   ).toBeVisible();
   await page.getByRole("button", { name: "调整识别结构" }).click();
   await expect(
-    page.getByRole("button", { name: "请先核对墙体和门窗" }),
-  ).toBeDisabled();
+    page.getByRole("button", { name: "确认修改并继续生成" }),
+  ).toBeEnabled();
+  await expect(page.locator(".edit-save-bar input[type=checkbox]")).toHaveCount(0);
   await page.getByRole("button", { name: "返回结构核对", exact: true }).click();
   await confirm.click();
   await expect(page.locator("#viewport canvas")).toHaveAttribute(

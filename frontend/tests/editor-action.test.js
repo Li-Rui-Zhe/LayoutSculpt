@@ -64,15 +64,14 @@ test("放置、绘制、删除和建议预览不能被查看效果或生成按�
     }
   assert.equal(editorPrimaryAction({ ...state, busy: true }).disabled, true);
 });
-test("结构核对保持确认门禁，保存时给出缺失条件", () => {
+test("审核时一个按钮提交，未完成的编辑仍须处理", () => {
+  const reviewing = { ...state, reviewing: true, name: "" };
+  assert.equal(editorPrimaryAction(reviewing).disabled, false);
+  assert.equal(editorPrimaryAction(reviewing).label, "确认修改并继续生成");
+  assert.equal(editorPrimaryAction(reviewing).preview, false);
   assert.equal(
-    editorPrimaryAction({ ...state, reviewing: true }).disabled,
+    editorPrimaryAction({ ...reviewing, issues: ["墙体异常"] }).disabled,
     true,
-  );
-  assert.equal(
-    editorPrimaryAction({ ...state, reviewing: true, acknowledged: true })
-      .preview,
-    false,
   );
   assert.match(
     editorPrimaryAction({ ...state, draft: { dirty: true }, name: " " }).detail,

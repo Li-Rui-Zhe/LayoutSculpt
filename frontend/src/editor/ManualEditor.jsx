@@ -446,8 +446,6 @@ function ManualEditorContent({
     setOpeningPreview(null);
     setOpeningAnchor(null);
   }, [designMode]);
-  const [acknowledged, setAcknowledged] = useState(false);
-  useEffect(() => setAcknowledged(false), [draft.document]);
   const saveLock = useRef(false);
   const [preview, setPreview] = useState(null),
     [step, setStep] = useState(0.1);
@@ -1376,7 +1374,6 @@ function ManualEditorContent({
     setOpeningPreview(null);
     setOpeningKind(kind);
     setOpeningSequence((value) => value + 1);
-    setAcknowledged(false);
     setError("");
   };
   const commitOpening = (opening) => {
@@ -1389,7 +1386,6 @@ function ManualEditorContent({
     }
     next.layout.openings.push(opening);
     draft.commit(next);
-    setAcknowledged(false);
     select("openings", next.layout.openings.length - 1, opening);
   };
   const remove = () => {
@@ -1506,8 +1502,7 @@ function ManualEditorContent({
       openingKind ||
       architecturePlacement ||
       placement ||
-      aiPreview ||
-      (reviewing && !acknowledged)
+      aiPreview
     )
       return;
     const invalidInput = root.current.querySelector(
@@ -1552,7 +1547,6 @@ function ManualEditorContent({
   const returnAction = editorReturnAction({
     draft,
     reviewing,
-    acknowledged,
     busy,
     proposalPreview: !!aiPreview,
     issues,
@@ -4923,8 +4917,6 @@ function ManualEditorContent({
           reviewing={reviewing}
           isScene={isScene}
           job={job}
-          acknowledged={acknowledged}
-          setAcknowledged={setAcknowledged}
           busy={busy}
           name={name}
           onNameChange={(value) => {

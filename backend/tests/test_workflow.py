@@ -220,7 +220,7 @@ def create_job(client, collaboration=True):
     response = client.post(
         "/api/jobs",
         files={"file": ("plan.png", image_bytes(), "image/png")},
-        data={"collaboration": str(collaboration).lower()},
+        data={"review_mode": "manual", "collaboration": str(collaboration).lower()},
     )
     assert response.status_code == 201, response.text
     return response.json()

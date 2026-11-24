@@ -33,7 +33,7 @@ try {
   await choice.scrollIntoViewIfNeeded();
   await choice.check();
   await expect(page.locator(".generation-review-choice")).toContainText(
-    "由你决定何时生成 3D",
+    "只在平面转 3D 前确认一次",
   );
   expect(
     await page.evaluate(
@@ -47,39 +47,37 @@ try {
   const submitted = page.waitForResponse(
     (r) => r.url().endsWith("/api/jobs") && r.request().method() === "POST",
   );
-  await page
-    .getByRole("button", { name: "生成 3D 模型", exact: true })
-    .click();
+  await page.getByRole("button", { name: "生成 3D 模型", exact: true }).click();
   const created = await submitted;
   expect(created.status()).toBe(201);
-  let job = await created.json();
+  const job = await created.json();
   const review = page.locator(".structure-review");
   await expect(
-    review.getByRole("heading", { name: "识别遇到卡点，请先看看平面图" }),
+    review.getByRole("heading", { name: "先确认结构，再生成三维" }),
   ).toBeVisible({ timeout: 30000 });
-  await expect(review).toContainText("第 1 次");
-  await expect(review).toContainText("第 2 次");
+  await expect(review).toContainText("唯一一次确认");
   await expect(review).toContainText("6.0 厘米");
   await expect(
     review.getByRole("img", { name: "识别出的墙体、房间和门窗结构图" }),
   ).toBeVisible();
   await expect(
-    review.getByRole("button", { name: "接受平面图，继续生成 3D" }),
+    review.getByRole("button", { name: "已核对，继续生成" }),
   ).toBeEnabled();
   const paused = await (
     await page.request.get(`${base}/api/jobs/${job.id}`)
   ).json();
   expect(paused.status).toBe("awaiting_review");
-  expect(paused.result.recognition_review.attempts).toHaveLength(2);
+  expect(paused.progress).toBe(45);
+  expect(paused.result.ai_review.method).toBe("automatic_resolution");
   await page.screenshot({
     path: output + "/checkpoint-desktop.png",
     fullPage: true,
   });
   await page.reload();
-  await expect(review).toContainText("AI 已尝试 2 次");
+  await expect(review).toContainText("6.0 厘米");
   await page.setViewportSize({ width: 390, height: 844 });
   await review
-    .getByRole("button", { name: "接受平面图，继续生成 3D" })
+    .getByRole("button", { name: "已核对，继续生成" })
     .scrollIntoViewIfNeeded();
   expect(
     await page.evaluate(
@@ -90,31 +88,24 @@ try {
     path: output + "/checkpoint-mobile.png",
     fullPage: true,
   });
-  checks.push(
-    "两次识别失败后展示平面图、两次原因和微调说明，等待用户选择，刷新仍保留",
-  );
+  checks.push("AI 自动修正墙端后只在转三维前展示平面图，刷新保留同一次确认");
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await review.getByRole("button", { name: "调整平面图", exact: true }).click();
+  await review
+    .getByRole("button", { name: "调整识别结构", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "返回结构核对", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "返回结构核对", exact: true }).click();
-  const retried = page.waitForResponse(
-    (r) =>
-      r.url().endsWith(`/jobs/${job.id}/retry`) &&
-      r.request().method() === "POST",
-  );
-  await review.getByRole("button", { name: "重新识别", exact: true }).click();
-  const response = await retried;
-  expect(response.status()).toBe(201);
-  const previousId = job.id;
-  job = await response.json();
-  expect(job.id).not.toBe(previousId);
   await expect(
-    review.getByRole("button", { name: "接受平面图，继续生成 3D" }),
-  ).toBeEnabled({ timeout: 30000 });
-  checks.push("可进入平面编辑或主动重新识别，原结果保留为独立版本");
-  await review.getByRole("button", { name: "接受平面图，继续生成 3D" }).click();
+    page.getByRole("checkbox", { name: "我已核对修改后的墙体和门窗" }),
+  ).toHaveCount(0);
+  const confirm = page.getByRole("button", {
+    name: "确认修改并继续生成",
+    exact: true,
+  });
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  checks.push("进入平面编辑器后可直接一次确认并生成，无需再勾选或返回审核页");
   await expect
     .poll(
       async () =>

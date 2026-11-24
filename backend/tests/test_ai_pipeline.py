@@ -251,7 +251,7 @@ def test_cache_cannot_cross_different_user_inputs(tmp_path, change):
             first = client.post(
                 "/api/jobs",
                 files={"file": ("plan.png", image_bytes(), "image/png")},
-                data={"model": "test-chosen", "reasoning_effort": "high"},
+                data={"model": "test-chosen", "reasoning_effort": "high", "review_mode": "manual"},
             )
             assert first.status_code == 201
             pending(client, first.json()["id"])
@@ -275,7 +275,7 @@ def test_cache_cannot_cross_different_user_inputs(tmp_path, change):
             Image.new("RGB", (120, 90), "black").save(buffer, format="PNG")
             source = buffer.getvalue()
         response = client.post(
-            "/api/jobs", files={"file": ("plan.png", source, "image/png")}, data=data
+            "/api/jobs", files={"file": ("plan.png", source, "image/png")}, data={"review_mode": "manual", **data}
         )
         assert response.status_code == 201
         pending(client, response.json()["id"])

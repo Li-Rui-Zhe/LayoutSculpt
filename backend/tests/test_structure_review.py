@@ -13,7 +13,6 @@ from dataclasses import replace
 from backend.app.config import Settings
 from backend.app.main import create_app
 from backend.app.codex import CodexError
-from backend.app.recovery import REVIEW_TIMEOUT_WARNING
 from backend.tests.test_workflow import layout_data
 
 
@@ -181,7 +180,7 @@ def test_optional_review_timeout_preserves_structure_and_requires_confirmation(t
         job = pending(client, create_job(client)["id"])
         assert job["error"] is None
         assert job["result"]["ai_review"]["status"] == "timed_out"
-        assert REVIEW_TIMEOUT_WARNING in job["result"]["warnings"]
+        assert any("AI 结构复核超时" in note for note in job["result"]["warnings"])
         structure = client.get(job["result"]["layout_url"]).json()
         initial = Layout.model_validate_json((settings.workspace(job["id"]) / "recognition.json").read_text(encoding="utf-8"))
         assert structure_hash(structure) == structure_hash(initial)

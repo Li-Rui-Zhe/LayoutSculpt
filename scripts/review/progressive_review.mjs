@@ -54,12 +54,9 @@ try {
   ).json();
   expect(completed.status).toBe("succeeded");
   expect(completed.result.consistency.source_reviewed).toBe(false);
-  await page.getByRole("button", { name: "关闭待核对提示" }).click();
-  await expect(
-    page.getByRole("button", { name: "关闭待核对提示" }),
-  ).toHaveCount(0);
+  await expect(page.locator(".structure-review")).toHaveCount(0);
   checks.push(
-    "默认生成显示真实三维初稿，再切换完整家具模型；不会伪造人工核对，提示可关闭",
+    "默认生成显示真实三维初稿，再切换完整家具模型；全程无需人工确认",
   );
 
   // 仅替换响应，不触碰真实任务；验证同 ID 恢复时页面能重新订阅进度。

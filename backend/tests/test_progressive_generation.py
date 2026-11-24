@@ -170,7 +170,7 @@ def test_incomplete_ai_review_still_requests_explicit_review(tmp_path):
 
     settings = replace(Settings(), data_dir=tmp_path)
     with TestClient(create_app(settings, client=ReviewTimeout(), model_builder=fake_builder)) as client:
-        job_id = upload(client)
+        job_id = upload(client, review_mode="manual")
         job = wait_for(client, job_id, lambda j: j["status"] == "awaiting_review")
         assert job["result"]["ai_review"]["status"] == "timed_out"
         assert "preview" not in job["result"]

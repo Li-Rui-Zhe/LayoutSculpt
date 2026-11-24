@@ -89,6 +89,19 @@ def apply_local_structure(candidate, patch, views, alignment):
         raise ValueError("局部复核未提交可验证的结构修正")
     proposed = apply_review_patch(candidate, patch)
     before, after = candidate.model_dump(), proposed.model_dump()
+    validate_repair_extent(before, after, views, alignment)
+    validate_access(before, after)
+    return proposed
+
+
+def validate_access(before, after):
+    old_access = rooms_with_open_access(before)
+    surviving_ids = {room["id"] for room in after["rooms"]}
+    if (old_access & surviving_ids) - rooms_with_open_access(after):
+        raise ValueError("修正造成已有房间失去通行路径")
+
+
+def validate_repair_extent(before, after, views, alignment):
     scale = alignment["meters_per_pixel"]
     ox, oy = alignment["origin_px"]
     context = unary_union(
@@ -148,9 +161,3 @@ def apply_local_structure(candidate, patch, views, alignment):
                 for old, previous in other
             ):
                 check(shape)
-
-    old_access = rooms_with_open_access(before)
-    surviving_ids = {room["id"] for room in after["rooms"]}
-    if (old_access & surviving_ids) - rooms_with_open_access(after):
-        raise ValueError("修正造成已有房间失去通行路径")
-    return proposed

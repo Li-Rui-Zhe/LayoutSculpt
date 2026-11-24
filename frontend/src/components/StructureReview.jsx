@@ -128,7 +128,8 @@ export default function StructureReview({
   const [selectingModel, setSelectingModel] = useState(false);
   const showDifference =
     job.result?.source_alignment_url &&
-    (job.result?.ai_review?.status === "needs_review" || checkpoint);
+    (["needs_review", "estimated"].includes(job.result?.ai_review?.status) ||
+      checkpoint);
   const comparisonView =
     chosenView ?? (showDifference && !inRoam ? "overlay" : "side");
   const [data, setData] = useState(null),
@@ -298,7 +299,7 @@ export default function StructureReview({
         <p>
           {inRoam
             ? "对照原图检查墙体、门窗和房间。"
-            : "对照原图检查平面图，满意后再生成 3D。"}
+            : "这是生成过程中的唯一一次确认。可以先调整平面图，确认后将自动完成三维生成。"}
           {comparisonView === "side" && "蓝色是窗，金色是门或通道。"}
         </p>
         {job.result?.ai_review?.status === "completed" &&
@@ -337,16 +338,18 @@ export default function StructureReview({
           )}
         </div>
       )}
-      {["timed_out", "incomplete", "needs_review"].includes(
+      {["timed_out", "incomplete", "needs_review", "estimated"].includes(
         job.result?.ai_review?.status,
       ) && (
         <div className="review-status-warning" role="status">
           <strong>
             {job.result?.ai_review?.status === "needs_review"
               ? "原图对照发现差异，请先检查平面图"
-              : "AI 复核未完成，请人工核对"}
+              : job.result.ai_review.status === "estimated"
+                ? "平面图包含估算，疑点已列在下方"
+                : "AI 复核未完成，请人工核对"}
           </strong>
-          <p>{job.result.ai_review.message}</p>
+          <p>{job.result.ai_review.message || job.result.ai_review.summary}</p>
         </div>
       )}
       {data ? (

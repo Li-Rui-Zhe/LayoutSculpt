@@ -22,6 +22,7 @@ from .ai_failures import ai_failure_message, classify_ai_error
 from .ai_requests import asset_input, furnishing_schema, layout_input, review_schema
 from .architecture import structure_issues, validate_generated_structure
 from .asset_selection import select_candidates
+from .automatic_review import apply_evidence_patch, merged_findings
 from .codex import CodexChatModel, CodexClient, CodexError
 from .consistency import matches_confirmation, source_hash, structure_hash
 from .floorplan_evidence import (
@@ -59,11 +60,9 @@ from .quality import finish_design, prepare_generated_furnishing
 from .recognition_checkpoint import (
     RecognitionCheckpoint,
     checkpoint_candidate,
-    save_checkpoint,
     validation_summary,
 )
 from .recognition_contract import RecognitionExtraction, validate_recognition
-from .recovery import REVIEW_TIMEOUT_WARNING
 from .resilience import transient_ai_error
 from .schemas import (
     CustomStyleFurnishing,
@@ -160,9 +159,9 @@ def create_graph(
             "status": "running",
         }
         started_at = time.perf_counter()
-        local_review = role in {"wall_detail", "structure_detail"}
-        agent_name = {"source_evidence": "原图定位", "recognition_pixels": "户型识别", "source_audit": "独立复核", "wall_detail": "墙段复核", "structure_detail": "局部结构修正"}.get(role, role)
-        if role == "recognition":
+        local_review = role in {"wall_detail", "structure_detail", "automatic_review"}
+        agent_name = {"source_evidence": "原图定位", "recognition_pixels": "户型识别", "source_audit": "独立复核", "wall_detail": "墙段复核", "structure_detail": "局部结构修正", "automatic_review": "AI 结构定稿", "geometry_recovery": "AI 几何修复"}.get(role, role)
+        if role == "recognition" or (role == "geometry_recovery" and output_type is RecognitionExtraction):
             from .recognition_contract import RecognitionContract
 
             response_schema = RecognitionContract.model_json_schema()
@@ -235,13 +234,13 @@ def create_graph(
         )
         variables = {
             "task": f"执行项目技能 {skill}，用中文返回符合约定的结构化结果。",
-            "notes": "" if local_review or role in {"source_evidence", "source_audit"} else state["options"].get("notes", ""),
+            "notes": "" if local_review or role in {"source_evidence", "source_audit", "geometry_recovery"} else state["options"].get("notes", ""),
             "payload": compact_json(payload),
             "repair": "",
         }
         trace["input_chars"] = len(instructions) + len(prompt.format(**variables))
         cache_runtime = getattr(client, "cache_identity", None)
-        if state.get("reidentify_of") and (local_review or role in {"recognition", "recognition_pixels", "source_evidence", "source_audit", "review"}):
+        if state.get("reidentify_of") and (local_review or role in {"geometry_recovery", "recognition", "recognition_pixels", "source_evidence", "source_audit", "review"}):
             # New user-requested reads get their own cache namespace. A later
             # continuation of this same job can still reuse its valid stages.
             cache_runtime = [cache_runtime, state["job_id"]]
@@ -291,7 +290,7 @@ def create_graph(
                 cached = await asyncio.to_thread(cache.read, key) if enabled else None
                 if cached is not None:
                     try:
-                        output = validate(output_type.model_validate(cached))
+                        output = await asyncio.to_thread(validate, output_type.model_validate(cached))
                     except (ValueError, TypeError):
                         trace["cache_rejected"] = True
                     else:
@@ -342,7 +341,7 @@ def create_graph(
                     trace["attempts"] += 1
                     try:
                         output = await invoke_model()
-                        output = validate(output)
+                        output = await asyncio.to_thread(validate, output)
                         if enabled:
                             try:
                                 await asyncio.to_thread(
@@ -430,6 +429,16 @@ def create_graph(
             trace["elapsed_seconds"] = round(time.perf_counter() - started_at, 3)
             record_metric(workspace, {k: v for k, v in trace.items() if k != "skills"})
 
+    async def recover_geometry(state, checkpoint, skill, output_type, validate, context, images=None):
+        await store.update(state["job_id"], stage="自动修复户型几何", agent="AI 几何修复",
+                           message="AI 正对照原图修复无法建模的位置，然后重新校验")
+        return await run_agent(
+            state, "geometry_recovery", skill, output_type,
+            {**context, "candidate": checkpoint.candidate, "issues": checkpoint.attempts,
+             "task": "对照原图修正候选结构中的几何错误，保留图上可辨的房间、墙和开口，返回可建模的完整结构。"},
+            validate, reference_images=images,
+        )
+
     async def recognize(state):
         if state["options"].get("recognition_mode") == "precise":
             return await recognize_precise(state)
@@ -440,6 +449,7 @@ def create_graph(
             agent="户型识别",
             message="正在检查原图可用性，并读取房间、墙体及门窗",
         )
+        agents = []
         try:
             extracted, trace = await run_agent(
                 state, "recognition", "floorplan-recognition", RecognitionExtraction,
@@ -447,9 +457,14 @@ def create_graph(
                 validate_recognition, artifact="recognition-wire",
             )
         except RecognitionCheckpoint as checkpoint:
-            layout, review = checkpoint_candidate(checkpoint.candidate, checkpoint.attempts)
-            await store.update(state["job_id"], message=review["message"], agent="户型识别")
-            return {"layout": layout, "recognition_review": review, "agents": [checkpoint.trace]}
+            if len(checkpoint.candidate["outline"]) >= 3:
+                layout, review = checkpoint_candidate(checkpoint.candidate, checkpoint.attempts)
+                if review["can_continue"]:
+                    return {"layout": layout, "recognition_review": review, "agents": [checkpoint.trace]}
+            agents.append(checkpoint.trace)
+            extracted, trace = await recover_geometry(
+                state, checkpoint, "floorplan-recognition", RecognitionExtraction, validate_recognition, {},
+            )
         workspace = settings.workspace(state["job_id"])
         layout = validate_recognition(RecognitionExtraction.model_validate(extracted)).model_dump()
         (workspace / "recognition.json").write_text(
@@ -464,7 +479,7 @@ def create_graph(
             ),
             encoding="utf-8",
         )
-        return {"layout": layout, "agents": [trace]}
+        return {"layout": layout, "agents": [*agents, trace]}
 
     async def recognize_precise(state):
         workspace = settings.workspace(state["job_id"])
@@ -586,6 +601,7 @@ def create_graph(
                 )
                 raise ValueError(f"请重新对照原图检查洞口，仅修改图上有依据的部分。{regions}")
 
+        recognition_agents = []
         checkpoint = None
         prepared_audit = None
         try:
@@ -599,6 +615,8 @@ def create_graph(
             if state["options"].get("collaboration"):
                 await store.update(state["job_id"], message="正在细读房间，同时独立核对原图；两次读取互不参考结果")
                 pixel_result, audit_result = await independent_reads(pixel_read, read_source_audit(state, size, audit_views, audit_images))
+                if isinstance(audit_result, SourceImageRejected):
+                    raise audit_result
                 prepared_audit = ({"status": "incomplete"} if isinstance(audit_result, BaseException)
                                   else {"status": "completed", "data": audit_result[0], "trace": audit_result[1]})
                 if isinstance(pixel_result, BaseException):
@@ -608,92 +626,104 @@ def create_graph(
                 pixels, trace = await pixel_read
             layout = meters(PixelLayoutExtraction.model_validate(pixels)).model_dump()
         except RecognitionCheckpoint as failure:
-            wire = pixel_wire(PixelLayoutExtraction.model_validate(failure.candidate), alignment)
-            layout, checkpoint = checkpoint_candidate(wire, failure.attempts)
+            try:
+                wire = pixel_wire(PixelLayoutExtraction.model_validate(failure.candidate), alignment)
+                layout, checkpoint = checkpoint_candidate(wire, failure.attempts)
+            except ValueError:
+                # Coordinates outside the source image cannot be snapped in model space.
+                checkpoint = None
             trace = failure.trace
+            if not checkpoint or not checkpoint["can_continue"]:
+                recognition_agents.append(trace)
+                pixels, trace = await recover_geometry(
+                    state, failure, "floorplan-pixel-recognition", PixelLayoutExtraction, meters,
+                    {"image_size": list(size), "image_views": views, "source_evidence": structural_prior,
+                     "meters_per_pixel": alignment["meters_per_pixel"], **local_context}, images,
+                )
+                layout = meters(PixelLayoutExtraction.model_validate(pixels)).model_dump()
+                checkpoint = None
         layout["dimension_basis"] = {
             "source": "image_dimensions" if alignment["scale_basis"]["anchor_count"] else "estimated",
             "anchors": [], "inconsistent": alignment["scale_uncertain"],
         }
         detail_agents = []
-        if not checkpoint or checkpoint["can_continue"]:
-            comparison = await asyncio.to_thread(compare_source, layout, evidence, alignment, source=source)
-            if not checkpoint:
-                audit = None
-                audit_walls = []
-                targeted = []
-                before_checks = []
-                broad_disagreement = False
-                mixed_disagreement = False
-                local_findings = compare_floorplan_mask(mask, layout, alignment) if local is not None else None
-                if prepared_audit and prepared_audit["status"] == "completed":
-                    audit = SourceEvidence.model_validate(prepared_audit["data"])
-                    audit_result = await asyncio.to_thread(compare_source, layout, audit, alignment, source=source)
-                    audit_walls = audit_result["findings"]
-                    broad_disagreement = needs_fresh_read(audit_result)
-                    mixed_disagreement = local_findings is not None and needs_manual_structure_review(
-                        audit_result, local_findings
+        comparison = await asyncio.to_thread(compare_source, layout, evidence, alignment, source=source)
+        if not checkpoint:
+            audit = None
+            audit_walls = []
+            targeted = []
+            before_checks = []
+            broad_disagreement = False
+            mixed_disagreement = False
+            local_findings = compare_floorplan_mask(mask, layout, alignment) if local is not None else None
+            if prepared_audit and prepared_audit["status"] == "completed":
+                audit = SourceEvidence.model_validate(prepared_audit["data"])
+                audit_result = await asyncio.to_thread(compare_source, layout, audit, alignment, source=source)
+                audit_walls = audit_result["findings"]
+                broad_disagreement = needs_fresh_read(audit_result)
+                mixed_disagreement = local_findings is not None and needs_manual_structure_review(
+                    audit_result, local_findings
+                )
+                if not broad_disagreement and not mixed_disagreement:
+                    pixel_checks = await asyncio.to_thread(image_wall_findings, source, layout, alignment, mask=mask)
+                    outlines = outline_regions(layout, audit, alignment) if audit_result["outline_overlap"] < .9 else []
+                    recess_checks = layout_recess_findings(layout, alignment)
+                    before_checks = [comparison["findings"], audit_walls, pixel_checks, recess_checks]
+                    targeted = choose_repair_regions(
+                        comparison["findings"], audit_walls, pixel_checks, recess_checks + outlines
                     )
-                    if not broad_disagreement and not mixed_disagreement:
-                        pixel_checks = await asyncio.to_thread(image_wall_findings, source, layout, alignment, mask=mask)
-                        outlines = outline_regions(layout, audit, alignment) if audit_result["outline_overlap"] < .9 else []
-                        recess_checks = layout_recess_findings(layout, alignment)
-                        before_checks = [comparison["findings"], audit_walls, pixel_checks, recess_checks]
-                        targeted = choose_repair_regions(
-                            comparison["findings"], audit_walls, pixel_checks, recess_checks + outlines
-                        )
-                disputed = [f for f in combine_wall_observations(comparison["findings"], audit_walls) if f["blocking"]]
-                repaired = None
-                if broad_disagreement:
-                    alignment["local_repair"] = {"status": "recognize_again"}
-                elif mixed_disagreement:
-                    alignment["local_repair"] = {"status": "needs_review"}
-                elif targeted:
-                    if local_findings:
-                        targeted = [
-                            dict(target, local_segmentation=[
-                                finding for finding in local_findings
-                                if box(*target["box"]).intersects(box(*finding["box"]))
-                            ])
-                            for target in targeted
-                        ]
-                    repaired = await repair_structure_regions(state, Layout.model_validate(layout), targeted, before_checks, evidence, audit, alignment, source, mask)
-                    alignment["local_repair"] = {"status": "applied" if repaired else "needs_review", "targets": targeted}
-                elif disputed:
-                    if local is not None:
-                        disputed, manual = await asyncio.to_thread(
-                            select_wall_repair_targets, mask, layout, alignment, disputed
-                        )
-                        if manual:
-                            alignment["wall_repair_review"] = {
-                                "deferred": manual,
-                                "selected_count": min(3, len(disputed)),
-                            }
-                    if disputed:
-                        candidate = Layout.model_validate(layout)
-                        repaired = await repair_wall_spans(state, candidate, disputed[:3], evidence, audit, alignment, source)
-                if repaired:
-                    layout, detail_trace = repaired
-                    detail_agents.append(detail_trace)
-                    comparison = await asyncio.to_thread(compare_source, layout, evidence, alignment, source=source)
-            alignment = update_comparison(alignment, comparison)
-            alignment["image_findings"] = await asyncio.to_thread(image_wall_findings, source, layout, alignment, mask=mask)
-            alignment["image_findings"].extend(layout_recess_findings(layout, alignment))
-            alignment["findings"].extend(alignment["image_findings"])
-            (workspace / "recognition.json").write_text(json.dumps(layout, ensure_ascii=False), encoding="utf-8")
-            (workspace / "recognition-meta.json").write_text(json.dumps({"source_sha256": source_hash(source), "structure_hash": structure_hash(layout)}), encoding="utf-8")
+            disputed = [f for f in combine_wall_observations(comparison["findings"], audit_walls) if f["blocking"]]
+            repaired = None
+            if broad_disagreement:
+                alignment["local_repair"] = {"status": "recognize_again"}
+            elif mixed_disagreement:
+                alignment["local_repair"] = {"status": "needs_review"}
+            elif targeted:
+                if local_findings:
+                    targeted = [
+                        dict(target, local_segmentation=[
+                            finding for finding in local_findings
+                            if box(*target["box"]).intersects(box(*finding["box"]))
+                        ])
+                        for target in targeted
+                    ]
+                repaired = await repair_structure_regions(state, Layout.model_validate(layout), targeted, before_checks, evidence, audit, alignment, source, mask)
+                alignment["local_repair"] = {"status": "applied" if repaired else "needs_review", "targets": targeted}
+            elif disputed:
+                if local is not None:
+                    disputed, manual = await asyncio.to_thread(
+                        select_wall_repair_targets, mask, layout, alignment, disputed
+                    )
+                    if manual:
+                        alignment["wall_repair_review"] = {
+                            "deferred": manual,
+                            "selected_count": min(3, len(disputed)),
+                        }
+                if disputed:
+                    candidate = Layout.model_validate(layout)
+                    repaired = await repair_wall_spans(state, candidate, disputed[:3], evidence, audit, alignment, source)
+            if repaired:
+                layout, detail_trace = repaired
+                detail_agents.append(detail_trace)
+                comparison = await asyncio.to_thread(compare_source, layout, evidence, alignment, source=source)
+        alignment = update_comparison(alignment, comparison)
+        alignment["image_findings"] = await asyncio.to_thread(image_wall_findings, source, layout, alignment, mask=mask)
+        alignment["image_findings"].extend(layout_recess_findings(layout, alignment))
+        alignment["findings"].extend(alignment["image_findings"])
+        (workspace / "recognition.json").write_text(json.dumps(layout, ensure_ascii=False), encoding="utf-8")
+        (workspace / "recognition-meta.json").write_text(json.dumps({"source_sha256": source_hash(source), "structure_hash": structure_hash(layout)}), encoding="utf-8")
         if local is not None:
             alignment["local_segmentation"]["findings"] = compare_floorplan_mask(mask, layout, alignment)
         layout["warnings"] = list(dict.fromkeys(layout["warnings"] + alignment["warnings"]))[:30]
         (workspace / "source-alignment.json").write_text(json.dumps(alignment, ensure_ascii=False), encoding="utf-8")
         result = {"layout": layout, "source_alignment": alignment, "source_evidence": evidence_data,
-                  "agents": [evidence_trace, trace, *detail_agents]}
+                  "agents": [evidence_trace, *recognition_agents, trace, *detail_agents]}
         if prepared_audit:
             result["prepared_audit"] = prepared_audit
         if checkpoint:
             result["recognition_review"] = checkpoint
         elif any(f["blocking"] for f in alignment["findings"]):
-            result["ai_review"] = {"status": "needs_review", "message": "原图证据与当前识别存在差异，请先检查平面图。"}
+            result["ai_review"] = {"status": "needs_review", "message": "原图证据与当前识别存在差异。"}
         return result
 
     async def repair_structure_regions(
@@ -872,16 +902,10 @@ def create_graph(
                 exc, (CodexError, ConnectionError)
             ) and not transient_ai_error(exc):
                 raise
-            # No partial review output is accepted. Human confirmation remains mandatory.
             validate_generated_structure(candidate)
             status = "timed_out" if isinstance(exc, TimeoutError) else "incomplete"
-            warning = (
-                REVIEW_TIMEOUT_WARNING
-                if status == "timed_out"
-                else "AI 复核连接暂时不可用，已保留识别结构，请对照原图人工核对后继续。"
-                if transient_ai_error(exc)
-                else "AI 复核的修改建议未通过校验，已保留原识别结构。请对照原图人工核对，未应用无效修改。"
-            )
+            reason = "AI 结构复核超时" if status == "timed_out" else "AI 结构复核未完成"
+            warning = f"{reason}，已保留通过几何校验的识别结构。"
             if len(candidate.warnings) < 30 and warning not in candidate.warnings:
                 candidate.warnings.append(warning)
             await store.update(state["job_id"], agent="空间复核", message=warning)
@@ -919,6 +943,7 @@ def create_graph(
         size = (state["source_alignment"]["image_width"], state["source_alignment"]["image_height"])
         await store.update(state["job_id"], stage="独立对照原图", progress=40,
             message="正在对照独立读图结果，核对外轮廓、房间与门窗洞口", agent="原图复核")
+        prepared = state.get("prepared_audit")
         try:
             saved_alignment = state["source_alignment"]
             views = saved_alignment.get("audit_views", saved_alignment.get("views", []))
@@ -926,44 +951,37 @@ def create_graph(
             images = [workspace / f"{prefix}-{i + 1}.png" for i in range(len(views))]
             if not all(path.is_file() for path in images):
                 views, images = [], []
-            prepared = state.get("prepared_audit")
-            if prepared:
-                if state["source_alignment"].get("source_sha256") != source_hash(workspace / "source.png"):
-                    raise ValueError("原图已变化，不能复用独立复核")
-                if prepared["status"] != "completed":
-                    raise ValueError("独立复核尚未完成")
+            if saved_alignment.get("source_sha256") != source_hash(workspace / "source.png"):
+                raise CodexError("原图已变化，不能复用独立复核")
+            if prepared and prepared["status"] == "completed":
                 audit_data, trace = prepared["data"], prepared["trace"]
                 validate_evidence(SourceEvidence.model_validate(audit_data), size)
             else:
+                if prepared:
+                    await store.update(state["job_id"], message="已保留户型结构，正在单独补跑原图复核")
                 audit_data, trace = await read_source_audit(state, size, views, images)
+                prepared = {"status": "completed", "data": audit_data, "trace": trace}
             audit = SourceEvidence.model_validate(audit_data)
             previous = state["source_alignment"]
             comparison = await asyncio.to_thread(compare_source, state["layout"], audit, previous, source=workspace / "source.png")
-            walls = combine_wall_observations(previous["findings"], comparison["findings"])
-            comparison["findings"] = [f for f in comparison["findings"] if f["code"] != "missing_wall"] + walls
+            comparison["findings"] = merged_findings(previous["findings"], comparison["findings"])
             alignment = update_comparison(previous, comparison, independent=True)
-            alignment["findings"].extend(alignment.get("image_findings", []))
             audit_scale = alignment_from_evidence(audit, size)
             if audit.dimensions and abs(audit_scale["meters_per_pixel"] / alignment["meters_per_pixel"] - 1) > 0.12:
                 alignment["findings"].append({"code": "dimension_disagreement", "message": "两次独立读图得到的尺寸比例不一致，请先核对尺寸。", "blocking": True})
             alignment["audit_outline"] = audit.outline_px
             issues = [f["message"] for f in alignment["findings"]]
-            needs_confirmation = any(f["blocking"] for f in alignment["findings"])
-            report = {"status": "needs_review" if needs_confirmation else "completed", "method": "independent_source_comparison",
+            needs_resolution = any(f["blocking"] for f in alignment["findings"])
+            report = {"status": "needs_review" if needs_resolution else "completed", "method": "independent_source_comparison",
                       "summary": "；".join(issues) if issues else "已完成独立读图对照，未发现达到提示阈值的结构差异；仍建议查看原图叠加结果。"}
-            if needs_confirmation:
-                report["message"] = (
-                    "外轮廓和多处门窗与原图有分歧。可以调整平面图，或更换模型重新识别。"
-                    if alignment.get("local_repair", {}).get("status") == "recognize_again"
-                    else "独立读图与当前结果存在差异，请先检查平面图，再决定是否继续。"
-                )
             agents = [trace]
-        except (TimeoutError, ValueError, CodexError, ConnectionError, SourceImageRejected):
+        except (TimeoutError, ValueError, CodexError, ConnectionError):
             alignment = state["source_alignment"]
-            report = {"status": "incomplete", "method": "independent_source_comparison", "message": "独立读图复核未完成，识别结果已保留，请先查看平面图后继续。"}
+            report = {"status": "incomplete", "method": "independent_source_comparison", "message": "独立读图复核未完成，已保留通过几何校验的识别结构。"}
             agents = []
         (workspace / "source-alignment.json").write_text(json.dumps(alignment, ensure_ascii=False), encoding="utf-8")
-        return {"source_alignment": alignment, "ai_review": report, "agents": agents}
+        return {"source_alignment": alignment, "ai_review": report, "agents": agents,
+                **({"prepared_audit": prepared} if prepared else {})}
 
     async def furnish(state):
         await store.update(
@@ -1094,7 +1112,7 @@ def create_graph(
                     if transient_ai_error(exc)
                     else "结果无法读取"
                 )
-                warning = f"家具规划{reason}，已先生成确认的房屋结构；家具尚未完成，可手动布置或重新规划家具。"
+                warning = f"家具规划{reason}，已保留通过几何校验的房屋结构，家具尚未完成，可手动布置或重新规划家具。"
                 if custom_style:
                     warning += "自定义风格搭配尚未完成，已保留风格描述供重新规划使用。"
                 await store.update(state["job_id"], agent="家具规划", message=warning)
@@ -1190,15 +1208,75 @@ def create_graph(
             "furnishing_targets": [gap["room_id"] for gap in unresolved],
         }
 
+    async def automatic_review(state):
+        workspace = settings.workspace(state["job_id"])
+        candidate = Layout.model_validate(state["layout"])
+        if not candidate.rooms or not candidate.walls:
+            raise ValueError("AI 修复后仍缺少可建模的房间或墙体")
+        checkpoint = state.get("recognition_review") or {}
+        previous = state.get("ai_review") or {}
+        await store.update(state["job_id"], stage="AI 自动定稿", progress=42, agent="AI 结构定稿",
+                           message="正在综合原图和已完成的校验，确定本次建模结构")
+        alignment = state.get("source_alignment")
+        findings = (alignment or {}).get("findings", [])
+        agents = []
+        status = previous.get("status")
+        selected, selected_alignment = candidate, alignment
+
+        def validate_decision(patch):
+            nonlocal selected, selected_alignment
+            selected, selected_alignment = apply_evidence_patch(state, workspace, candidate, patch)
+
+        try:
+            async with asyncio.timeout(min(settings.review_timeout, settings.codex_timeout)):
+                patch, trace = await run_agent(
+                    state, "automatic_review", "floorplan-review", LayoutReviewPatch,
+                    {"task": "根据原图裁定剩余疑点。有明确依据时作最小修正；证据不足时保留可建模结构，将估算写入 warnings。",
+                     "layout": layout_input(candidate), "base_revision": structure_hash(candidate),
+                     "local_findings": findings, "geometry_checks": structure_issues(candidate),
+                     "prior_attempts": checkpoint.get("attempts", []), "adjustments": checkpoint.get("adjustments", []),
+                     "origin_px": (alignment or {}).get("origin_px"), "meters_per_pixel": (alignment or {}).get("meters_per_pixel")},
+                    validate_decision,
+                )
+            candidate, alignment = selected, selected_alignment
+            agents.append(trace)
+            unresolved = [f for f in (alignment or {}).get("findings", []) if f["blocking"]]
+            if previous.get("status") in {"incomplete", "timed_out"}:
+                summary = "独立复核未完成，已结合现有原图证据定稿。"
+            elif unresolved or patch["warnings"]:
+                status = "estimated"
+                summary = "平面图已定稿，部分结构按现有原图证据估算。"
+            else:
+                status = "completed"
+                summary = patch["summary"]
+        except (TimeoutError, ValueError, CodexError, ConnectionError):
+            status = "incomplete"
+            summary = "AI 未得到通过校验的进一步修正，已保留当前可建模结构。"
+        notes = list(checkpoint.get("adjustments", []))
+        notes.extend(f["message"] for f in (alignment or {}).get("findings", []) if f["blocking"])
+        if status != "completed":
+            notes.insert(0, summary)
+        report = {"status": status, "method": "automatic_resolution", "summary": summary,
+                  "notes": list(dict.fromkeys(notes))}
+        layout = candidate.model_dump()
+        (workspace / "recognition.json").write_text(json.dumps(layout, ensure_ascii=False), encoding="utf-8")
+        (workspace / "recognition-meta.json").write_text(json.dumps({
+            "source_sha256": source_hash(workspace / "source.png"), "structure_hash": structure_hash(candidate),
+        }), encoding="utf-8")
+        if alignment:
+            (workspace / "source-alignment.json").write_text(json.dumps(alignment, ensure_ascii=False), encoding="utf-8")
+        return {"layout": layout, "ai_review": report, "recognition_review": {}, "agents": agents,
+                **({"source_alignment": alignment} if alignment else {})}
+
     async def prepare_review(state):
         workspace = settings.workspace(state["job_id"])
         if state.get("source_sha256") and state["source_sha256"] != source_hash(
             workspace / "source.png"
         ):
             raise CodexError("原图在处理期间发生变化，请重新识别")
-        if state.get("recognition_review"):
-            return save_checkpoint(state, workspace, read_metrics(workspace))
         layout = Layout.model_validate(state["layout"])
+        if not layout.rooms or not layout.walls:
+            raise ValueError("无法建模，户型缺少房间或墙体")
         validate_generated_structure(layout)
         document = {**layout.model_dump(), "furniture": [], "furniture_notes": []}
         (workspace / "structure.json").write_text(
@@ -1209,7 +1287,7 @@ def create_graph(
             encoding="utf-8",
         )
         return {
-            "awaiting_review": True,
+            "awaiting_review": state["options"].get("review_mode", "manual") == "manual",
             "result": {
                 "title": layout.title,
                 "area": round(abs(signed_area(layout.outline)), 1),
@@ -1219,6 +1297,7 @@ def create_graph(
                     dict.fromkeys(
                         layout.warnings
                         + structure_issues(layout)
+                        + (state.get("ai_review") or {}).get("notes", [])
                         + (
                             [state["ai_review"]["message"]]
                             if state.get("ai_review", {}).get("message")
@@ -1319,6 +1398,10 @@ def create_graph(
                 "elapsed_seconds": round(time.perf_counter() - build_started, 3),
             },
         )
+        review_report = state.get("ai_review") or {}
+        review_notes = review_report.get("notes", [])
+        if review_report.get("message") and review_report.get("status") in {"incomplete", "timed_out"}:
+            review_notes = [review_report["message"], *review_notes]
         base = f"/api/jobs/{state['job_id']}/artifacts"
         result = {
             "render_style": render_style,
@@ -1329,7 +1412,8 @@ def create_graph(
             "room_count": len(layout.rooms),
             "confidence": layout.confidence,
             "scale_note": layout.scale_note,
-            "warnings": layout.warnings + furniture.notes + quality["issues"],
+            "warnings": list(dict.fromkeys(layout.warnings + furniture.notes + quality["issues"]
+                + review_notes)),
             "quality": quality,
             "delivery_notice": (furniture.notes[0] if furniture.notes else "家具布置尚未完成，已保留当前空间，可继续补齐。")
             if not quality["furnishing_complete"]
@@ -1428,16 +1512,29 @@ def create_graph(
     for name, node in [
         ("recognize", recognize),
         ("review", review),
+        ("automatic_review", automatic_review),
         ("prepare_review", prepare_review),
         ("preview", preview),
         ("furnish", furnish),
         ("build", build),
     ]:
         graph.add_node(name, node)
+
+    def after_review(state):
+        findings = (state.get("source_alignment") or {}).get("findings", [])
+        if state.get("recognition_review") or any(f["blocking"] for f in findings):
+            return "automatic_review"
+        return "prepare_review"
+
+    def after_recognition(state):
+        if state.get("recognition_review") and not state.get("source_alignment"):
+            return "automatic_review"
+        return "review" if state["options"]["collaboration"] else after_review(state)
+
     graph.add_conditional_edges(
         START,
         lambda state: (
-            "prepare_review"
+            after_review(state)
             if state.get("recovered_structure_of")
             and not state.get("confirmed_structure")
             else "furnish"
@@ -1451,20 +1548,11 @@ def create_graph(
             else "recognize"
         ),
     )
-    graph.add_conditional_edges(
-        "recognize",
-        lambda state: (
-            "prepare_review" if state.get("recognition_review") else
-            "review" if state["options"]["collaboration"] else "prepare_review"
-        ),
-    )
-    graph.add_edge("review", "prepare_review")
+    graph.add_conditional_edges("recognize", after_recognition)
+    graph.add_conditional_edges("review", after_review)
+    graph.add_edge("automatic_review", "prepare_review")
     graph.add_conditional_edges("prepare_review", lambda state: (
-        "preview" if state["options"].get("review_mode") == "preview"
-        and not state.get("recovered_structure_of")
-        and not state.get("recognition_review")
-        and state.get("ai_review", {}).get("status") not in {"timed_out", "incomplete", "needs_review"}
-        else END
+        END if state["awaiting_review"] else "preview"
     ))
     graph.add_edge("preview", "furnish")
     graph.add_edge("furnish", "build")
@@ -1561,8 +1649,7 @@ class JobRunner:
                             raise ValueError(
                                 "恢复记录与当前原图、结构确认或参数不一致，请重新核对任务"
                             )
-                        # 只继续待完成节点。旧任务仍按原选项走人工核对；
-                        # preview 模式可以建模，但绝不写入人工确认。
+                        # 只继续待完成节点，保留任务已保存的审核选择。
                         graph_input = None
                 result = await self.graph.ainvoke(graph_input, config=config)
                 if resume and result.get("result", {}).get("model_url"):
@@ -1577,12 +1664,10 @@ class JobRunner:
                     status="awaiting_review"
                     if result.get("awaiting_review")
                     else "succeeded",
-                    stage="识别结果需要你确认" if result.get("recognition_review") and result.get("awaiting_review") else "等待确认户型结构"
-                    if result.get("awaiting_review")
-                    else "生成完成",
-                    progress=(12 if result.get("recognition_review") else 45) if result.get("awaiting_review") else 100,
+                    stage="等待确认户型结构" if result.get("awaiting_review") else "生成完成",
+                    progress=45 if result.get("awaiting_review") else 100,
                     result=result["result"],
-                    message=result["recognition_review"]["message"] if result.get("recognition_review") and result.get("awaiting_review") else "请对照原图确认墙体、门窗与空间，再继续生成三维"
+                    message="请对照原图确认平面结构，确认后将自动完成三维生成"
                     if result.get("awaiting_review")
                     else "三维户型已生成，可以在工作台中查看",
                 )

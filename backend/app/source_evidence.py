@@ -312,7 +312,7 @@ def opening_findings(layout, evidence, alignment):
             actual = names[next(iter(other_kinds[i]))]
             message = f"原图此处标为{name}，当前结构识别为{actual}，请核对类型。"
         findings.append({
-            "code": "opening_mismatch", "blocking": True,
+            "code": "opening_mismatch", "blocking": True, "expected_kind": o.kind,
             "message": message,
             "box": [max(0, min(xs) - padding), max(0, min(ys) - padding),
                     min(alignment["image_width"], max(xs) + padding), min(alignment["image_height"], max(ys) + padding)],
@@ -347,7 +347,7 @@ def compare_source(layout, evidence, alignment, *, source=None):
         # entire room of slack. Unknown functions remain user decisions.
         if not any(shape.buffer(3).covers(Point(label.point)) for shape in shapes):
             x, y = label.point
-            findings.append({"code": "room_position", "message": f"原图“{label.name}”的位置与当前房间划分不同，请对照检查。", "blocking": True,
+            findings.append({"code": "room_position", "expected_kind": label.kind, "message": f"原图“{label.name}”的位置与当前房间划分不同，请对照检查。", "blocking": True,
                              "box": [max(0, x - 20), max(0, y - 20), min(alignment["image_width"], x + 20), min(alignment["image_height"], y + 20)]})
     findings.extend(wall_findings(layout, evidence, alignment, source=source))
     if alignment["scale_uncertain"]:
