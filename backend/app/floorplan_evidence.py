@@ -41,7 +41,6 @@ def run_floorplan_evidence(data_dir, source):
     model, python = configuration(data_dir)
     if not model.is_file():
         return None
-    device = "cpu" if os.getenv("STUDIO_FLOORPLAN_DEVICE") == "cpu" else "auto"
     try:
         with TemporaryDirectory(prefix="floorplan-", dir=source.parent) as scratch:
             file = Path(scratch) / MASK_FILE
@@ -51,8 +50,6 @@ def run_floorplan_evidence(data_dir, source):
                 str(model.resolve()),
                 str(source),
                 str(file),
-                "--device",
-                device,
             ]
             result = subprocess.run(
                 command,

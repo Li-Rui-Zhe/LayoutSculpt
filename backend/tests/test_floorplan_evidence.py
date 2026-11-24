@@ -1,4 +1,10 @@
+import json
+import sys
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import numpy as np
+import pytest
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from PIL import Image
 
@@ -7,18 +13,40 @@ from backend.app.floorplan_evidence import (
     run_floorplan_evidence,
     select_wall_repair_targets,
 )
-from backend.app.floorplan_inference import accelerated_providers
+from backend.app.floorplan_inference import main as run_worker
 
 
-def test_acceleration_is_chosen_only_for_available_platform_providers():
-    providers = [
-        "CPUExecutionProvider",
-        "DmlExecutionProvider",
-        "CoreMLExecutionProvider",
+@pytest.mark.parametrize("device_args", [[], ["--device", "auto"], ["--device", "cpu"]])
+def test_worker_only_uses_cpu_with_legacy_options(
+    device_args, tmp_path, monkeypatch, capsys
+):
+    source, output = tmp_path / "source.png", tmp_path / "mask.png"
+    Image.new("RGB", (128, 128), "white").save(source)
+    runtime = Mock()
+    session = runtime.InferenceSession.return_value
+    session.get_providers.return_value = ["CPUExecutionProvider"]
+    session.get_inputs.return_value = [
+        SimpleNamespace(type="tensor(float)", shape=[1, 3, 128, 128], name="image")
     ]
-    assert accelerated_providers(providers, "Darwin") == ["CoreMLExecutionProvider"]
-    assert accelerated_providers(providers, "Windows") == ["DmlExecutionProvider"]
-    assert accelerated_providers(["CPUExecutionProvider"], "Windows") == []
+    logits = np.zeros((1, 4, 128, 128), dtype=np.float32)
+    logits[:, 1] = 10
+    session.run.return_value = [logits]
+    monkeypatch.setitem(sys.modules, "onnxruntime", runtime)
+    monkeypatch.setenv("STUDIO_FLOORPLAN_DEVICE", "auto")
+    monkeypatch.setattr(
+        sys, "argv", ["worker", "model.onnx", str(source), str(output), *device_args]
+    )
+
+    run_worker()
+
+    runtime.InferenceSession.assert_called_once_with(
+        "model.onnx",
+        sess_options=runtime.SessionOptions.return_value,
+        providers=["CPUExecutionProvider"],
+    )
+    assert json.loads(capsys.readouterr().out)["provider"] == "CPUExecutionProvider"
+    with Image.open(output) as mask:
+        assert mask.mode == "P" and np.all(np.asarray(mask) == 1)
 
 
 def test_missing_model_or_runtime_leaves_existing_recognition_usable(
@@ -178,7 +206,6 @@ def test_mixed_disagreements_go_to_manual_review_when_no_local_correction_is_sup
 
 
 def test_pixel_recognition_defaults_an_unknown_wall_finish_and_checks_geometry():
-    import pytest
     from pydantic import ValidationError
 
     from backend.app.source_evidence import PixelWall
